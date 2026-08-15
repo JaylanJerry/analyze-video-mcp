@@ -22,9 +22,9 @@
 
 ### Phase 0: 人在 GitHub Settings（可与代码并行，打 tag 前完成）
 
-- [ ] 开启 immutable releases。
-- [ ] `main` / `v*` ruleset，required check 仅为 `required-ci`。
-- [ ] 编辑 `v0.4.0` Release 文案，去掉「不可变」。
+- [x] 开启 immutable releases。
+- [x] `main` / `v*` ruleset，required check 仅为 `required-ci`。
+- [x] 编辑 `v0.4.0` Release 文案，去掉「不可变」。
 
 ### Phase 1: 运行时与版本源
 
@@ -61,14 +61,14 @@
 
 ### Phase 4: 两阶段 Release
 
-- [x] V13：`release.yml` 已加（不改安装钉）。打 tag 仍需用户授权与 exact-SHA 核对。
-- [ ] V14：确认 Release 存在后，新 commit 把钉改为 `#v0.5.0`。
+- [x] V13：`release.yml` 已加；`v0.5.0` 已打 tag，Release 已创建。
+- [x] V14：确认 Release 存在后，新 commit 把钉改为 `#v0.5.0`。
 
 ### Checkpoint: Complete
 
-- [ ] SPEC_V05 完成标准满足。
-- [ ] ADR 0012 改为 Accepted，填写 Date。
-- [ ] 未另说则不 push、不发 npm。
+- [x] SPEC_V05 完成标准满足。
+- [x] ADR 0012 改为 Accepted，填写 Date。
+- [x] 未发 npm；用户授权后已 push 并打 `v0.5.0`。
 
 ## Risks and Mitigations
 

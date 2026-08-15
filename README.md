@@ -6,10 +6,10 @@
 
 ## 安装
 
-默认安装钉在发布标签 `v0.4.0`。要跟 `main` 的最新提交，把参数改成 `github:JaylanJerry/analyze-video-mcp#main`。
+默认安装钉在发布标签 `v0.5.0`。要跟 `main` 的最新提交，把参数改成 `github:JaylanJerry/analyze-video-mcp#main`。
 
-- 跟 `#main` / 即将发布的 v0.5.0：需要 Node.js 22 或更新版本。
-- 当前稳定安装 `#v0.4.0`：以该标签当时的说明为准（Node 20+）。
+- 当前稳定安装 `#v0.5.0` 与跟 `#main`：需要 Node.js 22 或更新版本。
+- 旧标签 `#v0.4.0`：以该标签当时的说明为准（Node 20+）。
 
 还需要阿里云百炼 `DASHSCOPE_API_KEY`。不要把 Key 写进仓库。
 
@@ -20,7 +20,7 @@ Cursor / Claude Code 用户配置示例：
   "mcpServers": {
     "analyze-video": {
       "command": "npx",
-      "args": ["-y", "github:JaylanJerry/analyze-video-mcp#v0.4.0"],
+      "args": ["-y", "github:JaylanJerry/analyze-video-mcp#v0.5.0"],
       "env": {
         "DASHSCOPE_API_KEY": "paste-your-key-here"
       }
