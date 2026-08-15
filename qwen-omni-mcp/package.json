@@ -1,7 +1,7 @@
 {
   "name": "qwen-omni-mcp",
-  "version": "0.3.1",
-  "description": "MCP server for video/image/audio understanding via Bailian (DashScope) Qwen3.8-Max + Qwen3.5-Omni",
+  "version": "0.4.0",
+  "description": "MCP server that adds analyze_video to local agents via Bailian Qwen3.5-Omni-Flash",
   "license": "MIT",
   "repository": {
     "type": "git",

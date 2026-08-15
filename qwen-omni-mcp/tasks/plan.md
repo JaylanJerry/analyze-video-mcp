@@ -4,9 +4,17 @@
 
 - 规格与交接文档：完成。
 - 交接包：已被接手模型接受为实施基线（见 `DEVELOPMENT_HANDOFF.md`）。
-- 业务代码：未修改。
+- 业务代码：T01、T02 已完成。下一任务 T03（流式上传），完成后停在 Gate 1。
 - 依赖：已按 lockfile 安装；未变更 lockfile，未为 audit 升级。
 - P04 基线：typecheck / lint / build 通过；format、Windows `chmod` 测试、`npm audit --omit=dev` 有失败记录。
+- T01–T03：已实现。Gate 1 已由用户按 Node 24 放行（ADR 0007）。
+- T04：SSE 解析器已完成。
+- T05：官方 SSE provider 与小型 AV live 已完成。
+- T06：只保留 `analyze_video`。
+- T07：仓库根 CI 含 Ubuntu 20/22 与 Windows 22；live 无 key 不调度。
+- T08：README / 版本 0.4.0 / Host 配置已对齐已实现行为。
+- T09：真实 MCP stdio 与 Cursor Host 均已跑通。v1 本机收尾，未发布。
+- 下一阶段：通用方向，见 [`plan-general.md`](plan-general.md)。须用户批准 [`../docs/SPEC_GENERAL.md`](../docs/SPEC_GENERAL.md) 后再实施。
 - 工作区 git 根：`Video MCP/`（ADR 0006）。
 - 上游基线快照：`8a07182554a985456153644e0006a22bd1c769f7`。
 - 实施分支：`feat/video-mcp-v1`。

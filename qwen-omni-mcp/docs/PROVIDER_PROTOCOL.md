@@ -108,7 +108,6 @@ X-DashScope-OssResourceResolve: enable   # 仅 oss:// 输入需要
     }
   ],
   "modalities": ["text"],
-  "max_tokens": 1024,
   "stream": true,
   "stream_options": { "include_usage": true }
 }

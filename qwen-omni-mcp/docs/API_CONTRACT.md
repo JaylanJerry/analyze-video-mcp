@@ -17,18 +17,16 @@ analyze_video
 ```json
 {
   "video": "C:\\Videos\\example.mp4",
-  "question": "画面里发生了什么？音频说了什么？",
-  "max_tokens": 1024
+  "question": "画面里发生了什么？音频说了什么？"
 }
 ```
 
-| 字段 | 类型 | 必需 | 默认 | 约束 |
-| --- | --- | --- | --- | --- |
-| `video` | string | 是 | 无 | 本地绝对 MP4 路径或公开 HTTPS URL |
-| `question` | string | 否 | `请结合视频画面和声音，详细说明视频内容。` | trim 后 1–8000 字符 |
-| `max_tokens` | integer | 否 | 1024 | 1–8192 |
+| 字段       | 类型   | 必需 | 默认                               | 约束                              |
+| ---------- | ------ | ---- | ---------------------------------- | --------------------------------- |
+| `video`    | string | 是   | 无                                 | 本地绝对 MP4 路径或公开 HTTPS URL |
+| `question` | string | 否   | `画面里发生了什么？音频说了什么？` | trim 后 1–8000 字符               |
 
-Tool schema 不得出现：`model`、`provider`、`thinking_budget`、`stream`、`upload`、`audio`、`frames`、`oss_url`。
+Tool schema 不得出现：`max_tokens`、`model`、`provider`、`thinking_budget`、`stream`、`upload`、`audio`、`frames`、`oss_url`。回答长度按模型自身上限，不给 Agent 旋钮。
 
 ## Tool 描述语义
 
@@ -59,6 +57,7 @@ MCP `CallToolResult`：
 - 不加固定标题、JSON envelope、模型名、request id 或耗时。
 - 空白回答视为错误。
 - Tool 不流式向 Agent 暴露 provider chunk；内部 SSE 只用于满足 provider 协议并聚合结果。
+- 若 Host 在调用时提供 `progressToken`，本地路径会在上传开始、上传结束、推理开始各发一次 `notifications/progress`；HTTPS 只发推理开始。消息为中文通用句，不含路径或密钥。无 token 的旧 Host 仍只收到最终纯文本。
 
 ## 错误结果
 
@@ -71,21 +70,22 @@ MCP `CallToolResult`：
 
 允许的 Agent 错误码：
 
-| 错误码 | 含义 | 是否建议 Agent 重试 |
-| --- | --- | --- |
-| `INVALID_VIDEO_INPUT` | schema 之外的输入问题 | 否 |
-| `VIDEO_PATH_NOT_ALLOWED` | 本地路径不在允许根目录 | 否 |
-| `VIDEO_NOT_FOUND` | 文件不存在或不可读 | 否 |
-| `UNSUPPORTED_VIDEO` | 非 MP4、magic 不符或不是普通文件 | 否 |
-| `VIDEO_FILE_TOO_LARGE` | 超过本地或动态 policy 上限 | 否 |
-| `UPLOAD_POLICY_FAILED` | 无法取得或解析上传凭证 | 可稍后重试 |
-| `VIDEO_UPLOAD_FAILED` | multipart 上传失败 | 可由用户决定重试 |
-| `VIDEO_ANALYSIS_BUSY` | 已有一个视频任务正在上传或分析 | 稍后重试 |
-| `PROVIDER_RATE_LIMITED` | 429 | 按提示稍后重试 |
-| `PROVIDER_TIMEOUT` | 推理超时 | 可重试 |
-| `PROVIDER_UNAVAILABLE` | 502/503 等暂时故障 | 可重试 |
-| `PROVIDER_RESPONSE_INVALID` | SSE/JSON 不符合契约或中途截断 | 可重试 |
-| `VIDEO_ANALYSIS_FAILED` | 其他已脱敏错误 | 视情况 |
+| 错误码                      | 含义                                           | 是否建议 Agent 重试 |
+| --------------------------- | ---------------------------------------------- | ------------------- |
+| `INVALID_VIDEO_INPUT`       | schema 之外的输入问题                          | 否                  |
+| `VIDEO_PATH_NOT_ALLOWED`    | 本地路径不在允许根目录                         | 否                  |
+| `VIDEO_NOT_FOUND`           | 文件不存在或不可读                             | 否                  |
+| `UNSUPPORTED_VIDEO`         | 非 MP4、magic 不符或不是普通文件               | 否                  |
+| `VIDEO_FILE_TOO_LARGE`      | 超过本地或动态 policy 上限                     | 否                  |
+| `UPLOAD_POLICY_FAILED`      | 无法取得或解析上传凭证                         | 可稍后重试          |
+| `VIDEO_UPLOAD_FAILED`       | 本地上传失败；应改用公开 HTTPS，不要重传原文件 | 否                  |
+| `PROVIDER_UNAUTHORIZED`     | API Key 或接口地址无效                         | 否                  |
+| `VIDEO_ANALYSIS_BUSY`       | 已有一个视频任务正在上传或分析                 | 稍后重试            |
+| `PROVIDER_RATE_LIMITED`     | 429                                            | 按提示稍后重试      |
+| `PROVIDER_TIMEOUT`          | 推理超时                                       | 可重试              |
+| `PROVIDER_UNAVAILABLE`      | 502/503 等暂时故障                             | 可重试              |
+| `PROVIDER_RESPONSE_INVALID` | SSE/JSON 不符合契约或中途截断                  | 可重试              |
+| `VIDEO_ANALYSIS_FAILED`     | 其他已脱敏错误                                 | 视情况              |
 
 Agent 错误文本禁止包含：
 
@@ -110,9 +110,10 @@ Agent 错误文本禁止包含：
 必须断言：
 
 1. `listTools()` 恰好一个工具且名称正确。
-2. JSON schema 只有三个公开字段。
+2. JSON schema 只有 `video` 和 `question`。
 3. 本地路径和 HTTPS URL 都能走到同一个 Tool handler。
 4. Tool 只返回一个 text content。
 5. provider 内部字段不会出现在成功或错误文本。
 6. 默认 prompt 明确要求画面和声音联合分析。
 7. 第二个并发调用稳定返回 `VIDEO_ANALYSIS_BUSY`，不会同时启动另一条大文件上传。
+8. 客户端请求 progress 时，本地路径收到上传开始/结束与推理开始；HTTPS 只收到推理开始；成功结果仍是单一 text content。

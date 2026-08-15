@@ -20,6 +20,8 @@
 
 ## Gate 1：上传与内存
 
+状态：2026-08-15 由用户按本机 Node 24 放行，见 [0007](decisions/0007-gate1-node24.md)。不补测 Node 20。
+
 时机：完成 T01–T03 后。
 
 必须提交：
@@ -27,7 +29,7 @@
 1. `git diff --stat` 和相关 diff。
 2. config、media、upload 单元/集成测试输出。
 3. multipart wire capture 的字段清单与文件 hash 对比。
-4. Node 20、Node 22 的 50 MiB 与 500 MiB mock 上传 RSS 表。
+4. 本机实际运行时（现为 Node 24）的 50 MiB 与 500 MiB mock 上传 RSS 表。Node 20 不测；若最终 Host 使用 Node 22，在 Gate 4 补测。
 5. Windows 中文路径和 junction 测试结果。
 6. FileHandle 生命周期与 abort 说明。
 7. 完整质量门结果。
@@ -109,4 +111,6 @@
 - 所有安全、质量、Windows 验收通过；
 - 不含 secrets，未发布、未推送。
 
-Gate 4 通过后，主审核者才可将项目标记为 v1 可用。发布 npm、制作 exe 或切换生产 OSS 是后续独立决策。
+状态：2026-08-15 证据收齐。本机按可用收尾，**不发布**。主 Host 为 Cursor（用户级 `analyze-video`）。补充证据：Cursor 真实调用 `8月15日.mp4` 与 `2-under500.mp4`（8192 token 写到片尾）。CI 未推送故未在 GitHub 跑过，列为已知限制。
+
+发布 npm、制作 exe 或切换生产 OSS 是后续独立决策。通用方向不走 Gate 4 翻案，另见 [`SPEC_GENERAL.md`](SPEC_GENERAL.md)。

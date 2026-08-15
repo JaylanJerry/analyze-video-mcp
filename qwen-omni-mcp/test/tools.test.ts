@@ -1,69 +1,134 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { type McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import {
+  type AnalyzeVideoRequest,
+  type AnalyzeVideoResult,
+  type ProviderVideo,
+} from "../src/bailian.js";
 import { type AppConfig } from "../src/config.js";
-import { createServer } from "../src/server.js";
+import { VideoError } from "../src/errors.js";
+import {
+  abortActiveAnalysis,
+  buildProviderQuestion,
+  createServer,
+  DEFAULT_QUESTION,
+  notifyProgress,
+  PROGRESS_ANALYZE_START,
+  PROGRESS_UPLOAD_DONE,
+  PROGRESS_UPLOAD_START,
+} from "../src/server.js";
+import { PACKAGE_VERSION } from "../src/version.js";
+import type { AuthorizedLocalVideo } from "../src/media.js";
+import type { MediaUploader, UploadedVideo } from "../src/upload.js";
 
 const SECRET_KEY = "sk-secret-key-1234567890"; // gitleaks:allow — dummy test fixture, not a real key
-const cfg: AppConfig = {
+const CANARY_PATH = "C:\\Users\\secret\\Videos\\private.mp4";
+const CANARY_OSS = "oss://dashscope-tmp/abcdef/video.mp4";
+
+const baseCfg: AppConfig = {
   apiKey: SECRET_KEY,
-  model: "qwen3.8-max",
+  model: "qwen3.5-omni-flash",
   omniModel: "qwen3.5-omni-plus",
   baseUrl: "https://dashscope.test/v1",
-  timeoutMs: 5_000,
+  uploadUrl: "https://dashscope.test/api/v1/uploads",
+  allowedRoots: [],
+  maxLocalVideoBytes: 500 * 1024 * 1024,
+  uploadTimeoutMs: 5_000,
+  analysisTimeoutMs: 5_000,
+  analysisRetries: 1,
 };
 
 const endpoint = "https://dashscope.test/v1/chat/completions";
-
-const server = setupServer();
+const msw = setupServer();
 
 beforeAll(() => {
-  server.listen({ onUnhandledRequest: "error" });
+  msw.listen({ onUnhandledRequest: "error" });
 });
 afterEach(() => {
-  server.resetHandlers();
+  msw.resetHandlers();
 });
 afterAll(() => {
-  server.close();
+  msw.close();
 });
 
-function mockOk(text = "answer") {
-  server.use(
-    http.post(endpoint, () =>
-      HttpResponse.json({ choices: [{ message: { content: text } }], model: "qwen3.8-max" }),
-    ),
+const MP4_HEADER = Buffer.from([
+  0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x6d, 0x70, 0x34, 0x32,
+]);
+
+function sseOk(text: string): HttpResponse<string> {
+  return new HttpResponse(
+    `data: ${JSON.stringify({ id: "chatcmpl-t", choices: [{ delta: { role: "assistant", content: null } }], usage: null })}\n\n` +
+      `data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\n` +
+      `data: ${JSON.stringify({ choices: [{ finish_reason: "stop" }] })}\n\n` +
+      "data: [DONE]\n\n",
+    { status: 200, headers: { "Content-Type": "text/event-stream" } },
   );
 }
 
-function mockCapture(): { body: () => Promise<Record<string, unknown>> } {
-  let latest: Request | undefined;
-  server.use(
-    http.post(endpoint, ({ request }) => {
-      latest = request.clone();
-      return HttpResponse.json({ choices: [{ message: { content: "answer" } }] });
-    }),
-  );
+function recordingAnalyzer(answer = "画面是24，音频是3.1415926"): {
+  analyzer: { analyze: VideoAnalyzerFn };
+  calls: { input: ProviderVideo; request: AnalyzeVideoRequest }[];
+} {
+  const calls: { input: ProviderVideo; request: AnalyzeVideoRequest }[] = [];
   return {
-    async body() {
-      return (await latest!.json()) as Record<string, unknown>;
+    calls,
+    analyzer: {
+      analyze(input, request) {
+        calls.push({ input, request });
+        return Promise.resolve({ answer, requestId: "chatcmpl-test", receivedEvents: 2 });
+      },
     },
   };
 }
 
-async function withClient(fn: (client: Client) => Promise<void>): Promise<void> {
+type VideoAnalyzerFn = (
+  input: ProviderVideo,
+  request: AnalyzeVideoRequest,
+  signal?: AbortSignal,
+) => Promise<AnalyzeVideoResult>;
+
+function recordingUploader(): {
+  uploader: MediaUploader;
+  uploads: number;
+} {
+  let uploads = 0;
+  return {
+    get uploads() {
+      return uploads;
+    },
+    uploader: {
+      upload(_video: AuthorizedLocalVideo, signal: AbortSignal): Promise<UploadedVideo> {
+        if (signal.aborted) {
+          return Promise.reject(
+            new VideoError({ code: "VIDEO_ANALYSIS_FAILED", stage: "aborted" }),
+          );
+        }
+        uploads += 1;
+        return Promise.resolve({ url: "oss://tmp/test.mp4", requiresOssResolve: true });
+      },
+    },
+  };
+}
+
+async function withClient(
+  cfg: AppConfig,
+  deps: Parameters<typeof createServer>[1],
+  fn: (client: Client, mcp: McpServer) => Promise<void>,
+): Promise<void> {
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-  const mcp: McpServer = createServer(cfg);
+  const mcp = createServer(cfg, deps);
   await mcp.connect(serverTransport);
   const client = new Client({ name: "test-client", version: "1.0.0" });
   await client.connect(clientTransport);
   try {
-    await fn(client);
+    await fn(client, mcp);
   } finally {
     await client.close();
     await mcp.close();
@@ -71,187 +136,160 @@ async function withClient(fn: (client: Client) => Promise<void>): Promise<void> 
 }
 
 function textOf(result: unknown): string {
-  const r = result as { content?: { text?: string }[] };
+  const r = result as { content?: { text?: string }[]; isError?: boolean };
   return r.content?.[0]?.text ?? "";
 }
 
-describe("MCP tool wiring (in-memory e2e)", () => {
-  it("exposes all 5 tools", async () => {
-    await withClient(async (client) => {
-      const { tools } = await client.listTools();
-      expect(tools.map((t) => t.name).sort()).toEqual(
-        [
-          "analyze_audio",
-          "analyze_audio_video",
-          "analyze_image",
-          "analyze_video",
-          "check_endpoint_status",
-        ].sort(),
-      );
-    });
-  });
-
-  it("returns capability-aware server instructions on initialize", async () => {
-    await withClient((client) => {
-      const instructions = client.getInstructions();
-      expect(instructions).toBeDefined();
-      expect(instructions).toContain("VIEW, READ, or understand");
-      expect(instructions).toContain("[Unsupported Image]");
-      expect(instructions).toContain("prefer your native vision");
-      expect(instructions).toContain("analyze_image");
+describe("MCP analyze_video contract", () => {
+  it("reports the package version on initialize", async () => {
+    await withClient(baseCfg, {}, (client) => {
+      expect(client.getServerVersion()?.version).toBe(PACKAGE_VERSION);
       return Promise.resolve();
     });
   });
 
-  it("exposes thinking_budget on every media tool", async () => {
-    await withClient(async (client) => {
+  it("exposes exactly one tool with the public fields", async () => {
+    await withClient(baseCfg, {}, async (client) => {
       const { tools } = await client.listTools();
-      const mediaTools = tools.filter((t) => t.name.startsWith("analyze_"));
-      expect(mediaTools).toHaveLength(4);
-      for (const t of mediaTools) {
-        const props = (t.inputSchema as { properties?: Record<string, unknown> }).properties;
-        expect(props, `${t.name} should expose thinking_budget`).toHaveProperty("thinking_budget");
-      }
+      expect(tools.map((t) => t.name)).toEqual(["analyze_video"]);
+      const props = (tools[0]?.inputSchema as { properties?: Record<string, unknown> }).properties;
+      expect(Object.keys(props ?? {}).sort()).toEqual(["question", "video"]);
+      expect(props).not.toHaveProperty("max_tokens");
+      expect(props).not.toHaveProperty("thinking_budget");
+      expect(props).not.toHaveProperty("video_url");
+      expect(props).not.toHaveProperty("model");
     });
   });
 
-  it("forwards thinking_budget into the request body when provided", async () => {
-    const cap = mockCapture();
-    await withClient(async (client) => {
-      await client.callTool({
-        name: "analyze_image",
-        arguments: { image_url: "https://v/i.png", question: "q", thinking_budget: 2048 },
-      });
+  it("puts picture-plus-audio guidance in instructions and the tool description", async () => {
+    await withClient(baseCfg, {}, async (client) => {
+      const instructions = client.getInstructions();
+      expect(instructions).toContain("视频画面");
+      expect(instructions).toContain("内嵌音频");
+      expect(instructions).not.toContain("analyze_image");
+      const { tools } = await client.listTools();
+      expect(tools[0]?.description).toContain("视频画面");
+      expect(tools[0]?.description).toContain("内嵌音频");
     });
-    const body = await cap.body();
-    expect(body.thinking_budget).toBe(2048);
   });
 
-  it("omits thinking_budget from the request body when not provided", async () => {
-    const cap = mockCapture();
-    await withClient(async (client) => {
-      await client.callTool({
-        name: "analyze_image",
-        arguments: { image_url: "https://v/i.png", question: "q" },
-      });
-    });
-    const body = await cap.body();
-    expect("thinking_budget" in body).toBe(false);
+  it("wraps the default question with an AV constraint", () => {
+    const prompt = buildProviderQuestion(DEFAULT_QUESTION);
+    expect(prompt).toContain("内嵌音轨");
+    expect(prompt).toContain(DEFAULT_QUESTION);
+    expect(DEFAULT_QUESTION).toContain("画面");
+    expect(DEFAULT_QUESTION).toContain("音频");
   });
 
-  it("analyze_video returns the model answer", async () => {
-    mockOk("a cat on rails");
-    await withClient(async (client) => {
+  it("returns a single text content for HTTPS input", async () => {
+    const rec = recordingAnalyzer("a cat on rails");
+    await withClient(baseCfg, { analyzer: rec.analyzer }, async (client) => {
       const r = await client.callTool({
         name: "analyze_video",
-        arguments: { video_url: "https://v/x.mp4", question: "what" },
+        arguments: { video: "https://cdn.example/v.mp4", question: "what" },
       });
       expect(r.isError).toBeFalsy();
+      expect(r.content).toHaveLength(1);
       expect(textOf(r)).toBe("a cat on rails");
     });
-  });
-
-  it("analyze_image sends an image_url block and applies default tokens", async () => {
-    const cap = mockCapture();
-    await withClient(async (client) => {
-      const r = await client.callTool({
-        name: "analyze_image",
-        arguments: { image_url: "https://v/i.png" },
-      });
-      expect(textOf(r)).toBe("answer");
+    expect(rec.calls[0]?.input).toEqual({
+      url: "https://cdn.example/v.mp4",
+      requiresOssResolve: false,
     });
-    const body = await cap.body();
-    const content = (body.messages as { content: unknown[] }[])[0]!.content;
-    expect(content[1]).toEqual({ type: "image_url", image_url: { url: "https://v/i.png" } });
-    expect(body.max_tokens).toBe(512);
+    expect(rec.calls[0]?.request.question).toContain("用户问题：what");
+    expect(rec.calls[0]?.request.question).toContain("内嵌音轨");
+    expect(rec.calls[0]?.request).not.toHaveProperty("maxTokens");
   });
 
-  it("maps a backend 500 to an isError tool result", async () => {
-    server.use(http.post(endpoint, () => new HttpResponse(null, { status: 500 })));
-    await withClient(async (client) => {
+  it("emits only analysis progress for HTTPS when the client asks for it", async () => {
+    const rec = recordingAnalyzer("ok");
+    const messages: string[] = [];
+    await withClient(baseCfg, { analyzer: rec.analyzer }, async (client) => {
+      const r = await client.callTool(
+        { name: "analyze_video", arguments: { video: "https://cdn.example/v.mp4" } },
+        undefined,
+        {
+          onprogress: (progress) => {
+            if (progress.message !== undefined) {
+              messages.push(progress.message);
+            }
+          },
+        },
+      );
+      expect(textOf(r)).toBe("ok");
+    });
+    expect(messages).toEqual([PROGRESS_ANALYZE_START]);
+  });
+
+  it("applies the default question when omitted", async () => {
+    const rec = recordingAnalyzer();
+    await withClient(baseCfg, { analyzer: rec.analyzer }, async (client) => {
+      await client.callTool({
+        name: "analyze_video",
+        arguments: { video: "https://cdn.example/v.mp4" },
+      });
+    });
+    expect(rec.calls[0]?.request.question).toContain(DEFAULT_QUESTION);
+    expect(rec.calls[0]?.request).not.toHaveProperty("maxTokens");
+  });
+
+  it("sends the official SSE payload for HTTPS video", async () => {
+    let body: Record<string, unknown> | undefined;
+    let ossHeader: string | null = null;
+    msw.use(
+      http.post(endpoint, async ({ request }) => {
+        ossHeader = request.headers.get("x-dashscope-ossresourceresolve");
+        body = (await request.json()) as Record<string, unknown>;
+        return sseOk("seen");
+      }),
+    );
+    await withClient(baseCfg, {}, async (client) => {
       const r = await client.callTool({
         name: "analyze_video",
-        arguments: { video_url: "https://v/x.mp4" },
+        arguments: { video: "https://cdn.example/v.mp4", question: "画面是什么？" },
       });
-      expect(r.isError).toBe(true);
-      expect(textOf(r)).toContain("HTTP 500");
+      expect(textOf(r)).toBe("seen");
     });
+    expect(ossHeader).toBeNull();
+    expect(body?.stream).toBe(true);
+    expect(body?.modalities).toEqual(["text"]);
+    expect(body?.stream_options).toEqual({ include_usage: true });
+    expect(body).not.toHaveProperty("thinking_budget");
+    expect(body).not.toHaveProperty("max_tokens");
+    expect(JSON.stringify(body)).not.toContain(SECRET_KEY);
   });
 
-  it("check_endpoint_status never leaks the API key", async () => {
-    await withClient(async (client) => {
-      const r = await client.callTool({ name: "check_endpoint_status", arguments: {} });
+  it("maps provider failure to a redacted isError result", async () => {
+    msw.use(http.post(endpoint, () => new HttpResponse(null, { status: 500 })));
+    await withClient(baseCfg, {}, async (client) => {
+      const r = await client.callTool({
+        name: "analyze_video",
+        arguments: { video: "https://cdn.example/v.mp4" },
+      });
+      expect(r.isError).toBe(true);
       const text = textOf(r);
+      expect(text).toBe("VIDEO_ANALYSIS_FAILED: 视频分析失败。");
       expect(text).not.toContain(SECRET_KEY);
-      expect(text).toContain("sk-s…7890");
-      expect(text).toContain("qwen3.8-max");
-      expect(text).toContain("qwen3.5-omni-plus");
+      expect(text).not.toContain("oss://");
     });
   });
 
-  it("analyze_audio sends an input_audio block + modalities:text + omni model", async () => {
-    const cap = mockCapture();
-    await withClient(async (client) => {
+  it("rejects a local path when no allowed roots are configured", async () => {
+    await withClient(baseCfg, {}, async (client) => {
       const r = await client.callTool({
-        name: "analyze_audio",
-        arguments: { audio_url: "https://example.com/a.mp3", question: "what" },
-      });
-      expect(textOf(r)).toBe("answer");
-    });
-    const body = await cap.body();
-    const content = (body.messages as { content: unknown[] }[])[0]!.content;
-    expect(content[1]).toEqual({
-      type: "input_audio",
-      input_audio: { data: "https://example.com/a.mp3", format: "mp3" },
-    });
-    expect(body.model).toBe("qwen3.5-omni-plus");
-    expect(body.modalities).toEqual(["text"]);
-  });
-
-  it("analyze_audio_video sends a video_url block + omni model", async () => {
-    const cap = mockCapture();
-    await withClient(async (client) => {
-      const r = await client.callTool({
-        name: "analyze_audio_video",
-        arguments: { video_url: "https://example.com/v.mp4" },
-      });
-      expect(textOf(r)).toBe("answer");
-    });
-    const body = await cap.body();
-    const content = (body.messages as { content: unknown[] }[])[0]!.content;
-    expect(content[1]).toEqual({
-      type: "video_url",
-      video_url: { url: "https://example.com/v.mp4" },
-    });
-    expect(body.model).toBe("qwen3.5-omni-plus");
-    expect(body.modalities).toEqual(["text"]);
-  });
-
-  it("analyze_audio maps a backend 500 to an isError result", async () => {
-    server.use(http.post(endpoint, () => new HttpResponse(null, { status: 500 })));
-    await withClient(async (client) => {
-      const r = await client.callTool({
-        name: "analyze_audio",
-        arguments: { audio_url: "https://example.com/a.mp3" },
+        name: "analyze_video",
+        arguments: { video: CANARY_PATH },
       });
       expect(r.isError).toBe(true);
-      expect(textOf(r)).toContain("HTTP 500");
+      const text = textOf(r);
+      expect(text).toMatch(/^VIDEO_PATH_NOT_ALLOWED: /);
+      expect(text).toContain("QWEN_ALLOWED_ROOTS");
+      expect(text).not.toContain(CANARY_PATH);
     });
   });
 });
 
-function mediaUrlOf(body: Record<string, unknown>): string {
-  const messages = (
-    body as {
-      messages?: { content?: { image_url?: { url?: string }; video_url?: { url?: string } }[] }[];
-    }
-  ).messages;
-  const blocks = messages?.[0]?.content ?? [];
-  const block = blocks.find((b) => b.image_url || b.video_url);
-  return (block?.image_url ?? block?.video_url)?.url ?? "";
-}
-
-describe("local file path support", () => {
+describe("local authorized video", () => {
   let dir: string;
 
   beforeEach(async () => {
@@ -262,112 +300,185 @@ describe("local file path support", () => {
     await rm(dir, { recursive: true, force: true });
   });
 
-  it("sends a local image as a base64 data URL", async () => {
-    const cap = mockCapture();
-    const bytes = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
-    const p = join(dir, "pic.jpg");
-    await writeFile(p, bytes);
-    await withClient(async (client) => {
-      const r = await client.callTool({
-        name: "analyze_image",
-        arguments: { image_url: p, question: "q" },
-      });
-      expect(textOf(r)).toBe("answer");
-    });
-    expect(mediaUrlOf(await cap.body())).toBe(`data:image/jpeg;base64,${bytes.toString("base64")}`);
-  });
-
-  it("sends a local video as a base64 data URL", async () => {
-    const cap = mockCapture();
-    // 12-byte MP4 ftyp box header: size(4) + "ftyp" + "mp42".
-    const bytes = Buffer.from([
-      0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x6d, 0x70, 0x34, 0x32,
-    ]);
+  it("uploads a local MP4 and analyzes the returned object", async () => {
+    const rec = recordingAnalyzer("ok");
+    const up = recordingUploader();
     const p = join(dir, "clip.mp4");
-    await writeFile(p, bytes);
-    await withClient(async (client) => {
+    await writeFile(p, MP4_HEADER);
+    const cfg = { ...baseCfg, allowedRoots: [await realpath(dir)] };
+    await withClient(cfg, { analyzer: rec.analyzer, uploader: up.uploader }, async (client) => {
       const r = await client.callTool({
         name: "analyze_video",
-        arguments: { video_url: p, question: "q" },
+        arguments: { video: p, question: "q" },
       });
-      expect(textOf(r)).toBe("answer");
+      expect(textOf(r)).toBe("ok");
     });
-    expect(mediaUrlOf(await cap.body())).toBe(`data:video/mp4;base64,${bytes.toString("base64")}`);
+    expect(up.uploads).toBe(1);
+    expect(rec.calls[0]?.input.requiresOssResolve).toBe(true);
+    expect(rec.calls[0]?.input.url.startsWith("oss://")).toBe(true);
+    expect(textOf({ content: [{ text: rec.calls[0]?.input.url }] })).not.toContain(p);
   });
 
-  it("passes a public URL through unchanged for a video tool", async () => {
-    const cap = mockCapture();
-    await withClient(async (client) => {
-      await client.callTool({
+  it("emits upload and analysis progress when the client asks for it", async () => {
+    const rec = recordingAnalyzer("ok");
+    const up = recordingUploader();
+    const p = join(dir, "clip.mp4");
+    await writeFile(p, MP4_HEADER);
+    const cfg = { ...baseCfg, allowedRoots: [await realpath(dir)] };
+    const messages: string[] = [];
+    await withClient(cfg, { analyzer: rec.analyzer, uploader: up.uploader }, async (client) => {
+      const r = await client.callTool(
+        { name: "analyze_video", arguments: { video: p, question: "q" } },
+        undefined,
+        {
+          onprogress: (progress) => {
+            if (progress.message !== undefined) {
+              messages.push(progress.message);
+            }
+          },
+        },
+      );
+      expect(textOf(r)).toBe("ok");
+    });
+    expect(messages).toEqual([PROGRESS_UPLOAD_START, PROGRESS_UPLOAD_DONE, PROGRESS_ANALYZE_START]);
+    expect(messages.join(" ")).not.toContain(p);
+  });
+
+  it("does not start a second upload while one call is active", async () => {
+    let release: (() => void) | undefined;
+    let markStarted: () => void = () => undefined;
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    const hanging = new Promise<AnalyzeVideoResult>((resolve) => {
+      release = () => {
+        resolve({ answer: "first", requestId: undefined, receivedEvents: 1 });
+      };
+    });
+    const up = recordingUploader();
+    const analyzer = {
+      async analyze(
+        _input: ProviderVideo,
+        _request: AnalyzeVideoRequest,
+        signal: AbortSignal | undefined,
+      ): Promise<AnalyzeVideoResult> {
+        markStarted();
+        if (signal?.aborted) {
+          throw new VideoError({ code: "VIDEO_ANALYSIS_FAILED", stage: "aborted" });
+        }
+        return hanging;
+      },
+    };
+    const p = join(dir, "clip.mp4");
+    await writeFile(p, MP4_HEADER);
+    const cfg = { ...baseCfg, allowedRoots: [await realpath(dir)] };
+    await withClient(cfg, { analyzer, uploader: up.uploader }, async (client) => {
+      const first = client.callTool({
         name: "analyze_video",
-        arguments: { video_url: "https://example.com/v.mp4", question: "summarize" },
+        arguments: { video: p, question: "one" },
       });
+      await started;
+      const second = await client.callTool({
+        name: "analyze_video",
+        arguments: { video: p, question: "two" },
+      });
+      expect(second.isError).toBe(true);
+      expect(textOf(second)).toBe("VIDEO_ANALYSIS_BUSY: 已有一个视频任务正在处理。");
+      expect(up.uploads).toBe(1);
+      release?.();
+      const done = await first;
+      expect(textOf(done)).toBe("first");
     });
-    expect(mediaUrlOf(await cap.body())).toBe("https://example.com/v.mp4");
+  });
+});
+
+describe("notifyProgress", () => {
+  it("no-ops without a progress token and swallows send failures", async () => {
+    await expect(
+      notifyProgress({ sendNotification: () => Promise.reject(new Error("no")) }, 1, 3, "x"),
+    ).resolves.toBeUndefined();
+    let sent = 0;
+    await notifyProgress(
+      {
+        _meta: { progressToken: "t" },
+        sendNotification: () => {
+          sent += 1;
+          return Promise.reject(new Error("host-ignore"));
+        },
+      },
+      1,
+      3,
+      PROGRESS_ANALYZE_START,
+    );
+    expect(sent).toBe(1);
+  });
+});
+
+describe("lifecycle", () => {
+  it("aborts an in-flight analysis", async () => {
+    const analyzer = {
+      async analyze(
+        _input: ProviderVideo,
+        _request: AnalyzeVideoRequest,
+        signal: AbortSignal | undefined,
+      ): Promise<AnalyzeVideoResult> {
+        await new Promise<void>((_resolve, reject) => {
+          if (signal === undefined) {
+            reject(new Error("missing signal"));
+            return;
+          }
+          if (signal.aborted) {
+            reject(new VideoError({ code: "VIDEO_ANALYSIS_FAILED", stage: "aborted" }));
+            return;
+          }
+          signal.addEventListener(
+            "abort",
+            () => {
+              reject(new VideoError({ code: "VIDEO_ANALYSIS_FAILED", stage: "aborted" }));
+            },
+            { once: true },
+          );
+        });
+        return { answer: "late", requestId: undefined, receivedEvents: 0 };
+      },
+    };
+    await withClient(baseCfg, { analyzer }, async (client, mcp) => {
+      const pending = client.callTool({
+        name: "analyze_video",
+        arguments: { video: "https://cdn.example/v.mp4" },
+      });
+      await new Promise((resolve) => {
+        setTimeout(resolve, 20);
+      });
+      abortActiveAnalysis(mcp);
+      const r = await pending;
+      expect(r.isError).toBe(true);
+      expect(textOf(r)).toBe("VIDEO_ANALYSIS_FAILED: 视频分析失败。");
+    });
   });
 
-  it("returns an isError result for a missing local file", async () => {
-    await withClient(async (client) => {
+  it("does not write secrets or oss URLs to the agent text", async () => {
+    const analyzer = {
+      analyze(): Promise<AnalyzeVideoResult> {
+        return Promise.reject(
+          new VideoError({
+            code: "VIDEO_ANALYSIS_FAILED",
+            stage: "analyzing",
+            requestId: SECRET_KEY,
+            diagnostic: { path: CANARY_PATH, oss: CANARY_OSS },
+          }),
+        );
+      },
+    };
+    await withClient(baseCfg, { analyzer }, async (client) => {
       const r = await client.callTool({
-        name: "analyze_image",
-        arguments: { image_url: join(dir, "nope.jpg") },
+        name: "analyze_video",
+        arguments: { video: "https://cdn.example/v.mp4" },
       });
-      expect(r.isError).toBe(true);
-      expect(textOf(r)).toContain("Cannot read local file");
-    });
-  });
-
-  it("refuses to exfiltrate a non-media local file", async () => {
-    const p = join(dir, "secret.env");
-    const secret = "internal-secret-do-not-exfil-42";
-    await writeFile(p, `DASHSCOPE_API_KEY=${secret}`);
-    await withClient(async (client) => {
-      const r = await client.callTool({
-        name: "analyze_image",
-        arguments: { image_url: p },
-      });
-      expect(r.isError).toBe(true);
       const text = textOf(r);
-      expect(text).toContain("unsupported extension");
-      // The file is rejected before being read, so its contents never leave.
-      expect(text).not.toContain(secret);
-    });
-  });
-
-  it("sends a local audio as a data:;base64, input_audio block", async () => {
-    const cap = mockCapture();
-    const bytes = Buffer.from([0x49, 0x44, 0x33, 0x04, 0x00, 0x00, 0x00, 0x00]); // ID3 mp3
-    const p = join(dir, "clip.mp3");
-    await writeFile(p, bytes);
-    await withClient(async (client) => {
-      const r = await client.callTool({
-        name: "analyze_audio",
-        arguments: { audio_url: p, question: "q" },
-      });
-      expect(textOf(r)).toBe("answer");
-    });
-    const body = await cap.body();
-    const content = (body.messages as { content: unknown[] }[])[0]!.content;
-    expect(content[1]).toEqual({
-      type: "input_audio",
-      input_audio: { data: `data:;base64,${bytes.toString("base64")}`, format: "mp3" },
-    });
-    expect(body.model).toBe("qwen3.5-omni-plus");
-  });
-
-  it("refuses to exfiltrate a non-audio local file via analyze_audio", async () => {
-    const p = join(dir, "fake.mp3");
-    const secret = "internal-secret-do-not-exfil-audio-7";
-    await writeFile(p, secret);
-    await withClient(async (client) => {
-      const r = await client.callTool({
-        name: "analyze_audio",
-        arguments: { audio_url: p },
-      });
-      expect(r.isError).toBe(true);
-      const text = textOf(r);
-      expect(text).toContain("does not appear to be a valid audio");
-      expect(text).not.toContain(secret);
+      expect(text).not.toContain(SECRET_KEY);
+      expect(text).not.toContain(CANARY_PATH);
+      expect(text).not.toContain(CANARY_OSS);
     });
   });
 });

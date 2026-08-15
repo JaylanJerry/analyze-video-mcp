@@ -39,17 +39,17 @@ CI runs the same on Node 20 and 22. Local green ≠ CI green if you skip a step.
 
 ## Tool surface
 
-The server exposes 5 MCP tools (see `src/server.ts`): `analyze_video`, `analyze_image`, `analyze_audio`, `analyze_audio_video`, `check_endpoint_status`. Do not silently change a tool's name or argument schema — that breaks MCP clients. Add new tools rather than renaming.
+This specialized fork exposes exactly one MCP tool: `analyze_video(video, question?)`. See ADR 0001, ADR 0009, and `docs/API_CONTRACT.md`. Do not restore the upstream five-tool surface, and do not add `max_tokens`, `thinking_budget`, `video_url`, or model fields to the public schema.
 
-`check_endpoint_status` must redact the API key (`redactKey`). There is a test asserting no key leaks — keep it passing.
+Agent-facing errors must stay redacted. There are tests asserting no key, path, or `oss://` leaks — keep them passing.
 
 ## Backend
 
 - Endpoint: Bailian (DashScope) OpenAI-compatible mode, `${DASHSCOPE_BASE_URL}/chat/completions` (default `https://dashscope.aliyuncs.com/compatible-mode/v1`).
-- Model: `qwen3.8-max` (native multimodal, hybrid-thinking — **no client-side frame extraction**) for `analyze_video`/`analyze_image`. Thinking stays at the provider default (on for Qwen3.8); media tools expose an optional `thinking_budget` (1:1 passthrough of the provider's non-standard `thinking_budget` body param, set in `buildPayload`).
-- Omni model: `qwen3.5-omni-plus` (native audio + audio-video understanding) for `analyze_audio`/`analyze_audio_video`, configured via `QWEN_OMNI_MODEL`. Omni calls send `modalities: ["text"]` to force text-only output (no voice blob).
-- The Anthropic-compatible `/apps/anthropic` endpoint does NOT support video input. Do not switch to it for multimodal tools.
-- Video frame sampling is server-side (fixed 0.5s/frame on OpenAI-compatible mode). Do not add frame extraction logic.
+- Model: `qwen3.5-omni-flash` for `analyze_video`. The call must jointly read picture and embedded audio. Do not add client-side frame or audio extraction.
+- Requests use `stream: true`, `modalities: ["text"]`, and `stream_options.include_usage`. Do not send Thinking or audio-output parameters.
+- Local files are authorized FileHandles streamed to Beijing temporary upload (48h). Do not Base64 whole videos.
+- The Anthropic-compatible `/apps/anthropic` endpoint does NOT support video input. Do not switch to it.
 
 ## Testing
 

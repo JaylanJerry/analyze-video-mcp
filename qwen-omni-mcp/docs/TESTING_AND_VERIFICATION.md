@@ -20,15 +20,15 @@
 
 真实链路结果：
 
-| 阶段 | 结果 |
-| --- | --- |
+| 阶段                                  | 结果                                                        |
+| ------------------------------------- | ----------------------------------------------------------- |
 | `getPolicy(model=qwen3.5-omni-flash)` | HTTP 200，`max_file_size_mb=1024`，credential 有效期 300 秒 |
-| multipart 临时上传 | HTTP 200 |
-| HTTP Omni 推理 | HTTP 200，`text/event-stream` |
-| SSE | 21 个数据 chunk 被聚合 |
-| 模型回答 | 同时返回 `画面数字：24` 与 `音频朗读：3.1415926` |
-| policy request id | `ef2c1786-7f4a-96a0-aab6-cde5adc224ea` |
-| model request id | `chatcmpl-88ca6267-aac9-9ff0-853d-dc411eab945a` |
+| multipart 临时上传                    | HTTP 200                                                    |
+| HTTP Omni 推理                        | HTTP 200，`text/event-stream`                               |
+| SSE                                   | 21 个数据 chunk 被聚合                                      |
+| 模型回答                              | 同时返回 `画面数字：24` 与 `音频朗读：3.1415926`            |
+| policy request id                     | `ef2c1786-7f4a-96a0-aab6-cde5adc224ea`                      |
+| model request id                      | `chatcmpl-88ca6267-aac9-9ff0-853d-dc411eab945a`             |
 
 该基线证明“临时上传 + Qwen3.5-Omni-Flash + SSE + 音视频联合理解”协议可行；不证明仓库实现已完成，也不覆盖大文件、Windows MCP Host 和故障路径。
 
@@ -118,7 +118,7 @@ MCP handler
 
 - 初始化 instructions 明确联合分析画面和声音。
 - `listTools()` 恰好一个工具。
-- schema 恰好 `video`、`question`、`max_tokens`。
+- schema 恰好 `video`、`question`。
 - 默认 prompt 和 token 生效。
 - 成功返回一个纯 text content。
 - 所有稳定错误码能穿过 MCP 边界。
@@ -174,17 +174,17 @@ ffmpeg -f lavfi -i "testsrc2=size=1920x1080:rate=30" -f lavfi -i "sine=frequency
 
 Gate 4 至少执行：
 
-| 环境/场景 | 必需 |
-| --- | --- |
-| Windows 11 + Node 22 | 是 |
-| 中文目录和文件名 | 是 |
-| 路径含空格 | 是 |
-| `C:\` 绝对路径 | 是 |
-| allowed root 外文件 | 是，必须拒绝 |
-| junction 越界 | 是，必须拒绝 |
-| 500 MiB 流式上传 | 是 |
-| 实际 MCP Host 调用 | 是 |
-| Ctrl+C / Host 退出中止 | 是 |
+| 环境/场景              | 必需         |
+| ---------------------- | ------------ |
+| Windows 11 + Node 22   | 是           |
+| 中文目录和文件名       | 是           |
+| 路径含空格             | 是           |
+| `C:\` 绝对路径         | 是           |
+| allowed root 外文件    | 是，必须拒绝 |
+| junction 越界          | 是，必须拒绝 |
+| 500 MiB 流式上传       | 是           |
+| 实际 MCP Host 调用     | 是           |
+| Ctrl+C / Host 退出中止 | 是           |
 
 Node 20 继续由 CI 做单元与 mock 支持；Bun/Windows exe 不属于 v1 验收。
 

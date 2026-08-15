@@ -1,10 +1,10 @@
 # Video MCP v1 规格
 
-状态：Ready for implementation
+状态：v1 本机收尾完成，未发布。
 
 范围批准依据：用户已确认“一个 Agent、一个 MCP、视频画面与音频联合分析、只返回结果，暂不需要花哨功能”。
 
-实现状态：未开始。
+实现状态：T01–T09 已完成。Cursor 真实 Host 已调用成功。不发布 npm。通用方向见 [`SPEC_GENERAL.md`](SPEC_GENERAL.md)。
 
 ## 1. 目标
 
@@ -80,17 +80,17 @@ v1 明确不做：
 
 ## 5. 配置
 
-| 环境变量 | 必需 | 默认值 | 说明 |
-| --- | --- | --- | --- |
-| `DASHSCOPE_API_KEY` | 是 | 无 | 只从进程环境读取 |
-| `QWEN_ALLOWED_ROOTS` | 本地路径时是 | 空 | 用 `path.delimiter` 分隔；为空时拒绝所有本地路径 |
-| `QWEN_MODEL` | 否 | `qwen3.5-omni-flash` | 内部配置，不进入 Tool schema |
-| `DASHSCOPE_BASE_URL` | 否 | `https://dashscope.aliyuncs.com/compatible-mode/v1` | 北京区推理端点 |
-| `DASHSCOPE_UPLOAD_URL` | 否 | `https://dashscope.aliyuncs.com/api/v1/uploads` | 北京区临时上传 policy 端点 |
-| `QWEN_MAX_LOCAL_VIDEO_MB` | 否 | `500` | 本地策略上限，不可大于 500 |
-| `QWEN_UPLOAD_TIMEOUT` | 否 | `900` | 上传超时，秒 |
-| `QWEN_ANALYSIS_TIMEOUT` | 否 | `900` | 推理/SSE 超时，秒 |
-| `QWEN_ANALYSIS_RETRIES` | 否 | `1` | 首字节前可重试次数，只允许 0 或 1 |
+| 环境变量                  | 必需         | 默认值                                              | 说明                                                                                                 |
+| ------------------------- | ------------ | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `DASHSCOPE_API_KEY`       | 是           | 无                                                  | 只从进程环境读取                                                                                     |
+| `QWEN_ALLOWED_ROOTS`      | 本地路径时是 | 空                                                  | 用 `path.delimiter` 分隔；为空时拒绝所有本地路径                                                     |
+| `QWEN_MODEL`              | 否           | `qwen3.5-omni-flash`                                | 内部配置，不进入 Tool schema                                                                         |
+| `DASHSCOPE_BASE_URL`      | 否           | `https://dashscope.aliyuncs.com/compatible-mode/v1` | 北京区推理端点                                                                                       |
+| `DASHSCOPE_UPLOAD_URL`    | 否           | `https://dashscope.aliyuncs.com/api/v1/uploads`     | 北京区临时上传 policy 端点                                                                           |
+| `QWEN_MAX_LOCAL_VIDEO_MB` | 否           | `1024`                                              | 本地策略上限，1–1024；实际上传前再与当场 policy 取较小值。v1 曾为 500，见 [`SPEC_V2.md`](SPEC_V2.md) |
+| `QWEN_UPLOAD_TIMEOUT`     | 否           | `900`                                               | 上传超时，秒                                                                                         |
+| `QWEN_ANALYSIS_TIMEOUT`   | 否           | `900`                                               | 推理/SSE 超时，秒                                                                                    |
+| `QWEN_ANALYSIS_RETRIES`   | 否           | `1`                                                 | 首字节前可重试次数，只允许 0 或 1                                                                    |
 
 配置解析失败应在 Server 启动阶段快速失败；错误不得包含密钥值。
 
@@ -172,11 +172,20 @@ v1 只有同时满足以下条件才算完成：
 - 仓库全部质量门通过，coverage 不低于现有 85% 门槛。
 - 四个审核 Gate 全部通过，文档与实际行为一致。
 
-## 11. 开放问题
+## 11. 已知限制与开放问题
 
-以下问题不阻断 Task T01–T05，但在对应 Gate 必须有结论：
+已记录：
 
-1. Node 内置 `fetch` + 自定义 multipart 流在 Node 20/22/Windows 的峰值内存是否合格？不合格时才申请依赖。
-2. 小型 AV fixture 是否允许复制进仓库？未获许可前只作为仓库外 live fixture 使用。
-3. 500 MiB 真实视频由用户提供还是按测试文档生成？
-4. 最终接入的是哪一种 Agent Host？核心 MCP 验收不依赖 Host，但 Gate 4 需针对实际 Host 写配置。
+- 临时上传在北京区，约 48 小时自动删除；无显式删除接口；按单用户、非高并发定位。
+- 上传凭证实测约 300 秒。慢速上行可能传不完 500 MiB。
+- Windows 同账户 TOCTOU 已缓解，未消除。
+- Gate 1 按本机 Node 24 放行。Node 20 未测 500 MiB RSS。
+- `format:check` 在 Windows CRLF 检出下会失败。`npm audit --omit=dev` 有既有生产漏洞，未为变绿升级。
+- 0.4.0 未发布。v1 本机可用，不作为已发布产品。
+- 通用方向（1 GiB 本地上限、用户自填 Host `env`）见 [`SPEC_GENERAL.md`](SPEC_GENERAL.md)，须另批后实施。
+
+已关闭的开放问题：
+
+1. 小型 AV fixture 留在仓库外 `text/`，不入库。
+2. 500 MiB 真实视频由用户提供（口播 + 漫剧）。
+3. 主 Host 为 Cursor；Codex / Claude Code 共用同一 stdio 二进制。

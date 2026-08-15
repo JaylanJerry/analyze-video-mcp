@@ -63,7 +63,7 @@ validate absolute path and .mp4 extension
 - 打开后再次解析路径并比较，发现变化立即拒绝。
 - symlink/junction 最终目标位于 allowed root 内可以接受；最终目标越界必须拒绝。
 - MP4 验证至少检查 ISO BMFF `ftyp` box；只读取固定小块，不推进上传流的起始位置或在上传前重置到 0。
-- 大小同时满足：大于 0、≤500 MiB、≤动态 policy 上限。
+- 大小同时满足：大于 0、≤用户配置上限（默认且硬顶 1024 MiB）、≤动态 policy 上限。
 - 上传必须使用这个句柄；不得通过字符串路径重新 `createReadStream(path)`。
 
 Node/Windows 无法提供完全可移植的 `openat + O_NOFOLLOW` 等价保证，因此同账户主动竞态仍是残余风险。v1 通过重复 realpath、身份比较和同句柄上传降低风险；Gate 3 必须在审计报告中明确这一点，不能宣称“完全无 TOCTOU”。

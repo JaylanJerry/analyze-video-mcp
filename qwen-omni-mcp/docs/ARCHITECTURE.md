@@ -4,7 +4,7 @@
 
 ```text
 Agent
-  │ analyze_video(video, question, max_tokens)
+  │ analyze_video(video, question)
   ▼
 MCP server.ts
   │ validate public schema
@@ -202,4 +202,4 @@ JSON.stringify({ ... wholeVideo ... })
 }
 ```
 
-API Key 应由启动 Agent 的进程环境安全注入，不建议明文写进 Host 配置。最终 Host 的具体配置在 Gate 4 根据用户实际使用的软件补充。
+API Key 由用户写入本机 Host `env`，不要提交。模板见 `examples/`。

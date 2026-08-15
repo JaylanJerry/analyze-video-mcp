@@ -1,116 +1,99 @@
 # qwen-omni-mcp
 
-An [MCP](https://modelcontextprotocol.io) server that gives Claude Code and other AI agents **video, image, audio, and audio-video understanding** via [Bailian (DashScope)](https://bailian.console.aliyun.com/) using the multimodal **Qwen3.8-Max** and **Qwen3.5-Omni** models.
+给本地 Agent 增加一个视频分析工具。传入本地 MP4 或公开 HTTPS URL，返回纯文本。模型同时看画面、听内嵌音轨；客户端不抽帧、不抽音频。
 
-Qwen3.8-Max reads video natively — **no client-side frame extraction**. Qwen3.5-Omni adds native **audio** understanding (and audio-track awareness for video). Pass a public media URL **or a local file path**; the model does the rest. The server also ships MCP **instructions** that teach text-only agents to reach for these tools when they need to view/read media — while telling natively multimodal agents to prefer their own vision.
+这是上游 `sommio/qwen-omni-mcp` 的专项 fork，**只注册 `analyze_video`**。不是已发布的 npm 包。
 
-## Highlights
+## 公开工具
 
-- **Native video understanding** — send a video URL or local file, get grounded analysis
-- **Image understanding** — describe, Q&A, OCR; doubles as the "eyes" for text-only agents whose file reader can't display images
-- **Audio understanding** — transcribe, summarize, analyze speech/sound (mp3/wav/flac/ogg/m4a/aac)
-- **Audio-video understanding** — analyze a video's visuals **and** its sound track together
-- **Thinking control** — optional per-call `thinking_budget` on every media tool; omitted = provider default
-- **Local file support** — pass a local path; files are sent inline as base64 (25MB guardrail)
-- **npx-launchable** — one line in your MCP client config
-
-## Install
-
-No global install needed. Run directly with npx:
-
-```bash
-npx -y qwen-omni-mcp
+```text
+analyze_video(video, question?)
 ```
 
-For local development:
+| 字段       | 必需 | 默认                               | 说明                                     |
+| ---------- | ---- | ---------------------------------- | ---------------------------------------- |
+| `video`    | 是   | 无                                 | 本地绝对 MP4 路径，或公开 `https://` URL |
+| `question` | 否   | `画面里发生了什么？音频说了什么？` | 关于画面和声音的问题                     |
 
-```bash
-git clone <this-repo>
+成功只返回一段文本。不要传入 model、upload、thinking、max_tokens 或音频参数。回答长度按模型自身上限。
+
+## 要求
+
+- Node.js 20 或 22。本机开发可用 Node 24。
+- 环境变量 `DASHSCOPE_API_KEY`（自己填写，不要写入仓库）。
+- 分析本地文件时必须设置 `QWEN_ALLOWED_ROOTS`。未设置则拒绝全部本地路径。
+
+## 本地开发
+
+```powershell
 cd qwen-omni-mcp
-npm install            # also installs husky git hooks
-cp .env.example .env   # fill in DASHSCOPE_API_KEY
-npm run dev            # run from source via tsx
+npm install
+npm run typecheck
+npm run lint
+npm test
+npm run build
 ```
 
-## Configuration
+真实 API 测试会花钱。只有明确授权且已注入 key 后才运行：
 
-All config is via environment variables (loaded from `.env` by `dotenv`):
+```powershell
+$env:LIVE = "1"
+$env:QWEN_LIVE_VIDEO = "C:\path\to\small-av.mp4"
+$env:QWEN_ALLOWED_ROOTS = "C:\path\to\videos"
+npm run test:live
+```
 
-| Variable               | Required | Default                                             | Description                         |
-| ---------------------- | -------- | --------------------------------------------------- | ----------------------------------- |
-| `DASHSCOPE_API_KEY`    | yes      | —                                                   | Bailian API key                     |
-| `QWEN_MODEL`           | no       | `qwen3.8-max`                                       | Model id for video/image analysis   |
-| `QWEN_OMNI_MODEL`      | no       | `qwen3.5-omni-plus`                                 | Omni model id for audio/audio-video |
-| `DASHSCOPE_BASE_URL`   | no       | `https://dashscope.aliyuncs.com/compatible-mode/v1` | OpenAI-compatible endpoint          |
-| `QWEN_REQUEST_TIMEOUT` | no       | `300`                                               | Per-request timeout in seconds      |
+不要把 key、`.env` 或视频复制进仓库。`text/` 下的 fixture 和密钥保持在仓库外。
 
-Get a key at <https://bailian.console.aliyun.com/cn-beijing?tab=model#/api-key>.
+## Agent Host 配置
 
-> The Anthropic-compatible `/apps/anthropic` endpoint does **not** support video input, so this server uses the OpenAI-compatible endpoint.
+先 `npm run build`。在 **本机** Host 配置里自己填写密钥和允许目录，**不要提交**这些文件。
 
-## Use with Claude Code
+完整模板：
 
-Add to your MCP client config:
+- Cursor：[`examples/mcp.cursor.json`](examples/mcp.cursor.json)
+- Claude Code：[`examples/mcp.claude-code.json`](examples/mcp.claude-code.json)
+- Codex：[`examples/mcp.codex.toml`](examples/mcp.codex.toml)
+
+Cursor / Claude Code 示例：
 
 ```json
 {
   "mcpServers": {
-    "qwen-omni-mcp": {
-      "command": "npx",
-      "args": ["-y", "qwen-omni-mcp"],
+    "analyze-video": {
+      "command": "node",
+      "args": ["C:/absolute/path/to/qwen-omni-mcp/dist/index.js"],
       "env": {
-        "DASHSCOPE_API_KEY": "your-key"
+        "DASHSCOPE_API_KEY": "paste-your-key-here",
+        "QWEN_ALLOWED_ROOTS": "C:\\Videos",
+        "DASHSCOPE_BASE_URL": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "DASHSCOPE_UPLOAD_URL": "https://dashscope.aliyuncs.com/api/v1/uploads",
+        "QWEN_MAX_LOCAL_VIDEO_MB": "1024"
       }
     }
   }
 }
 ```
 
-For local development without publishing:
+配好后用一个很小的 MP4 或公开 HTTPS 调用一次 `analyze_video`，即可确认 Key 和地址是否可用。没有单独的测试连接工具。
 
-```json
-{
-  "mcpServers": {
-    "qwen-omni-mcp": {
-      "command": "npx",
-      "args": ["tsx", "src/index.ts"],
-      "env": { "DASHSCOPE_API_KEY": "your-key" }
-    }
-  }
-}
-```
+本仓库开发用的 `text/*.key` 启动脚本不是产品安装方式。
 
-## Tools
+## 行为与限制
 
-| Tool                    | Description                                                           |
-| ----------------------- | --------------------------------------------------------------------- |
-| `analyze_video`         | Analyze a video (URL or local file) with a custom prompt              |
-| `analyze_image`         | Analyze an image (URL or local file) with a custom prompt             |
-| `analyze_audio`         | Analyze an audio file (URL or local) with a custom prompt (Omni)      |
-| `analyze_audio_video`   | Analyze a video's visuals + sound (URL or local) with a prompt (Omni) |
-| `check_endpoint_status` | Show configured endpoint/model (key redacted)                         |
+- 本地默认上限 1024 MiB，且不超过当场上传政策。可把 `QWEN_MAX_LOCAL_VIDEO_MB` 收紧到更小。
+- 未超上限就直接流式上传。上传超时或凭证过期时，不要重传原文件，改用公开 HTTPS。
+- 走授权 FileHandle + 流式临时上传，不走整文件 Base64。
+- 临时对象在 DashScope **北京区**，约 **48 小时**后自动删除。按单用户、非高并发定位。
+- 上传凭证实测约 300 秒有效。1 GiB 大约需要 28 Mbit/s 的持续上行。
+- 远程输入只接受 HTTPS。Server 不代为下载。
+- 同一进程同时只处理一个视频任务。
+- Windows 同账户下仍有 TOCTOU 残余风险，实现已缓解，未消除。
+- 未做生产 OSS、未发布 npm、未做 Windows exe。
+- 许多 MCP Host 默认工具超时约 60 秒。大文件需要把 Host 超时调长。
 
-Each media tool accepts a public `http`/`https` URL **or a local file path**. Local files are read and sent inline as base64, with a 25MB guardrail (verified up to a 14MB video / ~18MB body on Qwen3.7-Plus, and an 8.8MB video / ~11.7MB base64 body on Qwen3.5-Omni, both HTTP 200). Files larger than 25MB must be hosted at a public URL instead. Local input is validated by extension + magic-byte signature before encoding, so non-media files are rejected.
+内部模型是 `qwen3.5-omni-flash`，不出现在 Tool schema 里。
 
-Each media tool also accepts an optional `thinking_budget` (positive integer): the maximum tokens the model may spend thinking before answering. Omit it to use the provider default (thinking on at full budget for Qwen3.8 hybrid-thinking models). Thinking tokens are billed but do **not** count against `max_tokens`, which limits the answer itself.
-
-`analyze_audio` / `analyze_audio_video` use the omni model (`QWEN_OMNI_MODEL`, default `qwen3.5-omni-plus`) and force text-only output. Audio is sent as an `input_audio` block in the `data:;base64,<b64>` form with a `format` field (mp3/wav/flac/ogg/m4a/aac).
-
-## Development
-
-```bash
-npm run typecheck     # strict tsc
-npm run lint          # eslint, --max-warnings 0
-npm run format:check  # prettier
-npm test              # unit + mocked e2e (no API cost)
-npm run build         # emit dist/
-LIVE=1 npm run test:live   # real API calls (costs tokens)
-```
-
-CI (`.github/workflows/ci.yml`) runs the same gates on Node 20/22. `secrets-scan.yml` runs gitleaks. `smoke-live.yml` (manual / weekly) runs one real image call.
-
-See [AGENTS.md](AGENTS.md) for the full set of agent rules (never bypass hooks, never commit secrets, etc.).
-
-## License
+## 许可
 
 MIT

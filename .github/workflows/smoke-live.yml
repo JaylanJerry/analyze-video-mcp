@@ -3,6 +3,7 @@ name: Live Smoke
 on:
   workflow_dispatch:
   schedule:
+    # Weekly sanity check (Mon ~03:17 UTC). Does not run without a key.
     - cron: "17 3 * * 1"
 
 permissions:
@@ -12,6 +13,9 @@ jobs:
   live:
     if: ${{ secrets.DASHSCOPE_API_KEY != '' }}
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: qwen-omni-mcp
     env:
       DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
       QWEN_LIVE_VIDEO: ${{ vars.QWEN_LIVE_VIDEO }}
@@ -25,6 +29,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: qwen-omni-mcp/package-lock.json
       - name: Install (skip husky in CI)
         run: npm ci
         env:
