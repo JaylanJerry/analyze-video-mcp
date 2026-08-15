@@ -26,10 +26,10 @@ Cursor / Claude Code 用户配置示例：
 }
 ```
 
-Codex 见 [`qwen-omni-mcp/examples/mcp.codex.toml`](qwen-omni-mcp/examples/mcp.codex.toml)。完整模板：
+Codex 见 [`examples/mcp.codex.toml`](examples/mcp.codex.toml)。完整模板：
 
-- [`qwen-omni-mcp/examples/mcp.cursor.json`](qwen-omni-mcp/examples/mcp.cursor.json)
-- [`qwen-omni-mcp/examples/mcp.claude-code.json`](qwen-omni-mcp/examples/mcp.claude-code.json)
+- [`examples/mcp.cursor.json`](examples/mcp.cursor.json)
+- [`examples/mcp.claude-code.json`](examples/mcp.claude-code.json)
 
 首次 `npx` 会下载并 build，需要网络。本机已填写 Key 的 Host 配置不要提交。
 
@@ -60,10 +60,9 @@ analyze_video(video, question?)
 
 ## 开发
 
-实现在 [`qwen-omni-mcp/`](qwen-omni-mcp/)。规格见 [`qwen-omni-mcp/docs/SPEC_INSTALL.md`](qwen-omni-mcp/docs/SPEC_INSTALL.md) 与 [`qwen-omni-mcp/docs/SPEC_V2.md`](qwen-omni-mcp/docs/SPEC_V2.md)。
+规格见 [`docs/SPEC_INSTALL.md`](docs/SPEC_INSTALL.md) 与 [`docs/SPEC_V2.md`](docs/SPEC_V2.md)。
 
 ```powershell
-cd qwen-omni-mcp
 npm install
 npm test
 npm run build

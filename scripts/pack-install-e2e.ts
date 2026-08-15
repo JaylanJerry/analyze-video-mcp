@@ -7,16 +7,16 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const required = [
-  "qwen-omni-mcp/dist/index.js",
-  "qwen-omni-mcp/dist/server.js",
-  "qwen-omni-mcp/dist/errors.js",
-  "qwen-omni-mcp/dist/config.js",
-  "qwen-omni-mcp/dist/media.js",
-  "qwen-omni-mcp/dist/upload.js",
-  "qwen-omni-mcp/dist/bailian.js",
-  "scripts/prepare-root.mjs",
+  "dist/index.js",
+  "dist/server.js",
+  "dist/errors.js",
+  "dist/config.js",
+  "dist/media.js",
+  "dist/upload.js",
+  "dist/bailian.js",
+  "scripts/prepare.mjs",
 ];
 
 function runNpm(args: string[], cwd: string): string {
@@ -48,8 +48,8 @@ function childEnv(): Record<string, string> {
   return out;
 }
 
-if (!existsSync(join(repoRoot, "qwen-omni-mcp/dist/index.js"))) {
-  process.stderr.write("pack-install-e2e: build qwen-omni-mcp first\n");
+if (!existsSync(join(repoRoot, "dist/index.js"))) {
+  process.stderr.write("pack-install-e2e: build first\n");
   process.exit(2);
 }
 
@@ -79,7 +79,7 @@ try {
     stdio: "inherit",
     env: { ...process.env, HUSKY: "0" },
   });
-  const serverJs = join(work, "node_modules/analyze-video-mcp/qwen-omni-mcp/dist/index.js");
+  const serverJs = join(work, "node_modules/analyze-video-mcp/dist/index.js");
   const sdk = join(work, "node_modules/@modelcontextprotocol/sdk/package.json");
   if (!existsSync(serverJs) || !existsSync(sdk)) {
     process.stderr.write("pack-install-e2e: installed package is missing dist or runtime SDK\n");

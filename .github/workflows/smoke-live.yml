@@ -13,9 +13,6 @@ jobs:
   live:
     if: ${{ vars.LIVE_SMOKE_ENABLED == '1' }}
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: qwen-omni-mcp
     env:
       DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
       QWEN_LIVE_VIDEO: ${{ vars.QWEN_LIVE_VIDEO }}
@@ -29,7 +26,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: qwen-omni-mcp/package-lock.json
+          cache-dependency-path: package-lock.json
       - name: Install (skip husky in CI)
         run: npm ci
         env:
@@ -41,7 +38,7 @@ jobs:
           exit 1
       - name: Use the committed live fixture when no URL is configured
         if: ${{ env.QWEN_LIVE_VIDEO == '' }}
-        run: echo "QWEN_LIVE_VIDEO=${GITHUB_WORKSPACE}/qwen-omni-mcp/test/fixtures/live-av.mp4" >> "$GITHUB_ENV"
+        run: echo "QWEN_LIVE_VIDEO=${GITHUB_WORKSPACE}/test/fixtures/live-av.mp4" >> "$GITHUB_ENV"
       - name: Fail if the live fixture is missing
         run: |
           if [ -z "${QWEN_LIVE_VIDEO}" ]; then

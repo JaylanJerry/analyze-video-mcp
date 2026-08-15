@@ -44,7 +44,7 @@ try {
     stdio: "inherit",
     env: childEnv(),
   });
-  const serverJs = join(work, "node_modules/analyze-video-mcp/qwen-omni-mcp/dist/index.js");
+  const serverJs = join(work, "node_modules/analyze-video-mcp/dist/index.js");
   const sdk = join(work, "node_modules/@modelcontextprotocol/sdk/package.json");
   if (!existsSync(serverJs) || !existsSync(sdk)) {
     process.stderr.write("npx-github-e2e: github install is missing dist or runtime SDK\n");

@@ -6,7 +6,7 @@ extend = { useDefault = true }
 
 [allowlist]
 description = "Test-only dummy values endorsed by AGENTS.md. Real Bailian (DashScope) keys use the sk-ws-... prefix and are NEVER allowlisted here."
-# qwen-omni-mcp/test/tools.test.ts — dummy fixture asserted by the redaction test,
+# test/tools.test.ts — dummy fixture asserted by the redaction test,
 # so the literal value cannot change.
 regexes = [
   '''sk-secret-key-1234567890''',

@@ -12,9 +12,9 @@
 text/*
 !text/README.md
 *.mp4
-!qwen-omni-mcp/test/fixtures/*.mp4
+!test/fixtures/*.mp4
 
-# === Node (implementation lives in qwen-omni-mcp/) ===
+# === Node ===
 node_modules/
 **/node_modules/
 dist/
@@ -45,6 +45,6 @@ Thumbs.db
 .cursor/
 
 # === Upstream-only / local caches ===
-qwen-omni-mcp/ref/
-qwen-omni-mcp/.agents/handoff/
-qwen-omni-mcp/.npmrc
+ref/
+.agents/handoff/
+.npmrc

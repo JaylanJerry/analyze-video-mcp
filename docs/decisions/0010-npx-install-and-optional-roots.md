@@ -11,7 +11,7 @@ ADR 0004 规定未配置允许根时拒绝全部本地路径。这对「拖进�
 
 ## Decision
 
-1. 产品安装改为 `npx -y github:<账号>/<仓库>#<标签>`。默认钉发布标签，例如 `#v0.4.0`。`#main` 是明确的跟最新提交用法。git 根提供 `bin`，实现仍在 `qwen-omni-mcp/`。不发 npm。
+1. 产品安装改为 `npx -y github:<账号>/<仓库>#<标签>`。默认钉发布标签，例如 `#v0.4.0`。`#main` 是明确的跟最新提交用法。不发 npm。实现目录后来提到仓库根，见 [ADR 0011](0011-flatten-implementation-to-repo-root.md)。
 2. `QWEN_ALLOWED_ROOTS` 改为可选。未设置时，允许本次传入的本地绝对 MP4；仍校验绝对路径、扩展名、magic、大小。设置后，0004 的 containment 规则保持不变。
 3. Tool 描述要求：具体评审原样写入 `question`；空话先整理成画面与声音问题再调用。
 4. 本 ADR 取代 ADR 0004 / 0009 中「未配置允许根则拒绝全部本地路径」和「标准安装必须填写允许目录」的部分。MP4 only、realpath containment（当根已设置）、脱敏、流式上传仍然有效。
@@ -28,6 +28,6 @@ ADR 0004 规定未配置允许根时拒绝全部本地路径。这对「拖进�
 - Agent 若改传另一条它知道的本地 MP4 路径，未设允许根时服务器会读。这是单人本机可接受的残余，不是扫盘。
 - 想收紧的人仍可填写 `QWEN_ALLOWED_ROOTS`。
 - `npx` 首次会在缓存里安装并 build，需要 Node 20+ 和网络。
-- 根 package 必须自己声明 SDK、dotenv、zod。`prepare` 装进子目录的 `node_modules` 不会进入 npm 包。
-- 根 `files` 必须显式包含完整 `qwen-omni-mcp/dist`。根目录和 `qwen-omni-mcp/` 都要有 `.npmignore`，否则 `npm pack` 会沿用两层 `.gitignore` 的 `dist/`，把已构建的 JS 全部滤掉。
-- `prepare` 只在 git 源码树里安装并构建子包；安装已经打好的 tarball 时必须是空操作。
+- 根 package 必须自己声明 SDK、dotenv、zod。
+- `files` 必须显式包含 `dist`。根目录要有 `.npmignore`，否则 `npm pack` 会沿用 `.gitignore` 的 `dist/`，把已构建的 JS 全部滤掉。
+- `prepare` 只在 git 源码树里构建；安装已经打好的 tarball 时必须是空操作。布局后续见 ADR 0011。

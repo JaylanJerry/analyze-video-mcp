@@ -1,7 +1,7 @@
 {
   "name": "analyze-video-mcp",
   "version": "0.4.0",
-  "description": "MCP server that adds analyze_video to local agents",
+  "description": "MCP server that adds analyze_video to local agents via Bailian Qwen3.5-Omni-Flash",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -12,22 +12,50 @@
     "node": ">=20"
   },
   "bin": {
-    "analyze-video-mcp": "./qwen-omni-mcp/dist/index.js"
+    "analyze-video-mcp": "dist/index.js"
   },
   "files": [
-    "qwen-omni-mcp/dist",
-    "scripts/prepare-root.mjs",
+    "dist",
+    "scripts/prepare.mjs",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
-    "prepare": "node scripts/prepare-root.mjs",
-    "test:pack-install": "npm --prefix qwen-omni-mcp run test:pack-install",
-    "test:npx-github": "npm --prefix qwen-omni-mcp run test:npx-github"
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "lint": "eslint . --max-warnings 0",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:live": "LIVE=1 vitest run test/live.test.ts",
+    "test:install": "tsx scripts/install-e2e.ts",
+    "test:pack-install": "tsx scripts/pack-install-e2e.ts",
+    "test:npx-github": "tsx scripts/npx-github-e2e.ts",
+    "coverage": "vitest run --coverage",
+    "prepare": "node scripts/prepare.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
     "dotenv": "^16.4.5",
     "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@types/node": "^20.0.0",
+    "@vitest/coverage-v8": "^2.0.0",
+    "eslint": "^9.0.0",
+    "eslint-config-prettier": "^9.0.0",
+    "husky": "^9.0.0",
+    "lint-staged": "^15.0.0",
+    "msw": "^2.0.0",
+    "prettier": "^3.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.5.0",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^2.0.0"
   }
 }

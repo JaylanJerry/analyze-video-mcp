@@ -1,10 +1,10 @@
 # Video MCP 开发交接
 
-状态：v1 本机收尾完成；V2 与安装形态已实施。公开仓库 `JaylanJerry/analyze-video-mcp`。未发 npm。
+状态：v1 本机收尾完成；V2 与安装形态已实施。公开仓库 `JaylanJerry/analyze-video-mcp`。未发 npm。实现已提到仓库根（ADR 0011）。
 
 基线快照：`sommio/qwen-omni-mcp@8a07182554a985456153644e0006a22bd1c769f7`。
 
-工作区 git 根：`Video MCP/`（见 ADR 0006）。实现目录仍是本目录。
+工作区 git 根：本目录（见 ADR 0006、ADR 0011）。
 
 本地分支：`feat/video-mcp-v1`。
 
@@ -29,9 +29,9 @@ v1 已本机收尾。V2 已实施。安装：`npx` + Key；目录可选；Agent 
 ## 硬规则
 
 - 不改变 `analyze_video` 的名称与字段。
-- 不增加生产依赖，不推送，不发布。
+- 不增加生产依赖。不要主动推送或发布 npm，除非用户明确要求。
 - 不读取、复制、打印或提交密钥或 `text/*.key`。
-- live fixture 留在 `text/`。
+- 私人 live fixture 留在 `text/`。CI 用 `test/fixtures/live-av.mp4`。
 - 付费 live 必须用户明确授权。
 
 ## 接手者先读
@@ -43,7 +43,7 @@ v1 背景仍按原顺序：`AGENTS.md`、`docs/SPEC.md`、`docs/API_CONTRACT.md`
 ## 给下一模型的启动提示词
 
 ```text
-你在 qwen-omni-mcp 上工作。v1 本机收尾、V2 G01–G06 已完成，未发布。
+你在 analyze-video-mcp 仓库根工作。v1 本机收尾、V2 G01–G06 已完成，未发布。
 一次只做 tasks/todo-general.md 中的一项；不要改 analyze_video
-字段，不要加依赖，不要读密钥，不要推送或发布。
+字段，不要加依赖，不要读密钥，不要主动推送或发布。
 ```

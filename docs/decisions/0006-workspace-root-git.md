@@ -1,6 +1,6 @@
 # ADR 0006：工作区根作为 git 根
 
-- Status: Accepted
+- Status: Accepted（git 根）。嵌套 `qwen-omni-mcp/` 布局已被 [ADR 0011](0011-flatten-implementation-to-repo-root.md) 取代。
 - Date: 2026-08-15
 
 ## Context

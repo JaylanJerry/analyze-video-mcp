@@ -193,7 +193,7 @@ JSON.stringify({ ... wholeVideo ... })
   "mcpServers": {
     "video-understanding": {
       "command": "node",
-      "args": ["C:\\absolute\\path\\qwen-omni-mcp\\dist\\index.js"],
+      "args": ["C:\\absolute\\path\\analyze-video-mcp\\dist\\index.js"],
       "env": {
         "QWEN_ALLOWED_ROOTS": "C:\\Users\\user\\Videos"
       }

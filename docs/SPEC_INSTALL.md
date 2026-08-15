@@ -74,7 +74,7 @@ Host 配置只要求：
 ## 6. 完成标准
 
 - 模板用 `npx`，默认钉 `#v0.4.0`；跟最新提交用 `#main`。普通人只填 Key 就能分析本地绝对 MP4。建议填写 `QWEN_ALLOWED_ROOTS`。
-- 根 package 声明运行时依赖，用 `files` 白名单带上完整 `qwen-omni-mcp/dist`，并用两层 `.npmignore` 避免 `dist/` 被 gitignore 滤掉。
+- 根 package 声明运行时依赖，用 `files` 白名单带上完整 `dist`，并用 `.npmignore` 避免 `dist/` 被 gitignore 滤掉。
 - `npm run test:pack-install` 对 `npm pack` 产物做 initialize 与 `listTools`，且只有 `analyze_video`。
 - CI 在全新 npm cache 上对 `npx github:<仓库>#<SHA>` 再做一次握手。
 - 设置了 `QWEN_ALLOWED_ROOTS` 时，根外路径仍拒绝。

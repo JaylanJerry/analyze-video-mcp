@@ -4,4 +4,4 @@
 
 - 小型语义视频：`8月15日.mp4`（画面红色数字 `24`，音频 `3.1415926`）
 - API Key 只允许出现在调用进程的环境变量 `DASHSCOPE_API_KEY` 中
-- 不要把 `*.key`、`.env` 或视频复制进 `qwen-omni-mcp/`
+- 不要把 `*.key`、`.env` 或私人视频复制进仓库。CI 合成片在 `test/fixtures/`。

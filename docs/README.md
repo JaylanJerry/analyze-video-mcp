@@ -17,4 +17,4 @@
 | [`../tasks/plan-general.md`](../tasks/plan-general.md)       | 通用方向实施计划                         |
 | [`../tasks/todo-general.md`](../tasks/todo-general.md)       | 通用方向任务                             |
 
-架构决策见 [`decisions`](decisions)。工作区 git 根见 [0006](decisions/0006-workspace-root-git.md)；Gate 1 运行时见 [0007](decisions/0007-gate1-node24.md)；通用方向见 [0009](decisions/0009-general-host-config-and-1gib.md)。v1 已本机收尾、未发布。`SPEC_GENERAL.md` 批准前不要把通用上限写成已实现。
+架构决策见 [`decisions`](decisions)。工作区 git 根见 [0006](decisions/0006-workspace-root-git.md)；实现提到仓库根见 [0011](decisions/0011-flatten-implementation-to-repo-root.md)；Gate 1 运行时见 [0007](decisions/0007-gate1-node24.md)；通用方向见 [0009](decisions/0009-general-host-config-and-1gib.md)。v1 已本机收尾、未发布。`SPEC_GENERAL.md` 批准前不要把通用上限写成已实现。
