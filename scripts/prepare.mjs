@@ -4,6 +4,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+const distJs = join(repoRoot, "dist/index.js");
+const huskyBin = join(repoRoot, "node_modules/husky/bin.js");
+const tscBin = join(repoRoot, "node_modules/typescript/bin/tsc");
 
 /** @param {string} bin @param {string[]} args */
 function runNode(bin, args) {
@@ -20,12 +23,21 @@ function runNode(bin, args) {
   }
 }
 
-// Tarball installs ship dist/ and have no git metadata. GitHub/npx clones do.
-if (!existsSync(join(repoRoot, ".git"))) {
+const isGitCheckout = existsSync(join(repoRoot, ".git"));
+const hasDist = existsSync(distJs);
+
+if (isGitCheckout && process.env.HUSKY !== "0" && existsSync(huskyBin)) {
+  runNode(huskyBin, []);
+}
+
+// Tarball installs already ship dist/. GitHub/npx clones do not, even if
+// npm stripped .git before running prepare.
+if (hasDist && !isGitCheckout) {
   process.exit(0);
 }
 
-if (process.env.HUSKY !== "0") {
-  runNode(join(repoRoot, "node_modules/husky/bin.js"), []);
+if (!existsSync(tscBin)) {
+  console.error("prepare: typescript is required to build dist/");
+  process.exit(1);
 }
-runNode(join(repoRoot, "node_modules/typescript/bin/tsc"), ["-p", "tsconfig.build.json"]);
+runNode(tscBin, ["-p", "tsconfig.build.json"]);
