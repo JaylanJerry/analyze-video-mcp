@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   live:
-    if: ${{ secrets.DASHSCOPE_API_KEY != '' }}
+    if: ${{ vars.LIVE_SMOKE_ENABLED == '1' }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -34,6 +34,11 @@ jobs:
         run: npm ci
         env:
           HUSKY: "0"
+      - name: Fail if the API key is missing
+        if: ${{ env.DASHSCOPE_API_KEY == '' }}
+        run: |
+          echo "LIVE_SMOKE_ENABLED=1 but DASHSCOPE_API_KEY is empty"
+          exit 1
       - name: Fail if the live fixture is missing
         run: |
           if [ -z "${QWEN_LIVE_VIDEO}" ]; then

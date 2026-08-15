@@ -29,4 +29,3 @@
 - Prompt injection 的任意媒体外传面显著缩小。
 - Windows junction 和 TOCTOU 增加实现与测试成本。
 - Node 缺少完全可移植的 Windows `openat/O_NOFOLLOW` 等价能力，同账户主动竞态作为已披露残余风险保留。
-

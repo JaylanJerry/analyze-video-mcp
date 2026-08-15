@@ -30,6 +30,7 @@ import type { MediaUploader, UploadedVideo } from "../src/upload.js";
 
 const SECRET_KEY = "sk-secret-key-1234567890"; // gitleaks:allow — dummy test fixture, not a real key
 const CANARY_PATH = "C:\\Users\\secret\\Videos\\private.mp4";
+const MISSING_LOCAL = join(tmpdir(), "missing-private.mp4");
 const CANARY_OSS = "oss://dashscope-tmp/abcdef/video.mp4";
 
 const baseCfg: AppConfig = {
@@ -276,7 +277,7 @@ describe("MCP analyze_video contract", () => {
     });
   });
 
-  it("rejects a missing local path without leaking it when no allowed roots are set", async () => {
+  it("classifies a Windows drive path by the current platform", async () => {
     await withClient(baseCfg, {}, async (client) => {
       const r = await client.callTool({
         name: "analyze_video",
@@ -284,8 +285,25 @@ describe("MCP analyze_video contract", () => {
       });
       expect(r.isError).toBe(true);
       const text = textOf(r);
-      expect(text).toMatch(/^VIDEO_NOT_FOUND: /);
+      if (process.platform === "win32") {
+        expect(text).toMatch(/^VIDEO_NOT_FOUND: /);
+      } else {
+        expect(text).toMatch(/^INVALID_VIDEO_INPUT: /);
+      }
       expect(text).not.toContain(CANARY_PATH);
+    });
+  });
+
+  it("rejects a missing local path without leaking it when no allowed roots are set", async () => {
+    await withClient(baseCfg, {}, async (client) => {
+      const r = await client.callTool({
+        name: "analyze_video",
+        arguments: { video: MISSING_LOCAL },
+      });
+      expect(r.isError).toBe(true);
+      const text = textOf(r);
+      expect(text).toMatch(/^VIDEO_NOT_FOUND: /);
+      expect(text).not.toContain(MISSING_LOCAL);
     });
   });
 

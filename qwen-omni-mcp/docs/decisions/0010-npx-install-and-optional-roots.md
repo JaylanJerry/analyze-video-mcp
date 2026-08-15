@@ -28,3 +28,6 @@ ADR 0004 规定未配置允许根时拒绝全部本地路径。这对「拖进�
 - Agent 若改传另一条它知道的本地 MP4 路径，未设允许根时服务器会读。这是单人本机可接受的残余，不是扫盘。
 - 想收紧的人仍可填写 `QWEN_ALLOWED_ROOTS`。
 - `npx` 首次会在缓存里安装并 build，需要 Node 20+ 和网络。
+- 根 package 必须自己声明 SDK、dotenv、zod。`prepare` 装进子目录的 `node_modules` 不会进入 npm 包。
+- 根 `files` 必须显式包含完整 `qwen-omni-mcp/dist`。根目录和 `qwen-omni-mcp/` 都要有 `.npmignore`，否则 `npm pack` 会沿用两层 `.gitignore` 的 `dist/`，把已构建的 JS 全部滤掉。
+- `prepare` 只在 git 源码树里安装并构建子包；安装已经打好的 tarball 时必须是空操作。

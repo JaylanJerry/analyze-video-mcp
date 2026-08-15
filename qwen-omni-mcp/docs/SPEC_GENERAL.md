@@ -46,16 +46,16 @@ V2 批准后的契约：Tool 只保留 `video` 和 `question`。去掉 `max_toke
 
 安装时只通过进程环境变量，不提供 GUI。
 
-| 环境变量                  | 必需         | 默认                   | 说明                                                   |
-| ------------------------- | ------------ | ---------------------- | ------------------------------------------------------ |
-| `DASHSCOPE_API_KEY`       | 是           | 无                     | 用户自己填写。只存在本机 Host 配置或本机环境，不得提交 |
-| `QWEN_ALLOWED_ROOTS`      | 否           | 空                     | 可选。不填则分析这次传入的本地绝对 MP4；填写后只允许这些目录 |
-| `DASHSCOPE_BASE_URL`      | 否           | 北京区兼容模式推理地址 | 用户可改                                               |
-| `DASHSCOPE_UPLOAD_URL`    | 否           | 北京区临时上传地址     | 用户可改                                               |
-| `QWEN_MAX_LOCAL_VIDEO_MB` | 否           | `1024`                 | 1–1024。实际上传前再与当场 policy 取较小值             |
-| `QWEN_MODEL`              | 否           | `qwen3.5-omni-flash`   | 内部配置                                               |
-| `QWEN_UPLOAD_TIMEOUT`     | 否           | `900`                  | 秒                                                     |
-| `QWEN_ANALYSIS_TIMEOUT`   | 否           | `900`                  | 秒                                                     |
+| 环境变量                  | 必需 | 默认                   | 说明                                                         |
+| ------------------------- | ---- | ---------------------- | ------------------------------------------------------------ |
+| `DASHSCOPE_API_KEY`       | 是   | 无                     | 用户自己填写。只存在本机 Host 配置或本机环境，不得提交       |
+| `QWEN_ALLOWED_ROOTS`      | 否   | 空                     | 可选。不填则分析这次传入的本地绝对 MP4；填写后只允许这些目录 |
+| `DASHSCOPE_BASE_URL`      | 否   | 北京区兼容模式推理地址 | 用户可改                                                     |
+| `DASHSCOPE_UPLOAD_URL`    | 否   | 北京区临时上传地址     | 用户可改                                                     |
+| `QWEN_MAX_LOCAL_VIDEO_MB` | 否   | `1024`                 | 1–1024。实际上传前再与当场 policy 取较小值                   |
+| `QWEN_MODEL`              | 否   | `qwen3.5-omni-flash`   | 内部配置                                                     |
+| `QWEN_UPLOAD_TIMEOUT`     | 否   | `900`                  | 秒                                                           |
+| `QWEN_ANALYSIS_TIMEOUT`   | 否   | `900`                  | 秒                                                           |
 
 产品安装文档提供 Cursor、Claude Code、Codex 三份无密钥模板。本机 `text/*.key` 启动脚本可以留着给这个仓库开发用，README 主路径不再依赖它。
 

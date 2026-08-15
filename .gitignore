@@ -24,6 +24,7 @@ build/
 npm-debug.log*
 .npm
 .pnpm-store/
+*.tgz
 
 # === Test / coverage ===
 coverage/

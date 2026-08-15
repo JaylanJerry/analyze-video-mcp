@@ -35,6 +35,8 @@
     "test:watch": "vitest",
     "test:live": "LIVE=1 vitest run test/live.test.ts",
     "test:install": "tsx scripts/install-e2e.ts",
+    "test:pack-install": "tsx scripts/pack-install-e2e.ts",
+    "test:npx-github": "tsx scripts/npx-github-e2e.ts",
     "coverage": "vitest run --coverage",
     "prepare": "node scripts/prepare.mjs"
   },

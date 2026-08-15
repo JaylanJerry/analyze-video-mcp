@@ -9,7 +9,7 @@ function run(command, args) {
   }
 }
 
-if (existsSync(".git")) {
+if (existsSync(".git") && process.env.HUSKY !== "0") {
   run("npx", ["husky"]);
 }
 run("npm", ["run", "build"]);

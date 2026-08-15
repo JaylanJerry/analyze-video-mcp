@@ -14,7 +14,20 @@
   "bin": {
     "analyze-video-mcp": "./qwen-omni-mcp/dist/index.js"
   },
+  "files": [
+    "qwen-omni-mcp/dist",
+    "scripts/prepare-root.mjs",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
-    "prepare": "npm --prefix qwen-omni-mcp install"
+    "prepare": "node scripts/prepare-root.mjs",
+    "test:pack-install": "npm --prefix qwen-omni-mcp run test:pack-install",
+    "test:npx-github": "npm --prefix qwen-omni-mcp run test:npx-github"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "dotenv": "^16.4.5",
+    "zod": "^3.23.8"
   }
 }

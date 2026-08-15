@@ -30,4 +30,3 @@
 - 需要处理 SSE 分块、usage-only 与截断等复杂边界。
 - Provider 替换不会改变 Tool schema。
 - 真实协议变化必须通过 Gate 2 重新验证。
-

@@ -1,0 +1,3 @@
+# Replace this directory's .gitignore during `npm pack`.
+# The nested `dist/` ignore would otherwise drop the published JS.
+# The root package.json "files" field is the allowlist.

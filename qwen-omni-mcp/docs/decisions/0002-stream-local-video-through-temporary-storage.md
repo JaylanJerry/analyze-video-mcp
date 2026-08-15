@@ -34,4 +34,3 @@ v1 使用 `DashScopeTemporaryUploader`，每次动态获取 policy，并在发�
 - 受北京区、临时上传限流、48 小时生命周期约束。
 - 上传失败会消耗带宽，v1 不自动重传。
 - Node multipart 实现必须经过专门的内存和 Windows 审核。
-

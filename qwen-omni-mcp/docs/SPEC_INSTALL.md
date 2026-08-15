@@ -20,12 +20,12 @@
 
 Host 配置只要求：
 
-| 项 | 必需 | 说明 |
-| --- | --- | --- |
-| `npx -y github:JaylanJerry/analyze-video-mcp` | 是 | 不发 npm。 |
-| `DASHSCOPE_API_KEY` | 是 | 用户自己的百炼 Key，不要提交 |
-| `QWEN_ALLOWED_ROOTS` | 否 | 要收紧本地可读范围时再填 |
-| Base / Upload URL | 否 | 默认北京区 |
+| 项                                            | 必需 | 说明                         |
+| --------------------------------------------- | ---- | ---------------------------- |
+| `npx -y github:JaylanJerry/analyze-video-mcp` | 是   | 不发 npm。                   |
+| `DASHSCOPE_API_KEY`                           | 是   | 用户自己的百炼 Key，不要提交 |
+| `QWEN_ALLOWED_ROOTS`                          | 否   | 要收紧本地可读范围时再填     |
+| Base / Upload URL                             | 否   | 默认北京区                   |
 
 模板：[`../examples/mcp.cursor.json`](../examples/mcp.cursor.json)、[`../examples/mcp.claude-code.json`](../examples/mcp.claude-code.json)、[`../examples/mcp.codex.toml`](../examples/mcp.codex.toml)。
 
@@ -37,12 +37,12 @@ Host 配置只要求：
 
 工具不会扫描磁盘。它只读这次 `video` 参数里的那一条路径。
 
-| 条件 | 行为 |
-| --- | --- |
+| 条件                                    | 行为                     |
+| --------------------------------------- | ------------------------ |
 | 未设 `QWEN_ALLOWED_ROOTS`，本地绝对 MP4 | 校验类型、大小后直接分析 |
-| 已设允许根，路径在根内 | 与 V2 相同 |
-| 已设允许根，路径在根外或越界 junction | `VIDEO_PATH_NOT_ALLOWED` |
-| 相对路径、非 MP4、空文件、超上限 | 仍拒绝 |
+| 已设允许根，路径在根内                  | 与 V2 相同               |
+| 已设允许根，路径在根外或越界 junction   | `VIDEO_PATH_NOT_ALLOWED` |
+| 相对路径、非 MP4、空文件、超上限        | 仍拒绝                   |
 
 不把进程 cwd 当成默认允许根。Host 的当前目录对用户级 MCP 不可靠。
 
@@ -74,8 +74,10 @@ Host 配置只要求：
 ## 6. 完成标准
 
 - 模板用 `npx`，普通人只填 Key 就能分析本地绝对 MP4。建议填写 `QWEN_ALLOWED_ROOTS`。
-- `npm run test:install` 能完成 initialize 与 `listTools`，且只有 `analyze_video`。
+- 根 package 声明运行时依赖，用 `files` 白名单带上完整 `qwen-omni-mcp/dist`，并用两层 `.npmignore` 避免 `dist/` 被 gitignore 滤掉。
+- `npm run test:pack-install` 对 `npm pack` 产物做 initialize 与 `listTools`，且只有 `analyze_video`。
+- CI 在全新 npm cache 上对 `npx github:<仓库>#<SHA>` 再做一次握手。
 - 设置了 `QWEN_ALLOWED_ROOTS` 时，根外路径仍拒绝。
 - Tool 描述要求转发或整理 `question`。
 - 质量门保持现有门槛。
-- 未 push、未发布。
+- 未发 npm。

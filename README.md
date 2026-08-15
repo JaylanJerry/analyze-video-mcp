@@ -6,7 +6,7 @@
 
 ## 安装
 
-需要 Node.js 20 或 22，以及阿里云百炼 `DASHSCOPE_API_KEY`。不要把 Key 写进仓库。
+需要 Node.js 20 或更新版本，以及阿里云百炼 `DASHSCOPE_API_KEY`。不要把 Key 写进仓库。
 
 Cursor / Claude Code 用户配置示例：
 
