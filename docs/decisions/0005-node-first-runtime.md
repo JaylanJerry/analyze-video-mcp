@@ -1,6 +1,6 @@
 # ADR 0005：v1 以 Node 运行时为准
 
-- Status: Accepted
+- Status: Accepted（Node `>=20` 工程兼容目标已被 [0012](0012-v050-runtime-and-hygiene.md) 取代，现为 `>=22`）
 - Date: 2026-08-15
 
 ## Context
@@ -9,8 +9,8 @@
 
 ## Decision
 
-- 保持 Node `>=20` 工程兼容目标。
-- Node 20/22 跑单元与 mock CI。
+- ~~保持 Node `>=20` 工程兼容目标。~~ 已被 ADR 0012 取代为 `>=22`。
+- ~~Node 20/22 跑单元与 mock CI。~~ 现为 Node 22/24；见 ADR 0012。
 - Windows 11 + Node 22 是真实发布验收环境。
 - v1 不发布、不验证 Bun 二进制；现有 release 文件先不扩展。
 - multipart 首选 Node 内置流能力，不新增生产依赖；以 Gate 1 数据决定是否申请依赖。
@@ -23,6 +23,7 @@
 
 ## Consequences
 
+- 自 ADR 0012 起，工程兼容目标改为 Node `>=22`；本 ADR 的 Node `>=20` 条款不再执行。
 - v1 验收范围清楚，减少跨运行时不确定性。
 - 上游现有 Bun artifact 不代表专项功能已支持。
 - 未来若要发布 exe，需要新的任务、测试矩阵和 ADR 更新。

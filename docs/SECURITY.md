@@ -54,6 +54,7 @@ validate absolute path and .mp4 extension
   -> fstat same handle: regular file, size, identity
   -> realpath + stat recheck
   -> read small header from same handle
+  -> duration probe from same handle (box header + seek; not a full-file scan)
   -> upload from same handle
   -> close in finally
 ```
@@ -64,6 +65,7 @@ validate absolute path and .mp4 extension
 - 打开后再次解析路径并比较，发现变化立即拒绝。
 - symlink/junction 最终目标位于 allowed root 内可以接受；最终目标越界必须拒绝。
 - MP4 验证至少检查 ISO BMFF `ftyp` box；只读取固定小块，不推进上传流的起始位置或在上传前重置到 0。
+- 本地时长探测必须用同一 FileHandle 的定位读：解析 32-bit size 与 64-bit largesize，以及 `mvhd` version 0/1。大于 3600 秒拒绝（`VIDEO_TOO_LONG`）；正好 3600 允许。不得为找 `mvhd` 顺序读完整文件，也不得引入 ffprobe。
 - 大小同时满足：大于 0、≤用户配置上限（默认且硬顶 1024 MiB）、≤动态 policy 上限。
 - 上传必须使用这个句柄；不得通过字符串路径重新 `createReadStream(path)`。
 
@@ -76,6 +78,16 @@ Node/Windows 无法提供完全可移植的 `openat + O_NOFOLLOW` 等价保证�
 - 拒绝 localhost 字面量和明显的 loopback/private IP 字面量；v1 不自行 DNS 解析，也不下载 URL。
 - Provider 端 URL 抓取仍由 DashScope 安全边界控制，这是已记录的残余风险。
 - URL query 不写日志。
+
+## 时长探测残余
+
+官方内容分析单视频上限 1 小时。本产品只对**本地 MP4**做轻量 `mvhd` probe；HTTPS 不下载、不探测。下列情况时长视为 unknown，**放行**（可能把超长文件交给 Provider）：
+
+- fragmented MP4 / fMP4：时长在 `moof`/`tfdt` 里，`moov/mvhd` 可能缺失、为 0，或只覆盖初始化段；
+- malformed box、非法 size、`timescale == 0`、探测字节或 box 数量触顶；
+- `moov` 在超大 `mdat` 之后且 box 链无法安全跳过时。
+
+这是有意残余，避免误杀合法 fMP4。未知时长不得报 `VIDEO_TOO_LONG`。
 
 ## 最小披露
 

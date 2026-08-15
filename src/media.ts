@@ -13,6 +13,18 @@ export interface AuthorizedLocalVideo {
 
 export type ResolvedVideo = { kind: "https"; url: string } | AuthorizedLocalVideo;
 
+export interface PositionedReader {
+  read(
+    buffer: Buffer,
+    offset: number,
+    length: number,
+    position: number,
+  ): Promise<{ bytesRead: number }>;
+}
+
+export const MAX_LOCAL_VIDEO_DURATION_SECONDS = 3600;
+export const MAX_MP4_PROBE_BYTES = 64 * 1024;
+const MAX_MP4_PROBE_BOXES = 4096;
 const HEADER_BYTES = 12;
 const PRIVATE_IPV4 = /^(?:10\.|127\.|169\.254\.|192\.168\.|172\.(?:1[6-9]|2\d|3[0-1])\.)/;
 
@@ -40,12 +52,204 @@ function isMp4Ftyp(header: Buffer): boolean {
   return header.length >= 8 && header.toString("ascii", 4, 8) === "ftyp";
 }
 
+interface ProbeState {
+  bytesRead: number;
+  boxes: number;
+}
+
+interface ParsedBox {
+  type: string;
+  contentStart: number;
+  contentEnd: number;
+}
+
+async function readAt(
+  reader: PositionedReader,
+  position: number,
+  length: number,
+  state: ProbeState,
+): Promise<Buffer | undefined> {
+  if (
+    length <= 0 ||
+    !Number.isSafeInteger(position) ||
+    position < 0 ||
+    state.bytesRead + length > MAX_MP4_PROBE_BYTES
+  ) {
+    return undefined;
+  }
+  const buf = Buffer.alloc(length);
+  const { bytesRead } = await reader.read(buf, 0, length, position);
+  state.bytesRead += bytesRead;
+  if (bytesRead < length) {
+    return undefined;
+  }
+  return buf;
+}
+
+async function readBoxHeader(
+  reader: PositionedReader,
+  position: number,
+  limit: number,
+  state: ProbeState,
+): Promise<ParsedBox | undefined> {
+  if (position + 8 > limit) {
+    return undefined;
+  }
+  const head = await readAt(reader, position, 8, state);
+  if (head === undefined) {
+    return undefined;
+  }
+  const size32 = head.readUInt32BE(0);
+  const type = head.toString("ascii", 4, 8);
+  let headerSize = 8;
+  let boxSize: bigint;
+  if (size32 === 1) {
+    const large = await readAt(reader, position + 8, 8, state);
+    if (large === undefined) {
+      return undefined;
+    }
+    boxSize = large.readBigUInt64BE(0);
+    headerSize = 16;
+  } else if (size32 === 0) {
+    boxSize = BigInt(limit - position);
+  } else {
+    boxSize = BigInt(size32);
+  }
+  if (type === "uuid") {
+    const uuid = await readAt(reader, position + headerSize, 16, state);
+    if (uuid === undefined) {
+      return undefined;
+    }
+    headerSize += 16;
+  }
+  if (boxSize < BigInt(headerSize)) {
+    return undefined;
+  }
+  const end = BigInt(position) + boxSize;
+  if (end > BigInt(limit) || end > BigInt(Number.MAX_SAFE_INTEGER)) {
+    return undefined;
+  }
+  const contentEnd = Number(end);
+  if (contentEnd <= position) {
+    return undefined;
+  }
+  return { type, contentStart: position + headerSize, contentEnd };
+}
+
+async function parseMvhd(
+  reader: PositionedReader,
+  box: ParsedBox,
+  state: ProbeState,
+): Promise<{ duration: bigint; timescale: bigint } | undefined> {
+  const versionBuf = await readAt(reader, box.contentStart, 1, state);
+  const version = versionBuf?.[0];
+  if (version === 1) {
+    const body = await readAt(reader, box.contentStart, 32, state);
+    if (body === undefined) {
+      return undefined;
+    }
+    const timescale = BigInt(body.readUInt32BE(20));
+    const duration = body.readBigUInt64BE(24);
+    if (timescale === 0n) {
+      return undefined;
+    }
+    return { duration, timescale };
+  }
+  if (version !== 0) {
+    return undefined;
+  }
+  const body = await readAt(reader, box.contentStart, 20, state);
+  if (body === undefined) {
+    return undefined;
+  }
+  const timescale = BigInt(body.readUInt32BE(12));
+  const duration = BigInt(body.readUInt32BE(16));
+  if (timescale === 0n) {
+    return undefined;
+  }
+  return { duration, timescale };
+}
+
+async function walkBoxes(
+  reader: PositionedReader,
+  start: number,
+  limit: number,
+  state: ProbeState,
+  wanted: "moov" | "mvhd",
+): Promise<{ duration: bigint; timescale: bigint } | undefined> {
+  let offset = start;
+  while (offset + 8 <= limit) {
+    state.boxes += 1;
+    if (state.boxes > MAX_MP4_PROBE_BOXES) {
+      return undefined;
+    }
+    const box = await readBoxHeader(reader, offset, limit, state);
+    if (box === undefined) {
+      return undefined;
+    }
+    if (wanted === "moov" && box.type === "moov") {
+      return walkBoxes(reader, box.contentStart, box.contentEnd, state, "mvhd");
+    }
+    if (wanted === "mvhd" && box.type === "mvhd") {
+      return parseMvhd(reader, box, state);
+    }
+    offset = box.contentEnd;
+  }
+  return undefined;
+}
+
+/**
+ * Light ISO BMFF duration probe: box headers + seek only.
+ * Returns undefined when duration is unknown (malformed, missing mvhd, timescale 0).
+ */
+export async function probeMp4Duration(
+  reader: PositionedReader,
+  fileSize: number,
+): Promise<{ duration: bigint; timescale: bigint } | undefined> {
+  if (!Number.isSafeInteger(fileSize) || fileSize < 8) {
+    return undefined;
+  }
+  return walkBoxes(reader, 0, fileSize, { bytesRead: 0, boxes: 0 }, "moov");
+}
+
+function asPositionedReader(handle: FileHandle): PositionedReader {
+  return {
+    read(buffer, offset, length, position) {
+      return handle.read(buffer, offset, length, position);
+    },
+  };
+}
+
 function blockedHostname(hostname: string): boolean {
   const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
-  if (host === "localhost" || host.endsWith(".localhost") || host === "::1" || host === "0.0.0.0") {
+  if (host === "localhost" || host.endsWith(".localhost")) {
     return true;
   }
-  return PRIVATE_IPV4.test(host);
+  if (host === "0.0.0.0" || host === "::" || host === "::1" || host === "0:0:0:0:0:0:0:0") {
+    return true;
+  }
+  if (PRIVATE_IPV4.test(host)) {
+    return true;
+  }
+  if (host.startsWith("::ffff:")) {
+    return true;
+  }
+  const hextets = host.split(":");
+  const firstRaw = hextets[0];
+  if (firstRaw !== undefined && firstRaw.length > 0 && !firstRaw.includes(".")) {
+    const first = Number.parseInt(firstRaw, 16);
+    if (Number.isInteger(first) && first >= 0xfc00 && first <= 0xfdff) {
+      return true;
+    }
+    if (Number.isInteger(first) && first >= 0xfe80 && first <= 0xfebf) {
+      return true;
+    }
+  }
+  const compact = host.replace(/::/, ":");
+  if (compact.includes(":ffff:") && host.startsWith("0:")) {
+    return true;
+  }
+  return false;
 }
 
 function parseHttpsVideoUrl(raw: string): string {
@@ -120,6 +324,14 @@ async function authorizeLocalMp4(raw: string, cfg: AppConfig): Promise<ResolvedV
     const read = await handle.read(header, 0, HEADER_BYTES, 0);
     if (read.bytesRead < 8 || !isMp4Ftyp(header.subarray(0, read.bytesRead))) {
       throw new VideoError({ code: "UNSUPPORTED_VIDEO", stage: "authorized" });
+    }
+
+    const probed = await probeMp4Duration(asPositionedReader(handle), opened.size);
+    if (
+      probed !== undefined &&
+      probed.duration > BigInt(MAX_LOCAL_VIDEO_DURATION_SECONDS) * probed.timescale
+    ) {
+      throw new VideoError({ code: "VIDEO_TOO_LONG", stage: "authorized" });
     }
 
     return {

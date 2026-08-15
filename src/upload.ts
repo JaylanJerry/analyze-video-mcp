@@ -17,24 +17,20 @@ export interface MediaUploader {
   upload(video: AuthorizedLocalVideo, signal: AbortSignal): Promise<UploadedVideo>;
 }
 
-const policySchema = z
-  .object({
-    request_id: z.string().min(1),
-    data: z
-      .object({
-        policy: z.string().min(1),
-        signature: z.string().min(1),
-        upload_dir: z.string().min(1),
-        upload_host: z.string().min(1),
-        expire_in_seconds: z.number().positive(),
-        max_file_size_mb: z.number().positive(),
-        oss_access_key_id: z.string().min(1),
-        x_oss_object_acl: z.string().min(1),
-        x_oss_forbid_overwrite: z.string().min(1),
-      })
-      .passthrough(),
-  })
-  .passthrough();
+const policySchema = z.looseObject({
+  request_id: z.string().min(1),
+  data: z.looseObject({
+    policy: z.string().min(1),
+    signature: z.string().min(1),
+    upload_dir: z.string().min(1),
+    upload_host: z.string().min(1),
+    expire_in_seconds: z.number().positive(),
+    max_file_size_mb: z.number().positive(),
+    oss_access_key_id: z.string().min(1),
+    x_oss_object_acl: z.string().min(1),
+    x_oss_forbid_overwrite: z.string().min(1),
+  }),
+});
 
 export type UploadPolicy = z.infer<typeof policySchema>;
 

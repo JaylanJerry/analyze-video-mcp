@@ -6,6 +6,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { PACKAGE_VERSION } from "../src/version.js";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const required = [
@@ -91,7 +92,7 @@ try {
     stderr: "pipe",
     env: childEnv(),
   });
-  const client = new Client({ name: "pack-install-e2e", version: "0.4.0" });
+  const client = new Client({ name: "pack-install-e2e", version: PACKAGE_VERSION });
   try {
     await client.connect(transport);
     const tools = await client.listTools();

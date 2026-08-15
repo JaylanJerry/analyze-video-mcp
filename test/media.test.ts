@@ -4,7 +4,24 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AppConfig } from "../src/config.js";
 import { VideoError } from "../src/errors.js";
-import { closeResolvedVideo, isContainedInRoot, resolveVideo } from "../src/media.js";
+import {
+  closeResolvedVideo,
+  isContainedInRoot,
+  MAX_LOCAL_VIDEO_DURATION_SECONDS,
+  MAX_MP4_PROBE_BYTES,
+  probeMp4Duration,
+  resolveVideo,
+} from "../src/media.js";
+import {
+  box64,
+  ftypBox,
+  moovBox,
+  mp4WithDuration,
+  mp4WithoutMvhd,
+  mvhdV0,
+  mvhdV1,
+  writeMp4WithSparseMdat,
+} from "./mp4-fixtures.js";
 
 let dir: string;
 
@@ -47,6 +64,13 @@ describe("resolveVideo", () => {
       "https://user:pass@example.com/clip.mp4",
       "https://127.0.0.1/clip.mp4",
       "https://localhost/clip.mp4",
+      "https://[::1]/clip.mp4",
+      "https://[::]/clip.mp4",
+      "https://[fd12:3456:789a::1]/clip.mp4",
+      "https://[fe80::1]/clip.mp4",
+      "https://[::ffff:127.0.0.1]/clip.mp4",
+      "https://[::ffff:8.8.8.8]/clip.mp4",
+      "https://[0:0:0:0:0:0:0:0]/clip.mp4",
     ]) {
       await expect(resolveVideo(raw, cfg)).rejects.toMatchObject({
         code: "INVALID_VIDEO_INPUT",
@@ -192,5 +216,133 @@ describe("resolveVideo", () => {
     } finally {
       await rm(outside, { recursive: true, force: true });
     }
+  });
+});
+
+describe("local MP4 duration probe", () => {
+  it("rejects duration greater than 3600 seconds before returning a handle", async () => {
+    const p = join(dir, "long.mp4");
+    await writeFile(p, mp4WithDuration(1, MAX_LOCAL_VIDEO_DURATION_SECONDS + 1));
+    const err = await resolveVideo(p, videoCfg([dir])).catch((e: unknown) => e);
+    expect(err).toMatchObject({
+      code: "VIDEO_TOO_LONG",
+      stage: "authorized",
+      retryable: false,
+    });
+    expect(String(err)).not.toContain(p);
+    if (err instanceof VideoError) {
+      expect(err.agentMessage()).not.toContain(p);
+      expect(err.agentMessage()).toContain("1 小时");
+    }
+  });
+
+  it("authorizes duration of exactly 3600 seconds", async () => {
+    const p = join(dir, "hour.mp4");
+    await writeFile(p, mp4WithDuration(1, MAX_LOCAL_VIDEO_DURATION_SECONDS));
+    const resolved = await resolveVideo(p, videoCfg([dir]));
+    try {
+      expect(resolved.kind).toBe("local");
+    } finally {
+      await closeResolvedVideo(resolved);
+    }
+  });
+
+  it("rejects a fractional second over the limit using integer timescale math", async () => {
+    const p = join(dir, "just-over.mp4");
+    await writeFile(p, mp4WithDuration(1000, MAX_LOCAL_VIDEO_DURATION_SECONDS * 1000 + 1));
+    await expect(resolveVideo(p, videoCfg([dir]))).rejects.toMatchObject({
+      code: "VIDEO_TOO_LONG",
+    });
+  });
+
+  it("rejects mvhd version 1 when duration is over the limit", async () => {
+    const p = join(dir, "v1-long.mp4");
+    await writeFile(
+      p,
+      Buffer.concat([
+        ftypBox(),
+        moovBox([mvhdV1(1, BigInt(MAX_LOCAL_VIDEO_DURATION_SECONDS + 1))]),
+      ]),
+    );
+    await expect(resolveVideo(p, videoCfg([dir]))).rejects.toMatchObject({
+      code: "VIDEO_TOO_LONG",
+    });
+  });
+
+  it("rejects a 64-bit largesize moov whose mvhd is over the limit", async () => {
+    const p = join(dir, "large-moov.mp4");
+    const moov = box64("moov", mvhdV0(1, MAX_LOCAL_VIDEO_DURATION_SECONDS + 1));
+    await writeFile(p, Buffer.concat([ftypBox(), moov]));
+    await expect(resolveVideo(p, videoCfg([dir]))).rejects.toMatchObject({
+      code: "VIDEO_TOO_LONG",
+    });
+  });
+
+  it("allows a file with no mvhd", async () => {
+    const p = join(dir, "no-mvhd.mp4");
+    await writeFile(p, mp4WithoutMvhd());
+    const resolved = await resolveVideo(p, videoCfg([dir]));
+    try {
+      expect(resolved.kind).toBe("local");
+    } finally {
+      await closeResolvedVideo(resolved);
+    }
+  });
+
+  it("allows timescale 0 and a truncated box as unknown duration", async () => {
+    const zero = join(dir, "zero-timescale.mp4");
+    await writeFile(zero, mp4WithDuration(0, 99));
+    const resolvedZero = await resolveVideo(zero, videoCfg([dir]));
+    try {
+      expect(resolvedZero.kind).toBe("local");
+    } finally {
+      await closeResolvedVideo(resolvedZero);
+    }
+
+    const bad = join(dir, "bad-size.mp4");
+    const tiny = Buffer.alloc(8);
+    tiny.writeUInt32BE(4, 0);
+    tiny.write("moov", 4, 4, "ascii");
+    await writeFile(bad, Buffer.concat([ftypBox(), tiny]));
+    const resolvedBad = await resolveVideo(bad, videoCfg([dir]));
+    try {
+      expect(resolvedBad.kind).toBe("local");
+    } finally {
+      await closeResolvedVideo(resolvedBad);
+    }
+  });
+
+  it("seeks past a large mdat instead of reading the payload", async () => {
+    const p = join(dir, "sparse.mp4");
+    const mdatPayload = 16 * 1024 * 1024;
+    const fileSize = await writeMp4WithSparseMdat(
+      p,
+      mdatPayload,
+      moovBox([mvhdV0(1, MAX_LOCAL_VIDEO_DURATION_SECONDS + 1)]),
+    );
+    let probeBytes = 0;
+    const handle = await open(p, "r");
+    try {
+      const reader = {
+        async read(buffer: Buffer, offset: number, length: number, position: number) {
+          const result = await handle.read(buffer, offset, length, position);
+          probeBytes += result.bytesRead;
+          return result;
+        },
+      };
+      const probed = await probeMp4Duration(reader, fileSize);
+      expect(probed).toEqual({
+        duration: BigInt(MAX_LOCAL_VIDEO_DURATION_SECONDS + 1),
+        timescale: 1n,
+      });
+      expect(probeBytes).toBeLessThan(MAX_MP4_PROBE_BYTES);
+      expect(probeBytes).toBeLessThan(4096);
+      expect(probeBytes).toBeLessThan(fileSize / 1000);
+    } finally {
+      await handle.close();
+    }
+    await expect(resolveVideo(p, videoCfg([dir]))).rejects.toMatchObject({
+      code: "VIDEO_TOO_LONG",
+    });
   });
 });

@@ -1,35 +1,27 @@
 import { z } from "zod";
 import { VideoError } from "./errors.js";
 
-const usageSchema = z
-  .object({
-    prompt_tokens: z.number().optional(),
-    completion_tokens: z.number().optional(),
-    total_tokens: z.number().optional(),
-  })
-  .passthrough();
+const usageSchema = z.looseObject({
+  prompt_tokens: z.number().optional(),
+  completion_tokens: z.number().optional(),
+  total_tokens: z.number().optional(),
+});
 
-const deltaSchema = z
-  .object({
-    content: z.string().nullish(),
-    role: z.string().optional(),
-  })
-  .passthrough();
+const deltaSchema = z.looseObject({
+  content: z.string().nullish(),
+  role: z.string().optional(),
+});
 
-const choiceSchema = z
-  .object({
-    delta: deltaSchema.optional(),
-    finish_reason: z.string().nullable().optional(),
-  })
-  .passthrough();
+const choiceSchema = z.looseObject({
+  delta: deltaSchema.optional(),
+  finish_reason: z.string().nullable().optional(),
+});
 
-const eventSchema = z
-  .object({
-    id: z.string().optional(),
-    choices: z.array(choiceSchema).optional(),
-    usage: usageSchema.nullish(),
-  })
-  .passthrough();
+const eventSchema = z.looseObject({
+  id: z.string().optional(),
+  choices: z.array(choiceSchema).optional(),
+  usage: usageSchema.nullish(),
+});
 
 export interface SseUsage {
   prompt_tokens: number | undefined;
@@ -43,6 +35,20 @@ export interface SseResult {
   receivedEvents: number;
   usage: SseUsage | undefined;
   requestId: string | undefined;
+}
+
+export const MAX_SSE_BUFFER_BYTES = 4 * 1024 * 1024;
+
+export function printableRequestId(raw: string): string | undefined {
+  let out = "";
+  for (const char of raw) {
+    const code = char.codePointAt(0);
+    if (code === undefined || code < 0x20 || code === 0x7f) {
+      continue;
+    }
+    out += char;
+  }
+  return out.length > 0 ? out : undefined;
 }
 
 function invalid(reason: string, extra?: Record<string, unknown>): VideoError {
@@ -129,22 +135,53 @@ function safeErrorCode(value: unknown): string | undefined {
   return undefined;
 }
 
-function findEventBoundary(buffer: string): { index: number; length: number } | undefined {
-  const crlf = buffer.indexOf("\r\n\r\n");
-  const lf = buffer.indexOf("\n\n");
-  if (crlf < 0 && lf < 0) {
-    return undefined;
+function combinedByte(pending: Buffer, incoming: Uint8Array, index: number): number | undefined {
+  if (index < pending.length) {
+    return pending[index];
   }
-  if (crlf < 0) {
-    return { index: lf, length: 2 };
+  return incoming[index - pending.length];
+}
+
+function findEventBoundaryBytes(
+  pending: Buffer,
+  incoming: Uint8Array,
+): { eventBytes: number; delim: number } | undefined {
+  const total = pending.length + incoming.byteLength;
+  for (let i = 0; i + 1 < total; i += 1) {
+    const a = combinedByte(pending, incoming, i);
+    const b = combinedByte(pending, incoming, i + 1);
+    if (a === 0x0d && b === 0x0a) {
+      const c = combinedByte(pending, incoming, i + 2);
+      const d = combinedByte(pending, incoming, i + 3);
+      if (c === 0x0d && d === 0x0a) {
+        return { eventBytes: i + 4, delim: 4 };
+      }
+    }
+    if (a === 0x0a && b === 0x0a) {
+      return { eventBytes: i + 2, delim: 2 };
+    }
   }
-  if (lf < 0) {
-    return { index: crlf, length: 4 };
+  return undefined;
+}
+
+function sliceCombined(pending: Buffer, incoming: Uint8Array, start: number, end: number): Buffer {
+  const pendingSliceEnd = Math.min(end, pending.length);
+  const parts: Buffer[] = [];
+  if (start < pending.length) {
+    parts.push(pending.subarray(start, pendingSliceEnd));
   }
-  if (crlf < lf) {
-    return { index: crlf, length: 4 };
+  if (end > pending.length) {
+    const incomingStart = Math.max(0, start - pending.length);
+    parts.push(Buffer.from(incoming.subarray(incomingStart, end - pending.length)));
   }
-  return { index: lf, length: 2 };
+  if (parts.length === 0) {
+    return Buffer.alloc(0);
+  }
+  const first = parts[0];
+  if (parts.length === 1 && first !== undefined) {
+    return first;
+  }
+  return Buffer.concat(parts);
 }
 
 function dataPayload(block: string): string | undefined {
@@ -166,9 +203,9 @@ function dataPayload(block: string): string | undefined {
 }
 
 export class SseParser {
-  private readonly decoder = new TextDecoder("utf-8", { fatal: false });
-  private buffer = "";
+  private pending = Buffer.alloc(0);
   private pieces: string[] = [];
+  private answerBytes = 0;
   private receivedEvents = 0;
   private terminated = false;
   private finishReason: string | undefined;
@@ -184,14 +221,31 @@ export class SseParser {
   }
 
   push(chunk: Uint8Array): void {
-    this.buffer += this.decoder.decode(chunk, { stream: true });
-    this.drain();
+    let incoming: Uint8Array = chunk;
+    while (incoming.byteLength > 0) {
+      const boundary = findEventBoundaryBytes(this.pending, incoming);
+      if (boundary === undefined) {
+        if (this.pending.length + incoming.byteLength > MAX_SSE_BUFFER_BYTES) {
+          throw invalid("sse_event_too_large", { received_sse_events: this.receivedEvents });
+        }
+        this.pending = Buffer.concat([this.pending, incoming]);
+        return;
+      }
+      if (boundary.eventBytes > MAX_SSE_BUFFER_BYTES) {
+        throw invalid("sse_event_too_large", { received_sse_events: this.receivedEvents });
+      }
+      const total = this.pending.length + incoming.byteLength;
+      const eventBuf = sliceCombined(this.pending, incoming, 0, boundary.eventBytes);
+      const rest = sliceCombined(this.pending, incoming, boundary.eventBytes, total);
+      this.pending = Buffer.alloc(0);
+      incoming = rest;
+      const block = eventBuf.subarray(0, eventBuf.length - boundary.delim).toString("utf8");
+      this.handleBlock(block);
+    }
   }
 
   finish(): SseResult {
-    this.buffer += this.decoder.decode();
-    this.drain();
-    if (this.buffer.trim().length > 0) {
+    if (this.pending.length > 0) {
       throw invalid("leftover", { received_sse_events: this.receivedEvents });
     }
     if (!this.terminated) {
@@ -208,18 +262,6 @@ export class SseParser {
       usage: this.usage,
       requestId: this.requestId,
     };
-  }
-
-  private drain(): void {
-    for (;;) {
-      const boundary = findEventBoundary(this.buffer);
-      if (boundary === undefined) {
-        return;
-      }
-      const block = this.buffer.slice(0, boundary.index);
-      this.buffer = this.buffer.slice(boundary.index + boundary.length);
-      this.handleBlock(block);
-    }
   }
 
   private handleBlock(block: string): void {
@@ -252,7 +294,7 @@ export class SseParser {
       });
     }
     if (parsed.data.id !== undefined && this.requestId === undefined) {
-      this.requestId = parsed.data.id;
+      this.requestId = printableRequestId(parsed.data.id);
     }
     if (parsed.data.usage != null) {
       this.usage = {
@@ -271,7 +313,12 @@ export class SseParser {
     }
     const content = choice.delta?.content;
     if (typeof content === "string" && content.length > 0) {
+      const add = Buffer.byteLength(content, "utf8");
+      if (this.answerBytes + add > MAX_SSE_BUFFER_BYTES) {
+        throw invalid("sse_answer_too_large", { received_sse_events: this.receivedEvents });
+      }
       this.pieces.push(content);
+      this.answerBytes += add;
     }
     const reason = choice.finish_reason;
     if (typeof reason === "string" && reason.length > 0) {

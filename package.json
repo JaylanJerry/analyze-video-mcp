@@ -1,6 +1,6 @@
 {
   "name": "analyze-video-mcp",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "MCP server that adds analyze_video to local agents via Bailian Qwen3.5-Omni-Flash",
   "license": "MIT",
   "repository": {
@@ -9,7 +9,7 @@
   },
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "bin": {
     "analyze-video-mcp": "dist/index.js"
@@ -22,7 +22,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "dev": "tsx src/index.ts",
+    "dev": "node scripts/dev.mjs",
     "start": "node dist/index.js",
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix",
@@ -39,23 +39,22 @@
     "prepare": "node scripts/prepare.mjs"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0",
-    "dotenv": "^16.4.5",
-    "zod": "^3.23.8"
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
-    "@types/node": "^20.0.0",
-    "@vitest/coverage-v8": "^2.0.0",
+    "@types/node": "^22.20.1",
+    "@vitest/coverage-v8": "^4.1.10",
     "eslint": "^9.0.0",
     "eslint-config-prettier": "^9.0.0",
     "husky": "^9.0.0",
-    "lint-staged": "^15.0.0",
+    "lint-staged": "^17.3.0",
     "msw": "^2.0.0",
     "prettier": "^3.0.0",
     "tsx": "^4.0.0",
     "typescript": "^5.5.0",
     "typescript-eslint": "^8.0.0",
-    "vitest": "^2.0.0"
+    "vitest": "^4.1.10"
   }
 }

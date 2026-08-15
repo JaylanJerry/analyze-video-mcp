@@ -1,0 +1,59 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install
+        run: npm ci
+        env:
+          HUSKY: "0"
+      - name: Assert tag matches package and PACKAGE_VERSION
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            const tag = process.env.TAG ?? "";
+            const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+            const src = readFileSync("src/version.ts", "utf8");
+            const match = /PACKAGE_VERSION = "([^"]+)"/.exec(src);
+            const pkgVersion = typeof pkg.version === "string" ? pkg.version : "";
+            const srcVersion = match?.[1] ?? "";
+            if (tag !== `v${pkgVersion}` || tag !== `v${srcVersion}` || pkgVersion !== srcVersion) {
+              console.error(JSON.stringify({ tag, pkgVersion, srcVersion }));
+              process.exit(1);
+            }
+            console.log(`tag ${tag} matches ${pkgVersion}`);
+          '
+      - run: npm run build
+      - name: Pack-install probe
+        run: npm run test:pack-install
+        env:
+          HUSKY: "0"
+      - name: npx github probe
+        run: npm run test:npx-github
+        env:
+          HUSKY: "0"
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes

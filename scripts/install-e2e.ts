@@ -2,6 +2,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
+import { PACKAGE_VERSION } from "../src/version.js";
 
 function childEnv(): Record<string, string> {
   const out: Record<string, string> = {};
@@ -27,7 +28,7 @@ const transport = new StdioClientTransport({
   env: childEnv(),
 });
 
-const client = new Client({ name: "install-e2e", version: "0.4.0" });
+const client = new Client({ name: "install-e2e", version: PACKAGE_VERSION });
 try {
   await client.connect(transport);
   const tools = await client.listTools();
