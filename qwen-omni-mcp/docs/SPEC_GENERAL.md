@@ -16,7 +16,7 @@
 
 - 唯一 Tool：`analyze_video(video, question?)`。
 - 成功只返回文本；错误脱敏。
-- 本地路径默认拒绝，必须在 `QWEN_ALLOWED_ROOTS` 内。
+- 本地路径：未设允许根时分析这次传入的绝对 MP4；已设则必须在 `QWEN_ALLOWED_ROOTS` 内。
 - 本地主路径：授权 FileHandle → 流式 multipart → `oss://` → SSE 聚合。
 - 禁止 Base64、整文件 `readFile()`、新增生产依赖、自动重传整个大文件。
 - 不发布、不推送，除非用户另说。
@@ -49,7 +49,7 @@ V2 批准后的契约：Tool 只保留 `video` 和 `question`。去掉 `max_toke
 | 环境变量                  | 必需         | 默认                   | 说明                                                   |
 | ------------------------- | ------------ | ---------------------- | ------------------------------------------------------ |
 | `DASHSCOPE_API_KEY`       | 是           | 无                     | 用户自己填写。只存在本机 Host 配置或本机环境，不得提交 |
-| `QWEN_ALLOWED_ROOTS`      | 本地路径时是 | 空                     | 用户自己填写绝对目录                                   |
+| `QWEN_ALLOWED_ROOTS`      | 否           | 空                     | 可选。不填则分析这次传入的本地绝对 MP4；填写后只允许这些目录 |
 | `DASHSCOPE_BASE_URL`      | 否           | 北京区兼容模式推理地址 | 用户可改                                               |
 | `DASHSCOPE_UPLOAD_URL`    | 否           | 北京区临时上传地址     | 用户可改                                               |
 | `QWEN_MAX_LOCAL_VIDEO_MB` | 否           | `1024`                 | 1–1024。实际上传前再与当场 policy 取较小值             |

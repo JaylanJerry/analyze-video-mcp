@@ -170,6 +170,8 @@ describe("MCP analyze_video contract", () => {
       const { tools } = await client.listTools();
       expect(tools[0]?.description).toContain("视频画面");
       expect(tools[0]?.description).toContain("内嵌音频");
+      expect(tools[0]?.description).toContain("原样转发");
+      expect(instructions).toContain("原样转发");
     });
   });
 
@@ -274,7 +276,7 @@ describe("MCP analyze_video contract", () => {
     });
   });
 
-  it("rejects a local path when no allowed roots are configured", async () => {
+  it("rejects a missing local path without leaking it when no allowed roots are set", async () => {
     await withClient(baseCfg, {}, async (client) => {
       const r = await client.callTool({
         name: "analyze_video",
@@ -282,9 +284,18 @@ describe("MCP analyze_video contract", () => {
       });
       expect(r.isError).toBe(true);
       const text = textOf(r);
-      expect(text).toMatch(/^VIDEO_PATH_NOT_ALLOWED: /);
-      expect(text).toContain("QWEN_ALLOWED_ROOTS");
+      expect(text).toMatch(/^VIDEO_NOT_FOUND: /);
       expect(text).not.toContain(CANARY_PATH);
+    });
+  });
+
+  it("tells the host to forward or refine the user question", async () => {
+    await withClient(baseCfg, {}, async (client) => {
+      const tools = await client.listTools();
+      const desc = tools.tools[0]?.description ?? "";
+      expect(desc).toContain("question");
+      expect(desc).toContain("原样转发");
+      expect(desc).toContain("整理");
     });
   });
 });
@@ -298,6 +309,21 @@ describe("local authorized video", () => {
 
   afterEach(async () => {
     await rm(dir, { recursive: true, force: true });
+  });
+
+  it("uploads a local MP4 when no allowed roots are configured", async () => {
+    const rec = recordingAnalyzer("ok");
+    const up = recordingUploader();
+    const p = join(dir, "clip.mp4");
+    await writeFile(p, MP4_HEADER);
+    await withClient(baseCfg, { analyzer: rec.analyzer, uploader: up.uploader }, async (client) => {
+      const r = await client.callTool({
+        name: "analyze_video",
+        arguments: { video: p, question: "q" },
+      });
+      expect(textOf(r)).toBe("ok");
+    });
+    expect(up.uploads).toBe(1);
   });
 
   it("uploads a local MP4 and analyzes the returned object", async () => {

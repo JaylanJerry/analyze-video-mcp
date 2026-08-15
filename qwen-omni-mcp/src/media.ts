@@ -320,17 +320,13 @@ async function authorizeLocalMp4(raw: string, cfg: AppConfig): Promise<ResolvedV
   if (!isAbsolute(raw) || extname(raw).toLowerCase() !== ".mp4") {
     throw new VideoError({ code: "INVALID_VIDEO_INPUT", stage: "received" });
   }
-  if (cfg.allowedRoots.length === 0) {
-    throw new VideoError({ code: "VIDEO_PATH_NOT_ALLOWED", stage: "authorized" });
-  }
-
   let requestedReal: string;
   try {
     requestedReal = await realpath(raw);
   } catch {
     throw new VideoError({ code: "VIDEO_NOT_FOUND", stage: "authorized" });
   }
-  if (!isInsideAllowedRoots(requestedReal, cfg.allowedRoots)) {
+  if (cfg.allowedRoots.length > 0 && !isInsideAllowedRoots(requestedReal, cfg.allowedRoots)) {
     throw new VideoError({ code: "VIDEO_PATH_NOT_ALLOWED", stage: "authorized" });
   }
 
@@ -364,7 +360,7 @@ async function authorizeLocalMp4(raw: string, cfg: AppConfig): Promise<ResolvedV
     if (recheckPath !== requestedReal || !sameIdentity(snapshot, recheckStat)) {
       throw new VideoError({ code: "VIDEO_NOT_FOUND", stage: "authorized" });
     }
-    if (!isInsideAllowedRoots(recheckPath, cfg.allowedRoots)) {
+    if (cfg.allowedRoots.length > 0 && !isInsideAllowedRoots(recheckPath, cfg.allowedRoots)) {
       throw new VideoError({ code: "VIDEO_PATH_NOT_ALLOWED", stage: "authorized" });
     }
 

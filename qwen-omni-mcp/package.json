@@ -35,7 +35,7 @@
     "test:watch": "vitest",
     "test:live": "LIVE=1 vitest run test/live.test.ts",
     "coverage": "vitest run --coverage",
-    "prepare": "husky"
+    "prepare": "node scripts/prepare.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",

@@ -36,6 +36,7 @@ Tool schema 不得出现：`max_tokens`、`model`、`provider`、`thinking_budge
 当你需要理解视频而当前模型不能直接观看时，调用此工具。
 它会联合分析视频画面和视频内嵌音频，并返回文本回答。
 不要先自行抽帧或抽音频；直接传入视频路径或 HTTPS URL。
+把用户的分析要求写入 question：具体则原样转发，空话则先整理再调用。
 ```
 
 Server-level instructions 与 Tool 描述保持同义，第一句优先表达“视频画面 + 音频”。

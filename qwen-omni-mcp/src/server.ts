@@ -14,9 +14,12 @@ export const MAX_QUESTION_CHARS = 8000;
 const AV_CONSTRAINT =
   "你必须同时依据视频画面和视频内嵌音轨作答。即使问题没有提到声音，也要说明听到了什么；若没有对白或明显音效，请明确说没有听到可用的声音。";
 
-const SERVER_INSTRUCTIONS = `此工具联合分析视频画面和视频内嵌音频，并返回文本回答。当你需要理解视频而当前模型不能直接观看时，调用 analyze_video。不要先自行抽帧或抽音频；直接传入本地绝对 MP4 路径或公开 HTTPS URL。`;
+const QUESTION_GUIDANCE =
+  "把用户的分析要求写入 question。用户说得具体就尽量原样转发；只说「分析一下」这类空话时，先整理成具体的画面与声音问题（切点、节奏、配音是否统一、声画是否对上、哪些好、哪些要改）再调用。不要编造视频里没有的内容。";
 
-const TOOL_DESCRIPTION = `当你需要理解视频而当前模型不能直接观看时，调用此工具。它会联合分析视频画面和视频内嵌音频，并返回文本回答。不要先自行抽帧或抽音频；直接传入本地绝对 MP4 路径或公开 HTTPS URL。大文件若上行很慢，改用公开 HTTPS。`;
+const SERVER_INSTRUCTIONS = `此工具联合分析视频画面和视频内嵌音频，并返回文本回答。当你需要理解视频而当前模型不能直接观看时，调用 analyze_video。不要先自行抽帧或抽音频；直接传入本地绝对 MP4 路径或公开 HTTPS URL。${QUESTION_GUIDANCE}`;
+
+const TOOL_DESCRIPTION = `当你需要理解视频而当前模型不能直接观看时，调用此工具。它会联合分析视频画面和视频内嵌音频，并返回文本回答。不要先自行抽帧或抽音频；直接传入本地绝对 MP4 路径或公开 HTTPS URL。${QUESTION_GUIDANCE} 大文件若上行很慢，改用公开 HTTPS。`;
 
 export const PROGRESS_UPLOAD_START = "正在上传视频";
 export const PROGRESS_UPLOAD_DONE = "上传完成";

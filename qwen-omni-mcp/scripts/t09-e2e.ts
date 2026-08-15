@@ -91,7 +91,7 @@ try {
       answer_chars: text.length,
       answer_preview: text.slice(0, 240),
       hit_24: text.includes("24"),
-      hit_pi: text.includes("3.1415926"),
+      hit_pi: text.includes("3.1415926") || text.includes("三点一四一五九二六"),
     })}\n`,
   );
   process.exitCode = result.isError === true ? 1 : 0;

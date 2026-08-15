@@ -1,6 +1,6 @@
 # ADR 0004：本地媒体访问默认拒绝
 
-- Status: Accepted
+- Status: Superseded in part by ADR 0010（未配置允许根时不再拒绝全部本地路径）
 - Date: 2026-08-15
 
 ## Context

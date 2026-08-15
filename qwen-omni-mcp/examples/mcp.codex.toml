@@ -1,10 +1,6 @@
 [mcp_servers.analyze-video]
-command = "node"
-args = ["C:/absolute/path/to/qwen-omni-mcp/dist/index.js"]
+command = "npx"
+args = ["-y", "github:JaylanJerry/analyze-video-mcp"]
 
 [mcp_servers.analyze-video.env]
 DASHSCOPE_API_KEY = "paste-your-key-here"
-QWEN_ALLOWED_ROOTS = "C:\\Videos"
-DASHSCOPE_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-DASHSCOPE_UPLOAD_URL = "https://dashscope.aliyuncs.com/api/v1/uploads"
-QWEN_MAX_LOCAL_VIDEO_MB = "1024"

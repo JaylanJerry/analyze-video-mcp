@@ -349,13 +349,15 @@ describe("resolveVideo", () => {
     }
   });
 
-  it("rejects local paths when no allowed roots are configured", async () => {
+  it("authorizes a local MP4 when no allowed roots are configured", async () => {
     const p = join(dir, "ok.mp4");
     await writeFile(p, FTYP);
-    await expect(resolveVideo(p, videoCfg([]))).rejects.toBeInstanceOf(VideoError);
-    await expect(resolveVideo(p, videoCfg([]))).rejects.toMatchObject({
-      code: "VIDEO_PATH_NOT_ALLOWED",
-    });
+    const resolved = await resolveVideo(p, videoCfg([]));
+    try {
+      expect(resolved.kind).toBe("local");
+    } finally {
+      await closeResolvedVideo(resolved);
+    }
   });
 
   it("rejects a sibling-prefix path outside the allowed root", async () => {

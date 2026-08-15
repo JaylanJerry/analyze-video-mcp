@@ -1,6 +1,6 @@
 # Video MCP 开发交接
 
-状态：v1 本机收尾完成；V2（G01–G06）已实施。未发布、未推送。
+状态：v1 本机收尾完成；V2 与安装形态已实施。公开仓库 `JaylanJerry/analyze-video-mcp`。未发 npm。
 
 基线快照：`sommio/qwen-omni-mcp@8a07182554a985456153644e0006a22bd1c769f7`。
 
@@ -10,21 +10,21 @@
 
 ## 当前产品
 
-v1 已本机收尾。V2 已实施：本地默认 1024 MiB，用户自填 Host `env`，回答按模型最大输出，上传/推理发 MCP progress。
+v1 已本机收尾。V2 已实施。安装：`npx` + Key；目录可选；Agent 应转发或整理 `question`。
 
 已在 Windows Node 24 + Cursor 上验证：中文文件名小视频、口播、496.8 MiB 漫剧。Cursor 用户级 MCP 名称是 `analyze-video`。
 
 ## 下一阶段
 
-V2 任务 G01–G06 已完成，未发布、未推送。一次只做 `tasks/todo-general.md` 的剩余项；当前无未勾实现项。
+安装规格已落地。用 `npx -y github:JaylanJerry/analyze-video-mcp`。未另说不要发 npm。
 
 绑定文档：
 
-1. [`docs/SPEC_V2.md`](docs/SPEC_V2.md)
-2. [`docs/SPEC_GENERAL.md`](docs/SPEC_GENERAL.md)
-3. [`docs/decisions/0009-general-host-config-and-1gib.md`](docs/decisions/0009-general-host-config-and-1gib.md)
-4. [`tasks/plan-general.md`](tasks/plan-general.md)
-5. [`tasks/todo-general.md`](tasks/todo-general.md)
+1. [`docs/SPEC_INSTALL.md`](docs/SPEC_INSTALL.md)
+2. [`docs/SPEC_V2.md`](docs/SPEC_V2.md)
+3. [`docs/decisions/0010-npx-install-and-optional-roots.md`](docs/decisions/0010-npx-install-and-optional-roots.md)
+4. [`docs/SPEC_GENERAL.md`](docs/SPEC_GENERAL.md)
+5. [`tasks/todo-install.md`](tasks/todo-install.md)
 
 ## 硬规则
 
