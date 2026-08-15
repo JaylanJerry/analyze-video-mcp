@@ -1,7 +1,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -19,63 +19,21 @@ const required = [
   "scripts/prepare-root.mjs",
 ];
 
-interface PackFile {
-  path?: string;
-}
-
-interface PackMeta {
-  filename?: string;
-  files?: PackFile[];
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function asPackMeta(value: unknown): PackMeta | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  if (typeof value.filename === "string" && Array.isArray(value.files)) {
-    const files = value.files.filter(isRecord).map((file) => ({
-      path: typeof file.path === "string" ? file.path : undefined,
-    }));
-    return { filename: value.filename, files };
-  }
-  for (const nested of Object.values(value)) {
-    const found = asPackMeta(nested);
-    if (found !== undefined) {
-      return found;
-    }
-  }
-  return undefined;
-}
-
-function readPackMeta(raw: string): PackMeta {
-  const parsed: unknown = JSON.parse(raw);
-  const fromArray = Array.isArray(parsed) ? asPackMeta(parsed[0]) : undefined;
-  const meta = fromArray ?? asPackMeta(parsed);
-  if (meta === undefined) {
-    throw new Error("unexpected npm pack json");
-  }
-  return meta;
-}
-
-function npmPack(args: string[], cwd: string): PackMeta {
-  const raw = execFileSync("npm", args, {
+function runNpm(args: string[], cwd: string): string {
+  return execFileSync("npm", args, {
     cwd,
     encoding: "utf8",
     shell: true,
     stdio: ["ignore", "pipe", "pipe"],
     env: { ...process.env, HUSKY: "0" },
   });
-  return readPackMeta(raw);
 }
 
-function packedNames(meta: PackMeta): string[] {
-  return (meta.files ?? [])
-    .map((file) => file.path)
-    .filter((path): path is string => typeof path === "string")
+function packedNames(tarball: string): string[] {
+  const raw = execFileSync("tar", ["-tzf", tarball], { encoding: "utf8" });
+  return raw
+    .split(/\r?\n/)
+    .filter((line) => line.length > 0)
     .map((path) => path.replaceAll("\\", "/").replace(/^package\//, ""));
 }
 
@@ -95,27 +53,26 @@ if (!existsSync(join(repoRoot, "qwen-omni-mcp/dist/index.js"))) {
   process.exit(2);
 }
 
-const packArgs = ["pack", "--json", "--ignore-scripts", "--loglevel=error"];
-const dry = npmPack([...packArgs, "--dry-run"], repoRoot);
-const dryFiles = packedNames(dry);
-const missing = required.filter((name) => !dryFiles.includes(name));
-if (missing.length > 0) {
-  process.stderr.write(`pack-install-e2e: tarball missing ${missing.join(", ")}\n`);
-  process.exit(1);
-}
-if (dryFiles.some((name) => name.includes("node_modules"))) {
-  process.stderr.write("pack-install-e2e: tarball unexpectedly contains node_modules\n");
-  process.exit(1);
-}
-
 const work = await mkdtemp(join(tmpdir(), "analyze-video-pack-"));
 try {
-  const packed = npmPack([...packArgs, `--pack-destination=${JSON.stringify(work)}`], repoRoot);
-  if (packed.filename === undefined) {
-    process.stderr.write("pack-install-e2e: npm pack did not return a filename\n");
+  runNpm(["pack", "--ignore-scripts", `--pack-destination=${JSON.stringify(work)}`], repoRoot);
+  const tarballName = readdirSync(work).find((name) => name.endsWith(".tgz"));
+  if (tarballName === undefined) {
+    process.stderr.write("pack-install-e2e: npm pack did not write a tarball\n");
     process.exit(1);
   }
-  const tarball = join(work, packed.filename);
+  const tarball = join(work, tarballName);
+  const files = packedNames(tarball);
+  const missing = required.filter((name) => !files.includes(name));
+  if (missing.length > 0) {
+    process.stderr.write(`pack-install-e2e: tarball missing ${missing.join(", ")}\n`);
+    process.exit(1);
+  }
+  if (files.some((name) => name.includes("node_modules"))) {
+    process.stderr.write("pack-install-e2e: tarball unexpectedly contains node_modules\n");
+    process.exit(1);
+  }
+
   execFileSync("npm", ["install", "--omit=dev", "--ignore-scripts", tarball], {
     cwd: work,
     shell: true,
@@ -155,7 +112,7 @@ try {
     process.stdout.write(
       `${JSON.stringify({
         ok,
-        packed_files: dryFiles.length,
+        packed_files: files.length,
         tools: names,
         fields: keys,
         runtime_sdk: existsSync(sdk),
