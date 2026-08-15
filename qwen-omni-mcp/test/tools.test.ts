@@ -20,6 +20,7 @@ import {
   createServer,
   DEFAULT_QUESTION,
   notifyProgress,
+  PROGRESS_ANALYZE_DONE,
   PROGRESS_ANALYZE_START,
   PROGRESS_UPLOAD_DONE,
   PROGRESS_UPLOAD_START,
@@ -36,7 +37,6 @@ const CANARY_OSS = "oss://dashscope-tmp/abcdef/video.mp4";
 const baseCfg: AppConfig = {
   apiKey: SECRET_KEY,
   model: "qwen3.5-omni-flash",
-  omniModel: "qwen3.5-omni-plus",
   baseUrl: "https://dashscope.test/v1",
   uploadUrl: "https://dashscope.test/api/v1/uploads",
   allowedRoots: [],
@@ -144,7 +144,10 @@ function textOf(result: unknown): string {
 describe("MCP analyze_video contract", () => {
   it("reports the package version on initialize", async () => {
     await withClient(baseCfg, {}, (client) => {
-      expect(client.getServerVersion()?.version).toBe(PACKAGE_VERSION);
+      expect(client.getServerVersion()).toEqual({
+        name: "analyze-video-mcp",
+        version: PACKAGE_VERSION,
+      });
       return Promise.resolve();
     });
   });
@@ -206,22 +209,32 @@ describe("MCP analyze_video contract", () => {
 
   it("emits only analysis progress for HTTPS when the client asks for it", async () => {
     const rec = recordingAnalyzer("ok");
-    const messages: string[] = [];
+    const steps: { progress: number; total?: number; message?: string }[] = [];
     await withClient(baseCfg, { analyzer: rec.analyzer }, async (client) => {
       const r = await client.callTool(
         { name: "analyze_video", arguments: { video: "https://cdn.example/v.mp4" } },
         undefined,
         {
           onprogress: (progress) => {
-            if (progress.message !== undefined) {
-              messages.push(progress.message);
+            const step: { progress: number; total?: number; message?: string } = {
+              progress: progress.progress,
+            };
+            if (progress.total !== undefined) {
+              step.total = progress.total;
             }
+            if (progress.message !== undefined) {
+              step.message = progress.message;
+            }
+            steps.push(step);
           },
         },
       );
       expect(textOf(r)).toBe("ok");
     });
-    expect(messages).toEqual([PROGRESS_ANALYZE_START]);
+    expect(steps).toEqual([
+      { progress: 1, total: 2, message: PROGRESS_ANALYZE_START },
+      { progress: 2, total: 2, message: PROGRESS_ANALYZE_DONE },
+    ]);
   });
 
   it("applies the default question when omitted", async () => {
@@ -369,23 +382,35 @@ describe("local authorized video", () => {
     const p = join(dir, "clip.mp4");
     await writeFile(p, MP4_HEADER);
     const cfg = { ...baseCfg, allowedRoots: [await realpath(dir)] };
-    const messages: string[] = [];
+    const steps: { progress: number; total?: number; message?: string }[] = [];
     await withClient(cfg, { analyzer: rec.analyzer, uploader: up.uploader }, async (client) => {
       const r = await client.callTool(
         { name: "analyze_video", arguments: { video: p, question: "q" } },
         undefined,
         {
           onprogress: (progress) => {
-            if (progress.message !== undefined) {
-              messages.push(progress.message);
+            const step: { progress: number; total?: number; message?: string } = {
+              progress: progress.progress,
+            };
+            if (progress.total !== undefined) {
+              step.total = progress.total;
             }
+            if (progress.message !== undefined) {
+              step.message = progress.message;
+            }
+            steps.push(step);
           },
         },
       );
       expect(textOf(r)).toBe("ok");
     });
-    expect(messages).toEqual([PROGRESS_UPLOAD_START, PROGRESS_UPLOAD_DONE, PROGRESS_ANALYZE_START]);
-    expect(messages.join(" ")).not.toContain(p);
+    expect(steps).toEqual([
+      { progress: 0, total: 3, message: PROGRESS_UPLOAD_START },
+      { progress: 1, total: 3, message: PROGRESS_UPLOAD_DONE },
+      { progress: 2, total: 3, message: PROGRESS_ANALYZE_START },
+      { progress: 3, total: 3, message: PROGRESS_ANALYZE_DONE },
+    ]);
+    expect(JSON.stringify(steps)).not.toContain(p);
   });
 
   it("does not start a second upload while one call is active", async () => {

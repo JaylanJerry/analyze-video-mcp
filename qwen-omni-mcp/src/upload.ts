@@ -156,6 +156,11 @@ export function postMultipartStream(
   body: Readable,
   signal: AbortSignal,
 ): Promise<MultipartPostResult> {
+  if (signal.aborted) {
+    body.destroy();
+    return Promise.reject(new Error("upload request failed"));
+  }
+
   const parsed = new URL(url);
   const request = parsed.protocol === "http:" ? httpRequest : httpsRequest;
 
@@ -186,14 +191,10 @@ export function postMultipartStream(
       req.destroy();
       fail();
     };
-    if (signal.aborted) {
-      onAbort();
-      return;
-    }
-    signal.addEventListener("abort", onAbort, { once: true });
     req.on("error", fail);
     body.on("error", fail);
     body.pipe(req);
+    signal.addEventListener("abort", onAbort, { once: true });
   });
 }
 
@@ -331,10 +332,13 @@ export async function uploadLocalVideo(
   return { url: `oss://${key}`, requiresOssResolve: true };
 }
 
-export function createTemporaryUploader(cfg: AppConfig): MediaUploader {
+export function createTemporaryUploader(cfg: AppConfig, poster?: MultipartPoster): MediaUploader {
   return {
     upload(video, signal) {
-      return uploadLocalVideo(cfg, video, signal);
+      if (poster === undefined) {
+        return uploadLocalVideo(cfg, video, signal);
+      }
+      return uploadLocalVideo(cfg, video, signal, poster);
     },
   };
 }

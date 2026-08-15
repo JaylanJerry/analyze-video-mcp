@@ -12,6 +12,7 @@
 text/*
 !text/README.md
 *.mp4
+!qwen-omni-mcp/test/fixtures/*.mp4
 
 # === Node (implementation lives in qwen-omni-mcp/) ===
 node_modules/

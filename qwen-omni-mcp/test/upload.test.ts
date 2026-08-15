@@ -12,6 +12,7 @@ import { BYTES_PER_MIB } from "../src/config.js";
 import { VideoError } from "../src/errors.js";
 import type { AuthorizedLocalVideo } from "../src/media.js";
 import {
+  createTemporaryUploader,
   encodeMultipart,
   fetchUploadPolicy,
   fileMultipartStream,
@@ -54,7 +55,6 @@ function cfg(overrides: Partial<AppConfig> = {}): AppConfig {
   return {
     apiKey: "sk-test",
     model: "qwen3.5-omni-flash",
-    omniModel: "qwen3.5-omni-plus",
     baseUrl: "https://dashscope.test/v1",
     uploadUrl: POLICY_URL,
     allowedRoots: [],
@@ -243,6 +243,21 @@ describe("uploadLocalVideo", () => {
     }
   });
 
+  it("exposes the same upload path through createTemporaryUploader", async () => {
+    mockPolicy();
+    const video = await localVideo(Buffer.from("uploader"));
+    try {
+      const uploaded = await createTemporaryUploader(cfg(), capturePoster()).upload(
+        video,
+        new AbortController().signal,
+      );
+      expect(uploaded.requiresOssResolve).toBe(true);
+      expect(uploaded.url).toMatch(/^oss:\/\/tmp\/user\/[0-9a-f-]+\.mp4$/);
+    } finally {
+      await video.handle.close();
+    }
+  });
+
   it("rejects an empty file before requesting a policy", async () => {
     mockPolicy();
     const video = await localVideo(Buffer.alloc(0));
@@ -308,6 +323,210 @@ describe("uploadLocalVideo", () => {
       await video.handle.close();
     }
   });
+
+  it("rejects a file above the local cap before requesting a policy", async () => {
+    mockPolicy();
+    const video = await sparseVideo(2 * BYTES_PER_MIB);
+    try {
+      await expect(
+        uploadLocalVideo(
+          cfg({ maxLocalVideoBytes: BYTES_PER_MIB }),
+          video,
+          new AbortController().signal,
+        ),
+      ).rejects.toMatchObject({
+        code: "VIDEO_FILE_TOO_LARGE",
+      });
+      expect(policyGets).toBe(0);
+    } finally {
+      await video.handle.close();
+    }
+  });
+
+  it("maps a thrown poster to VIDEO_UPLOAD_FAILED without leaking the host", async () => {
+    mockPolicy(policyJson({ signature: CANARY }));
+    const video = await localVideo(Buffer.from("abc"));
+    try {
+      const err = await uploadLocalVideo(cfg(), video, new AbortController().signal, () =>
+        Promise.reject(new Error(`upload exploded ${CANARY} ${UPLOAD_HOST}`)),
+      ).catch((e: unknown) => e);
+      expect(err).toMatchObject({ code: "VIDEO_UPLOAD_FAILED" });
+      expect(String(err)).not.toContain(CANARY);
+      expect(String(err)).not.toContain(UPLOAD_HOST);
+    } finally {
+      await video.handle.close();
+    }
+  });
+});
+
+describe("fetchUploadPolicy errors", () => {
+  it("rejects a malformed JSON body without leaking it", async () => {
+    server.use(
+      http.get(POLICY_URL, () => {
+        policyGets += 1;
+        return new HttpResponse("not-json", {
+          status: 200,
+          headers: { "Content-Type": "text/plain" },
+        });
+      }),
+    );
+    const err = await fetchUploadPolicy(cfg(), new AbortController().signal).catch(
+      (e: unknown) => e,
+    );
+    expect(err).toMatchObject({ code: "UPLOAD_POLICY_FAILED" });
+    expect(String(err)).not.toContain("not-json");
+  });
+
+  it("rejects a 500 policy response without leaking the body", async () => {
+    server.use(
+      http.get(POLICY_URL, () => {
+        policyGets += 1;
+        return new HttpResponse(CANARY, { status: 500 });
+      }),
+    );
+    const err = await fetchUploadPolicy(cfg(), new AbortController().signal).catch(
+      (e: unknown) => e,
+    );
+    expect(err).toMatchObject({ code: "UPLOAD_POLICY_FAILED", httpStatus: 500 });
+    expect(String(err)).not.toContain(CANARY);
+  });
+
+  it("rejects a policy missing required fields", async () => {
+    mockPolicy({ request_id: "req-1", data: { policy: "x" } } as never);
+    await expect(fetchUploadPolicy(cfg(), new AbortController().signal)).rejects.toMatchObject({
+      code: "UPLOAD_POLICY_FAILED",
+    });
+  });
+
+  it("rejects an upload host that is not a URL", async () => {
+    mockPolicy(policyJson({ upload_host: "not a url" }));
+    await expect(fetchUploadPolicy(cfg(), new AbortController().signal)).rejects.toMatchObject({
+      code: "UPLOAD_POLICY_FAILED",
+    });
+  });
+
+  it("rejects a credentialed HTTPS upload host without echoing it", async () => {
+    mockPolicy(policyJson({ upload_host: "https://user:hunter2@upload.test/oss" }));
+    const err = await fetchUploadPolicy(cfg(), new AbortController().signal).catch(
+      (e: unknown) => e,
+    );
+    expect(err).toMatchObject({ code: "UPLOAD_POLICY_FAILED" });
+    expect(String(err)).not.toContain("hunter2");
+  });
+
+  it("maps a network failure to UPLOAD_POLICY_FAILED", async () => {
+    server.use(http.get(POLICY_URL, () => HttpResponse.error()));
+    await expect(fetchUploadPolicy(cfg(), new AbortController().signal)).rejects.toMatchObject({
+      code: "UPLOAD_POLICY_FAILED",
+    });
+  });
+});
+
+describe("encodeMultipart safety", () => {
+  it("rejects CR or LF in multipart field values", () => {
+    expect(() =>
+      encodeMultipart({
+        boundary: "abc",
+        fields: [["key", "tmp/user/\r\nx.mp4"]],
+        fileSize: 1,
+      }),
+    ).toThrow(VideoError);
+  });
+});
+
+describe("postMultipartStream", () => {
+  it("returns the HTTP status from a local receiver", async () => {
+    const encoded = encodeMultipart({
+      boundary: "abc",
+      fields: [["key", "tmp/user/x.mp4"]],
+      fileSize: 3,
+    });
+    const video = await localVideo(Buffer.from("abc"));
+    try {
+      await withLocalReceiver(
+        async (req, res) => {
+          await consumeRequest(req);
+          res.statusCode = 204;
+          res.end();
+        },
+        async (url) => {
+          const body = fileMultipartStream(video, encoded.preamble, encoded.epilogue);
+          const posted = await postMultipartStream(
+            url,
+            {
+              "Content-Type": "multipart/form-data; boundary=abc",
+              "Content-Length": String(encoded.contentLength),
+            },
+            body,
+            new AbortController().signal,
+          );
+          expect(posted.status).toBe(204);
+        },
+      );
+    } finally {
+      await video.handle.close();
+    }
+  });
+
+  it("fails when the caller aborts before the request starts", async () => {
+    const encoded = encodeMultipart({
+      boundary: "abc",
+      fields: [["key", "tmp/user/x.mp4"]],
+      fileSize: 3,
+    });
+    const video = await localVideo(Buffer.from("abc"));
+    const ac = new AbortController();
+    ac.abort();
+    try {
+      const body = fileMultipartStream(video, encoded.preamble, encoded.epilogue);
+      await expect(
+        postMultipartStream(
+          "http://127.0.0.1:1/",
+          {
+            "Content-Type": "multipart/form-data; boundary=abc",
+            "Content-Length": String(encoded.contentLength),
+          },
+          body,
+          ac.signal,
+        ),
+      ).rejects.toThrow(/upload request failed/);
+    } finally {
+      await video.handle.close();
+    }
+  });
+
+  it("fails when the receiver disconnects early", async () => {
+    const encoded = encodeMultipart({
+      boundary: "abc",
+      fields: [["key", "tmp/user/x.mp4"]],
+      fileSize: 3,
+    });
+    const video = await localVideo(Buffer.from("abc"));
+    try {
+      await withLocalReceiver(
+        (req, res) => {
+          req.destroy();
+          res.destroy();
+        },
+        async (url) => {
+          const body = fileMultipartStream(video, encoded.preamble, encoded.epilogue);
+          await expect(
+            postMultipartStream(
+              url,
+              {
+                "Content-Type": "multipart/form-data; boundary=abc",
+                "Content-Length": String(encoded.contentLength),
+              },
+              body,
+              new AbortController().signal,
+            ),
+          ).rejects.toThrow(/upload request failed/);
+        },
+      );
+    } finally {
+      await video.handle.close();
+    }
+  });
 });
 
 async function consumeRequest(req: IncomingMessage): Promise<number> {
@@ -323,7 +542,7 @@ async function consumeRequest(req: IncomingMessage): Promise<number> {
 }
 
 async function withLocalReceiver(
-  onRequest: (req: IncomingMessage, res: ServerResponse) => Promise<void>,
+  onRequest: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>,
   send: (url: string) => Promise<void>,
 ): Promise<void> {
   const httpServer = createServer((req, res) => {

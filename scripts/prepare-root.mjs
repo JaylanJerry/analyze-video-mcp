@@ -5,9 +5,9 @@ if (!existsSync("qwen-omni-mcp/package.json")) {
   process.exit(0);
 }
 
-const result = spawnSync("npm", ["--prefix", "qwen-omni-mcp", "install"], {
+const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
+const result = spawnSync(npmCmd, ["--prefix", "qwen-omni-mcp", "ci"], {
   stdio: "inherit",
-  shell: true,
   env: { ...process.env, HUSKY: "0" },
 });
 process.exit(result.status ?? 1);

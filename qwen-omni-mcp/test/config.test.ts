@@ -9,7 +9,6 @@ import {
   DEFAULT_BASE_URL,
   DEFAULT_MAX_LOCAL_VIDEO_MB,
   DEFAULT_MODEL,
-  DEFAULT_OMNI_MODEL,
   DEFAULT_UPLOAD_TIMEOUT_SECONDS,
   DEFAULT_UPLOAD_URL,
   loadConfig,
@@ -38,7 +37,6 @@ function expectNoEnvValues(message: string, ...values: string[]): void {
 describe("loadConfig", () => {
   it("defaults the model to qwen3.5-omni-flash when only the API key is set", () => {
     delete process.env.QWEN_MODEL;
-    delete process.env.QWEN_OMNI_MODEL;
     delete process.env.DASHSCOPE_BASE_URL;
     delete process.env.DASHSCOPE_UPLOAD_URL;
     delete process.env.QWEN_ALLOWED_ROOTS;
@@ -52,7 +50,6 @@ describe("loadConfig", () => {
     expect(cfg.apiKey).toBe("sk-test");
     expect(cfg.model).toBe("qwen3.5-omni-flash");
     expect(cfg.model).toBe(DEFAULT_MODEL);
-    expect(cfg.omniModel).toBe(DEFAULT_OMNI_MODEL);
     expect(cfg.baseUrl).toBe(DEFAULT_BASE_URL);
     expect(cfg.uploadUrl).toBe(DEFAULT_UPLOAD_URL);
     expect(cfg.allowedRoots).toEqual([]);
@@ -69,7 +66,6 @@ describe("loadConfig", () => {
     const root = await makeTempDir();
     process.env.DASHSCOPE_API_KEY = "k";
     process.env.QWEN_MODEL = "qwen-vl-max-latest";
-    process.env.QWEN_OMNI_MODEL = "qwen3-omni-flash";
     process.env.DASHSCOPE_BASE_URL = "https://example.test/v1/";
     process.env.DASHSCOPE_UPLOAD_URL = "https://example.test/api/v1/uploads/";
     process.env.QWEN_ALLOWED_ROOTS = root;
@@ -81,7 +77,6 @@ describe("loadConfig", () => {
     expect(loadConfig()).toEqual({
       apiKey: "k",
       model: "qwen-vl-max-latest",
-      omniModel: "qwen3-omni-flash",
       baseUrl: "https://example.test/v1",
       uploadUrl: "https://example.test/api/v1/uploads",
       allowedRoots: [root],

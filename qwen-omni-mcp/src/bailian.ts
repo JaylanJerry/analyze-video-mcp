@@ -2,17 +2,12 @@ import type { AppConfig } from "./config.js";
 import { VideoError } from "./errors.js";
 import { SseParser } from "./sse.js";
 
-export type MediaKind = "video" | "image" | "audio";
-
 export interface AnalyzeParams {
-  kind: MediaKind;
   url: string;
   prompt: string;
   maxTokens: number;
   /** Per-call model override. Falls back to `cfg.model` when omitted. */
   model?: string;
-  /** Audio format for `kind: "audio"` (e.g. "mp3", "wav"). Required for audio. */
-  audioFormat?: string;
   /** Output modalities. Omni calls send `["text"]` to force text-only output. */
   modalities?: string[];
   /**
@@ -51,39 +46,18 @@ interface ChatResponse {
   error?: { message?: string; code?: string };
 }
 
-export function contentBlock(kind: MediaKind, url: string): Record<string, unknown> {
-  if (kind === "video") {
-    return { type: "video_url", video_url: { url } };
-  }
-  if (kind === "image") {
-    return { type: "image_url", image_url: { url } };
-  }
-  // audio uses input_audio with {data, format}; handled in buildPayload via audioBlock.
-  return audioBlock(url, "");
-}
-
-/**
- * Audio content block for the OpenAI-compatible `input_audio` type. DashScope
- * requires `data` to be a URL or a `data:;base64,<b64>` data URL (NOT raw
- * base64 — raw base64 is rejected as "URL does not appear to be valid"),
- * plus a `format` field carrying the actual codec. Verified live for mp3/wav.
- */
-export function audioBlock(data: string, format: string): Record<string, unknown> {
-  return { type: "input_audio", input_audio: { data, format } };
+export function contentBlock(url: string): Record<string, unknown> {
+  return { type: "video_url", video_url: { url } };
 }
 
 export function buildPayload(cfg: AppConfig, params: AnalyzeParams): Record<string, unknown> {
-  const mediaBlock =
-    params.kind === "audio"
-      ? audioBlock(params.url, params.audioFormat ?? "")
-      : contentBlock(params.kind, params.url);
   const payload: Record<string, unknown> = {
     model: params.model ?? cfg.model,
     max_tokens: params.maxTokens,
     messages: [
       {
         role: "user",
-        content: [{ type: "text", text: params.prompt }, mediaBlock],
+        content: [{ type: "text", text: params.prompt }, contentBlock(params.url)],
       },
     ],
   };

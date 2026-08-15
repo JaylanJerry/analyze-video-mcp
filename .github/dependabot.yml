@@ -1,0 +1,20 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: npm
+    directory: /qwen-omni-mcp
+    schedule:
+      interval: weekly
+    groups:
+      eslint:
+        patterns:
+          - "eslint*"
+          - "@eslint/*"
+          - "typescript-eslint"
+      vitest:
+        patterns:
+          - "vitest"
+          - "@vitest/*"

@@ -5,8 +5,6 @@ import "dotenv/config";
 export interface AppConfig {
   apiKey: string;
   model: string;
-  /** Leftover until T06 removes the extra media tools. */
-  omniModel: string;
   baseUrl: string;
   uploadUrl: string;
   allowedRoots: string[];
@@ -17,7 +15,6 @@ export interface AppConfig {
 }
 
 export const DEFAULT_MODEL = "qwen3.5-omni-flash";
-export const DEFAULT_OMNI_MODEL = "qwen3.5-omni-plus";
 export const DEFAULT_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1";
 export const DEFAULT_UPLOAD_URL = "https://dashscope.aliyuncs.com/api/v1/uploads";
 export const DEFAULT_MAX_LOCAL_VIDEO_MB = 1024;
@@ -117,7 +114,6 @@ export function loadConfig(): AppConfig {
   return {
     apiKey: required("DASHSCOPE_API_KEY"),
     model: process.env.QWEN_MODEL?.trim() || DEFAULT_MODEL,
-    omniModel: process.env.QWEN_OMNI_MODEL?.trim() || DEFAULT_OMNI_MODEL,
     baseUrl: httpsUrl("DASHSCOPE_BASE_URL", DEFAULT_BASE_URL),
     uploadUrl: httpsUrl("DASHSCOPE_UPLOAD_URL", DEFAULT_UPLOAD_URL),
     allowedRoots: parseAllowedRoots(),

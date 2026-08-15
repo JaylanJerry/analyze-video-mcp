@@ -33,7 +33,7 @@ CI runs the same on Node 20 and 22. Local green ≠ CI green if you skip a step.
 
 - **TypeScript strict.** No `any` in `src/` (allowed sparingly in `test/` for fixture typing). No `@ts-ignore`. No non-null assertions in `src/`.
 - Prefer narrow types and `unknown` over `any` when parsing external JSON (see `src/bailian.ts`).
-- The DashScope payload builder (`buildPayload`) is intentionally injectable — if the `video_url`/`image_url`/`input_audio` content block shape changes, change it in one place (`contentBlock` / `audioBlock` in `src/bailian.ts`).
+- The DashScope payload builder (`buildPayload`) is intentionally injectable — if the `video_url` content block shape changes, change it in one place (`contentBlock` in `src/bailian.ts`).
 - Do not add a new runtime, language, or heavy dependency without explicit maintainer approval.
 - Match existing style; let `prettier` and `eslint --fix` handle formatting.
 
@@ -64,11 +64,9 @@ Agent-facing errors must stay redacted. There are tests asserting no key, path, 
 
 ## Fragile assumptions (verify before relying on)
 
-1. The OpenAI-compatible endpoint accepts a `video_url` content block for `qwen3.8-max` (verified live; previously verified for `qwen3.7-plus`). If a live call rejects it, the fallback is the native DashScope `video` content type or switching to `qwen-vl-max-latest`. Change `contentBlock()` in `src/bailian.ts`.
-2. The exact model id strings `qwen3.8-max` and `qwen3.5-omni-plus`. Verify against the Bailian model list if a call returns a model-not-found error.
-3. Local files up to the 25MB guardrail in `src/media.ts` can be sent as base64 data URLs — verified live (14MB video / ~18MB body, HTTP 200 on `qwen3.7-plus`; base64 image + video path re-verified on `qwen3.8-max`; 8.8MB video / ~11.7MB base64 body, HTTP 200 on `qwen3.5-omni-plus`). Larger files must be hosted at a public URL. Local input is validated by extension + magic-byte signature before encoding (see `toDataUrl` / `toAudioData`).
-4. **Qwen-Omni `stream=True` is NOT mandatory.** The official doc claims all Qwen-Omni requests must set `stream=True`, but live testing shows non-streaming calls succeed (text/audio/video, HTTP 200 + JSON). The omni tools therefore reuse the same non-streaming `analyze` path as `qwen3.8-max`. If a future endpoint revision starts rejecting non-stream omni calls, add a streaming variant in `src/bailian.ts` and route omni tools through it.
-5. **`input_audio.data` must be `data:;base64,<b64>` + `format`, not raw base64.** Raw base64 is rejected with `"The provided URL does not appear to be valid"`. Verified live for mp3/wav. If other formats (flac/ogg/m4a/aac) are rejected, change `toAudioData()` in `src/media.ts` (e.g. to a full `data:audio/<fmt>;base64,` data URL) — single point of change, no tool-schema impact.
-6. The default `dashscope.aliyuncs.com/compatible-mode/v1` endpoint serves `qwen3.5-omni-plus` (verified live). No workspace-specific MaaS URL is needed. If a future key/region rejects omni, add an optional `QWEN_OMNI_BASE_URL` env and route omni calls through it.
-7. **`thinking_budget` works on `qwen3.8-max` and `qwen3.5-omni-plus` (live-verified) although the official applicability list only names Qwen3.7 and earlier.** Verified semantics: upper bound on reasoning tokens (`thinking_budget: 10` → exactly 10 reasoning tokens), thinking tokens are billed but do NOT count against `max_tokens` (answer budget). It is optional and omitted unless the caller passes it. If a future endpoint revision rejects it, drop the passthrough in `buildPayload()` — tool schemas keep accepting the field, it just becomes a no-op until fixed.
-8. MCP server `instructions` (returned in `initialize`) are surfaced to the model by Claude Code (loaded at session start, truncated at 2KB) and pi (leading ~150 chars in the mcp tool description). Some hosts (e.g. Claude.ai web) ignore them — tool descriptions carry the same guidance as a fallback. Keep both layers in sync when the guidance changes.
+1. The OpenAI-compatible endpoint accepts a `video_url` content block for `qwen3.5-omni-flash` (verified live). If a live call rejects it, the fallback is the native DashScope `video` content type. Change `contentBlock()` in `src/bailian.ts`.
+2. The exact model id string is `qwen3.5-omni-flash`. Verify against the Bailian model list if a call returns a model-not-found error.
+3. Local MP4s are streamed to Beijing temporary upload (48h). Do not Base64 whole videos. Authorization is extension + ftyp magic + size + optional allowed-root containment (`resolveVideo` in `src/media.ts`).
+4. Production `analyzeVideo` always sends `stream: true`, `modalities: ["text"]`, and `stream_options.include_usage`. The leftover non-stream `analyze()` helper is test-only.
+5. The default `dashscope.aliyuncs.com/compatible-mode/v1` endpoint serves `qwen3.5-omni-flash` (verified live). No workspace-specific MaaS URL is needed.
+6. MCP server `instructions` (returned in `initialize`) are surfaced to the model by Claude Code (loaded at session start, truncated at 2KB) and pi (leading ~150 chars in the mcp tool description). Some hosts (e.g. Claude.ai web) ignore them — tool descriptions carry the same guidance as a fallback. Keep both layers in sync when the guidance changes.

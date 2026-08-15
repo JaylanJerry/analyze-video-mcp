@@ -24,6 +24,7 @@ const TOOL_DESCRIPTION = `当你需要理解视频而当前模型不能直接观
 export const PROGRESS_UPLOAD_START = "正在上传视频";
 export const PROGRESS_UPLOAD_DONE = "上传完成";
 export const PROGRESS_ANALYZE_START = "正在分析视频";
+export const PROGRESS_ANALYZE_DONE = "分析完成";
 
 interface ProgressSink {
   _meta?: { progressToken?: string | number | undefined };
@@ -113,7 +114,7 @@ export function createServer(cfg: AppConfig = loadConfig(), deps: ServerDeps = {
 
   const server = new McpServer(
     {
-      name: "qwen-omni-mcp",
+      name: "analyze-video-mcp",
       version: PACKAGE_VERSION,
     },
     { instructions: SERVER_INSTRUCTIONS },
@@ -155,21 +156,23 @@ export function createServer(cfg: AppConfig = loadConfig(), deps: ServerDeps = {
             resolved.kind === "https"
               ? { url: resolved.url, requiresOssResolve: false }
               : await (async () => {
-                  await notifyProgress(extra, 1, 3, PROGRESS_UPLOAD_START);
+                  await notifyProgress(extra, 0, 3, PROGRESS_UPLOAD_START);
                   const uploaded = await uploader.upload(resolved, controller.signal);
-                  await notifyProgress(extra, 2, 3, PROGRESS_UPLOAD_DONE);
+                  await notifyProgress(extra, 1, 3, PROGRESS_UPLOAD_DONE);
                   return uploaded;
                 })();
+          const analyzeTotal = resolved.kind === "https" ? 2 : 3;
           await notifyProgress(
             extra,
-            resolved.kind === "https" ? 1 : 3,
-            resolved.kind === "https" ? 1 : 3,
+            resolved.kind === "https" ? 1 : 2,
+            analyzeTotal,
             PROGRESS_ANALYZE_START,
           );
           const result = await analyzer.analyze(input, { question }, controller.signal);
           if (result.answer.trim().length === 0) {
             throw new VideoError({ code: "PROVIDER_RESPONSE_INVALID", stage: "analyzing" });
           }
+          await notifyProgress(extra, analyzeTotal, analyzeTotal, PROGRESS_ANALYZE_DONE);
           process.stderr.write(
             `analyze_video ok request_id=${result.requestId ?? ""} events=${String(result.receivedEvents)}\n`,
           );
