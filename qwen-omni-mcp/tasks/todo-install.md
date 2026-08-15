@@ -17,3 +17,10 @@
 - [x] git 根 `bin` + prepare 能产出 `dist`。
 - [x] 三份 Host 模板改为 `npx`，Key 必需，目录可选。
 - [x] README 主安装路径是 `npx`，不是本机 `dist`。
+
+## I04：安装冒烟与门禁
+
+- [x] `npm run test:install` 验证 initialize / listTools。
+- [x] 根目录 CI 拆开，格式失败不挡住测试。
+- [x] 根目录 Gitleaks。
+- [x] README 写明建议填写 `QWEN_ALLOWED_ROOTS`。

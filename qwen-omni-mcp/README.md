@@ -23,7 +23,7 @@ analyze_video(video, question?)
 
 - Node.js 20 或 22。本机开发可用 Node 24。
 - 环境变量 `DASHSCOPE_API_KEY`（自己填写，不要写入仓库）。
-- `QWEN_ALLOWED_ROOTS` 可选。不填则分析这次传入的本地绝对 MP4；填写后只允许这些目录。
+- `QWEN_ALLOWED_ROOTS` 可选。建议填写视频目录。留空时不扫盘，但会读取调用方传入的任意合法本地绝对 MP4。
 
 ## 安装
 

@@ -8,36 +8,12 @@ on:
 permissions:
   contents: read
 
-defaults:
-  run:
-    working-directory: qwen-omni-mcp
-
 jobs:
-  quality:
+  typecheck:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        node: [20, 22]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ matrix.node }}
-          cache: npm
-          cache-dependency-path: qwen-omni-mcp/package-lock.json
-      - name: Install (skip husky in CI)
-        run: npm ci
-        env:
-          HUSKY: "0"
-      - run: npm run typecheck
-      - run: npm run lint
-      - run: npm run format:check
-      - run: npm test
-      - run: npm run build
-
-  windows:
-    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: qwen-omni-mcp
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -45,12 +21,102 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: qwen-omni-mcp/package-lock.json
-      - name: Install (skip husky in CI)
-        run: npm ci
+      - run: npm ci
         env:
           HUSKY: "0"
       - run: npm run typecheck
+
+  lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: qwen-omni-mcp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: qwen-omni-mcp/package-lock.json
+      - run: npm ci
+        env:
+          HUSKY: "0"
       - run: npm run lint
-      - name: Unit and mock tests including Windows paths
-        run: npm test
+
+  format:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: qwen-omni-mcp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: qwen-omni-mcp/package-lock.json
+      - run: npm ci
+        env:
+          HUSKY: "0"
+      - run: npm run format:check
+
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: [20, 22]
+        exclude:
+          - os: windows-latest
+            node: 20
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: qwen-omni-mcp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: qwen-omni-mcp/package-lock.json
+      - run: npm ci
+        env:
+          HUSKY: "0"
+      - run: npm test
+
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: qwen-omni-mcp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: qwen-omni-mcp/package-lock.json
+      - run: npm ci
+        env:
+          HUSKY: "0"
       - run: npm run build
+
+  install-e2e:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: qwen-omni-mcp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: qwen-omni-mcp/package-lock.json
+      - name: Install like the root npx prepare
+        run: npm ci
+        env:
+          HUSKY: "0"
+      - run: npm run build
+      - run: npm run test:install

@@ -34,6 +34,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:live": "LIVE=1 vitest run test/live.test.ts",
+    "test:install": "tsx scripts/install-e2e.ts",
     "coverage": "vitest run --coverage",
     "prepare": "node scripts/prepare.mjs"
   },

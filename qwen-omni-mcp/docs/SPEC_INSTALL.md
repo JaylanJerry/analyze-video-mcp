@@ -73,7 +73,8 @@ Host 配置只要求：
 
 ## 6. 完成标准
 
-- 模板用 `npx`，普通人只填 Key 就能分析本地绝对 MP4。
+- 模板用 `npx`，普通人只填 Key 就能分析本地绝对 MP4。建议填写 `QWEN_ALLOWED_ROOTS`。
+- `npm run test:install` 能完成 initialize 与 `listTools`，且只有 `analyze_video`。
 - 设置了 `QWEN_ALLOWED_ROOTS` 时，根外路径仍拒绝。
 - Tool 描述要求转发或整理 `question`。
 - 质量门保持现有门槛。
