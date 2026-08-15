@@ -16,7 +16,7 @@ v1 已本机收尾。V2 已实施。安装：`npx` + Key；目录可选；Agent 
 
 ## 下一阶段
 
-安装规格已落地。用 `npx -y github:JaylanJerry/analyze-video-mcp`。未另说不要发 npm。
+安装规格已落地。默认用 `npx -y github:JaylanJerry/analyze-video-mcp#v0.4.0`。跟最新提交用 `#main`。未另说不要发 npm。
 
 绑定文档：
 

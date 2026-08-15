@@ -11,7 +11,7 @@ ADR 0004 规定未配置允许根时拒绝全部本地路径。这对「拖进�
 
 ## Decision
 
-1. 产品安装改为 `npx -y github:<账号>/<仓库>`。git 根提供 `bin`，实现仍在 `qwen-omni-mcp/`。不发 npm。
+1. 产品安装改为 `npx -y github:<账号>/<仓库>#<标签>`。默认钉发布标签，例如 `#v0.4.0`。`#main` 是明确的跟最新提交用法。git 根提供 `bin`，实现仍在 `qwen-omni-mcp/`。不发 npm。
 2. `QWEN_ALLOWED_ROOTS` 改为可选。未设置时，允许本次传入的本地绝对 MP4；仍校验绝对路径、扩展名、magic、大小。设置后，0004 的 containment 规则保持不变。
 3. Tool 描述要求：具体评审原样写入 `question`；空话先整理成画面与声音问题再调用。
 4. 本 ADR 取代 ADR 0004 / 0009 中「未配置允许根则拒绝全部本地路径」和「标准安装必须填写允许目录」的部分。MP4 only、realpath containment（当根已设置）、脱敏、流式上传仍然有效。

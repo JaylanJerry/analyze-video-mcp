@@ -8,6 +8,8 @@
 
 需要 Node.js 20 或更新版本，以及阿里云百炼 `DASHSCOPE_API_KEY`。不要把 Key 写进仓库。
 
+默认安装钉在发布标签 `v0.4.0`。要跟 `main` 的最新提交，把参数改成 `github:JaylanJerry/analyze-video-mcp#main`。
+
 Cursor / Claude Code 用户配置示例：
 
 ```json
@@ -15,7 +17,7 @@ Cursor / Claude Code 用户配置示例：
   "mcpServers": {
     "analyze-video": {
       "command": "npx",
-      "args": ["-y", "github:JaylanJerry/analyze-video-mcp"],
+      "args": ["-y", "github:JaylanJerry/analyze-video-mcp#v0.4.0"],
       "env": {
         "DASHSCOPE_API_KEY": "paste-your-key-here"
       }
@@ -39,10 +41,10 @@ Codex 见 [`qwen-omni-mcp/examples/mcp.codex.toml`](qwen-omni-mcp/examples/mcp.c
 analyze_video(video, question?)
 ```
 
-| 字段 | 必需 | 说明 |
-| --- | --- | --- |
-| `video` | 是 | 本地绝对 MP4 路径，或公开 HTTPS URL |
-| `question` | 否 | 默认问画面和声音里发生了什么 |
+| 字段       | 必需 | 说明                                |
+| ---------- | ---- | ----------------------------------- |
+| `video`    | 是   | 本地绝对 MP4 路径，或公开 HTTPS URL |
+| `question` | 否   | 默认问画面和声音里发生了什么        |
 
 用户说得具体时，Agent 应把原话写入 `question`。只说「分析一下」时，先整理成具体的画面与声音问题再调用。
 

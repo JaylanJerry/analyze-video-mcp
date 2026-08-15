@@ -27,14 +27,14 @@ analyze_video(video, question?)
 
 ## 安装
 
-在 Host 里只填 Key：
+在 Host 里只填 Key。默认钉 `v0.4.0`；要跟最新提交，把参数改成 `#main`。
 
 ```json
 {
   "mcpServers": {
     "analyze-video": {
       "command": "npx",
-      "args": ["-y", "github:JaylanJerry/analyze-video-mcp"],
+      "args": ["-y", "github:JaylanJerry/analyze-video-mcp#v0.4.0"],
       "env": {
         "DASHSCOPE_API_KEY": "paste-your-key-here"
       }
