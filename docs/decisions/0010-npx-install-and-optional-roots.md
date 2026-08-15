@@ -27,7 +27,7 @@ ADR 0004 规定未配置允许根时拒绝全部本地路径。这对「拖进�
 - 普通人 Host 配置可以只含 Key。
 - Agent 若改传另一条它知道的本地 MP4 路径，未设允许根时服务器会读。这是单人本机可接受的残余，不是扫盘。
 - 想收紧的人仍可填写 `QWEN_ALLOWED_ROOTS`。
-- `npx` 首次会在缓存里安装并 build，需要 Node 与网络。自 ADR 0012 起工程目标为 Node 22+；`#v0.4.0` 标签仍按其当时的 Node 20+ 声明。
+- `npx` 首次会在缓存里安装并 build，需要 Node 与网络。自 ADR 0012 起默认安装 `#v0.5.0` 与 `#main` 需要 Node 22+；`#v0.4.0` 标签仍按其当时的 Node 20+ 声明。
 - 根 package 必须自己声明 SDK 与 zod。生产不再声明或加载 dotenv；本地 `.env` 仅由 `npm run dev` 在文件存在时通过 Node `--env-file` 注入。
 - `files` 必须显式包含 `dist`。根目录要有 `.npmignore`，否则 `npm pack` 会沿用 `.gitignore` 的 `dist/`，把已构建的 JS 全部滤掉。
 - `prepare` 只在 git 源码树里构建；安装已经打好的 tarball 时必须是空操作。布局后续见 ADR 0011。

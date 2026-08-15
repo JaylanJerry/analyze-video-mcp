@@ -49,8 +49,8 @@ v1 / V2 / npx 安装已经本机收尾，公开标签仍是 `v0.4.0`。main 相�
 
 ## Consequences
 
-- 仍在 Node 20 上跑 MCP、并且跟 `#main` 的人必须升级 Node。跟 `#v0.4.0` 的人不受本次 engines 变更影响。文档必须分轨道写清。
-- initialize 在 GitHub Release 存在之前就会报 `0.5.0`；npx 默认钉仍是 `#v0.4.0`，直到 post-release 文档任务。这是接受的暂时不一致。
+- 仍在 Node 20 上跑 MCP、并且跟 `#main` 或 `#v0.5.0` 的人必须升级 Node。跟 `#v0.4.0` 的人不受本次 engines 变更影响。
+- GitHub Release `v0.5.0` 存在后，main 的 npx 默认钉改为 `#v0.5.0`。`v0.5.0` 标签仍指向安装钉为 `#v0.4.0` 的那个 commit，不移动。
 - `node dist/index.js` 与 `npm start` 不再读 `.env`；本机开发用可选的 `npm run dev`。缺 `.env` 不得阻止进程启动。
 - 部分 fMP4 / 坏 `mvhd` 的超长文件会漏到 Provider。写入 [`SECURITY.md`](../SECURITY.md)。
 - 管理员必须先开 immutable releases 和 `required-ci` ruleset，否则 `v0.5.0` 仍可能被移动标签，或 required checks 随 matrix 名漂移。

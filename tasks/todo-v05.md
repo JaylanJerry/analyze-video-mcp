@@ -6,9 +6,9 @@
 
 ## 人操作（可与代码并行；打 tag 前必须完成）
 
-- [ ] GitHub Settings → 开启 immutable releases。
-- [ ] Ruleset：保护 `main`（禁 force push / 删除，required check **仅** `required-ci`）；限制 `v*` 更新与删除。
-- [ ] 编辑 `v0.4.0` Release 说明，去掉「不可变」，改为「已发布标签，不要移动」。
+- [x] GitHub Settings → 开启 immutable releases。
+- [x] Ruleset：保护 `main`（禁 force push / 删除，required check **仅** `required-ci`）；限制 `v*` 更新与删除。
+- [x] 编辑 `v0.4.0` Release 说明，去掉「不可变」，改为「已发布标签，不要移动」。
 
 ## V01：停止支持 Node 20
 
@@ -290,13 +290,13 @@
 - [x] 仅 `v*` tag 触发。
 - [x] 版本不一致则失败。
 - [x] workflow 不修改工作树、不 push。
-- [ ] 打 tag 前对 **exact SHA** 记录：`required-ci`、production audit、跨平台 install E2E、同一 SHA 的 Live Smoke、immutable、ruleset。缺一项不得打 tag。
+- [x] 打 tag 前对 **exact SHA** 记录：`required-ci`、production audit、跨平台 install E2E、同一 SHA 的 Live Smoke、immutable、ruleset。缺一项不得打 tag。
 - [x] 本项 **不** 改 README / examples 安装钉。
 
 **Verification:**
 
 - [x] 读 `.github/workflows/release.yml`
-- [ ] 打 tag 前的 SHA 核对表已填
+- [x] 打 tag 前的 SHA 核对表已填
 
 **Dependencies:** V02、V12、人操作完成；用户明确授权打 tag
 
@@ -310,14 +310,14 @@
 
 **Acceptance criteria:**
 
-- [ ] `v0.5.0` Release 存在；tag 未移动。
-- [ ] README / examples 钉 `#v0.5.0`。
-- [ ] 用户面向文案不再把 Node 20+ 写成当前默认安装前提。
+- [x] `v0.5.0` Release 存在；tag 未移动。
+- [x] README / examples 钉 `#v0.5.0`。
+- [x] 用户面向文案不再把 Node 20+ 写成当前默认安装前提。
 
 **Verification:**
 
-- [ ] 读 README 与 `examples/`
-- [ ] `gh release view v0.5.0` 显示已发布
+- [x] 读 README 与 `examples/`
+- [x] `gh release view v0.5.0` 显示已发布
 
 **Dependencies:** V13 完成（Release 已存在）
 
@@ -327,6 +327,6 @@
 
 ## Checkpoint: Complete
 
-- [ ] SPEC_V05 完成标准满足。
-- [ ] ADR 0012 Accepted（Date 填批准日）。
-- [ ] 未另说则不 push、不发 npm。
+- [x] SPEC_V05 完成标准满足。
+- [x] ADR 0012 Accepted（Date 填批准日）。
+- [x] 未发 npm；用户授权后已 push 并打 `v0.5.0`。

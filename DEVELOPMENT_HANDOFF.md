@@ -6,7 +6,7 @@
 
 工作区 git 根：本目录（见 ADR 0006、ADR 0011）。
 
-本地分支：`feat/video-mcp-v1`。
+本地分支：以当前工作分支为准。
 
 ## 当前产品
 
@@ -16,9 +16,7 @@ v1 已本机收尾。V2 已实施。安装：`npx` + Key；目录可选；Agent 
 
 ## 下一阶段
 
-安装规格已落地。默认用 `npx -y github:JaylanJerry/analyze-video-mcp#v0.4.0`。跟最新提交用 `#main`。未另说不要发 npm。
-
-v0.5.0 工程收口已批准：[`docs/SPEC_V05.md`](docs/SPEC_V05.md)。一次只做 `tasks/todo-v05.md` 里的下一项。
+v0.5.0 已发布。默认安装 `npx -y github:JaylanJerry/analyze-video-mcp#v0.5.0`（Node 22+）。跟最新提交用 `#main`。未另说不要发 npm。没有下一项 `todo-v05` 任务。
 
 绑定文档：
 
@@ -45,7 +43,7 @@ v1 背景仍按原顺序：`AGENTS.md`、`docs/SPEC.md`、`docs/API_CONTRACT.md`
 ## 给下一模型的启动提示词
 
 ```text
-你在 analyze-video-mcp 仓库根工作。v1 / V2 / 安装已完成，未发 npm。
-v0.5.0 规格已批准。一次只做 tasks/todo-v05.md 中的一项；不要改 analyze_video
+你在 analyze-video-mcp 仓库根工作。v1 / V2 / 安装 / v0.5.0 已完成，未发 npm。
+默认安装钉 github:JaylanJerry/analyze-video-mcp#v0.5.0。不要改 analyze_video
 字段，不要加依赖，不要读密钥，不要主动推送或发布。
 ```
