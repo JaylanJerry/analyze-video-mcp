@@ -1,0 +1,118 @@
+# MCP Tool 契约
+
+本文件定义 Agent 可见的稳定接口。Provider、模型与上传实现可以替换，但不得修改此契约，除非新增 ADR 并经用户批准。
+
+## Tool 列表
+
+Server 只注册：
+
+```text
+analyze_video
+```
+
+不得注册上游的 `analyze_image`、`analyze_audio`、`analyze_audio_video` 或 `check_endpoint_status`。这是专项 fork 的有意破坏性收敛，见 ADR 0001。
+
+## 输入 schema
+
+```json
+{
+  "video": "C:\\Videos\\example.mp4",
+  "question": "画面里发生了什么？音频说了什么？",
+  "max_tokens": 1024
+}
+```
+
+| 字段 | 类型 | 必需 | 默认 | 约束 |
+| --- | --- | --- | --- | --- |
+| `video` | string | 是 | 无 | 本地绝对 MP4 路径或公开 HTTPS URL |
+| `question` | string | 否 | `请结合视频画面和声音，详细说明视频内容。` | trim 后 1–8000 字符 |
+| `max_tokens` | integer | 否 | 1024 | 1–8192 |
+
+Tool schema 不得出现：`model`、`provider`、`thinking_budget`、`stream`、`upload`、`audio`、`frames`、`oss_url`。
+
+## Tool 描述语义
+
+描述文本应让 Agent 明确：
+
+```text
+当你需要理解视频而当前模型不能直接观看时，调用此工具。
+它会联合分析视频画面和视频内嵌音频，并返回文本回答。
+不要先自行抽帧或抽音频；直接传入视频路径或 HTTPS URL。
+```
+
+Server-level instructions 与 Tool 描述保持同义，第一句优先表达“视频画面 + 音频”。
+
+## 成功结果
+
+MCP `CallToolResult`：
+
+```json
+{
+  "content": [{ "type": "text", "text": "模型回答" }],
+  "isError": false
+}
+```
+
+规则：
+
+- 文本必须是聚合后的完整模型回答。
+- 不加固定标题、JSON envelope、模型名、request id 或耗时。
+- 空白回答视为错误。
+- Tool 不流式向 Agent 暴露 provider chunk；内部 SSE 只用于满足 provider 协议并聚合结果。
+
+## 错误结果
+
+```json
+{
+  "content": [{ "type": "text", "text": "VIDEO_FILE_TOO_LARGE: 视频超过本地允许上限。" }],
+  "isError": true
+}
+```
+
+允许的 Agent 错误码：
+
+| 错误码 | 含义 | 是否建议 Agent 重试 |
+| --- | --- | --- |
+| `INVALID_VIDEO_INPUT` | schema 之外的输入问题 | 否 |
+| `VIDEO_PATH_NOT_ALLOWED` | 本地路径不在允许根目录 | 否 |
+| `VIDEO_NOT_FOUND` | 文件不存在或不可读 | 否 |
+| `UNSUPPORTED_VIDEO` | 非 MP4、magic 不符或不是普通文件 | 否 |
+| `VIDEO_FILE_TOO_LARGE` | 超过本地或动态 policy 上限 | 否 |
+| `UPLOAD_POLICY_FAILED` | 无法取得或解析上传凭证 | 可稍后重试 |
+| `VIDEO_UPLOAD_FAILED` | multipart 上传失败 | 可由用户决定重试 |
+| `VIDEO_ANALYSIS_BUSY` | 已有一个视频任务正在上传或分析 | 稍后重试 |
+| `PROVIDER_RATE_LIMITED` | 429 | 按提示稍后重试 |
+| `PROVIDER_TIMEOUT` | 推理超时 | 可重试 |
+| `PROVIDER_UNAVAILABLE` | 502/503 等暂时故障 | 可重试 |
+| `PROVIDER_RESPONSE_INVALID` | SSE/JSON 不符合契约或中途截断 | 可重试 |
+| `VIDEO_ANALYSIS_FAILED` | 其他已脱敏错误 | 视情况 |
+
+Agent 错误文本禁止包含：
+
+- API Key 或任何首尾片段；
+- policy、signature、临时 AccessKey；
+- `oss://` 全路径；
+- 上传 host 的 query；
+- 本地绝对路径；
+- provider 原始响应体。
+
+完整诊断只能写 stderr，且同样必须脱敏凭证和本地路径；允许记录错误码、HTTP 状态、阶段、request id、耗时和文件大小。
+
+## 兼容性规则
+
+- 后续更换模型或上传器时，Tool 名称、输入字段与成功输出不变。
+- 增加可选字段也视为公开 API 变更，需要 ADR 和兼容性测试。
+- 如果后续纯视频模型不能听音频，适配器不得默默声称听到了内容。它可以正常回答视觉问题；当问题明确依赖音频时，返回诚实的能力限制说明，但仍使用同一 Tool。
+- v1 不承诺兼容上游五 Tool schema；这是独立专项产品接口。
+
+## 契约测试
+
+必须断言：
+
+1. `listTools()` 恰好一个工具且名称正确。
+2. JSON schema 只有三个公开字段。
+3. 本地路径和 HTTPS URL 都能走到同一个 Tool handler。
+4. Tool 只返回一个 text content。
+5. provider 内部字段不会出现在成功或错误文本。
+6. 默认 prompt 明确要求画面和声音联合分析。
+7. 第二个并发调用稳定返回 `VIDEO_ANALYSIS_BUSY`，不会同时启动另一条大文件上传。

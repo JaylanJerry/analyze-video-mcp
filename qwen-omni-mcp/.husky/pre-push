@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+# Pre-push: type-check + full test suite (live tests auto-skip without LIVE=1).
+# NEVER bypass with --no-verify (see AGENTS.md).
+npm run typecheck || exit 1
+npm test || exit 1

@@ -1,0 +1,48 @@
+# === Secrets — NEVER commit ===
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+*.key
+**/*.key
+
+# === Live fixtures — stay outside the repo ===
+text/*
+!text/README.md
+*.mp4
+
+# === Node (implementation lives in qwen-omni-mcp/) ===
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+build/
+*.tsbuildinfo
+*.log
+npm-debug.log*
+.npm
+.pnpm-store/
+
+# === Test / coverage ===
+coverage/
+**/coverage/
+.nyc_output/
+.vitest-cache/
+
+# === IDE / editor / OS ===
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# === Cursor local ===
+.cursor/
+
+# === Upstream-only / local caches ===
+qwen-omni-mcp/ref/
+qwen-omni-mcp/.agents/handoff/
+qwen-omni-mcp/.npmrc

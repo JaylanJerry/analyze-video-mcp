@@ -1,0 +1,15 @@
+# Vendored / not part of this project's code
+ref/
+.agents/
+.claude/
+skills-lock.json
+
+# Build & deps
+dist/
+coverage/
+node_modules/
+package-lock.json
+*.lock
+
+# Git hooks (shell, not prettier's domain)
+.husky/

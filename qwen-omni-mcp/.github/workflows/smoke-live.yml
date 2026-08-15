@@ -1,0 +1,30 @@
+name: Live Smoke
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekly sanity check (Mon ~03:17 UTC, off the :00 mark).
+    - cron: "17 3 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    env:
+      DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+      LIVE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install (skip husky in CI)
+        run: npm ci
+        env:
+          HUSKY: "0"
+      - run: npm run build
+      - name: Run live image understanding (bundled fixture)
+        run: npm run test:live

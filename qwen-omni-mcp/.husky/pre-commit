@@ -1,0 +1,11 @@
+#!/usr/bin/env sh
+# Pre-commit: secret guard + lint/format staged files + gitleaks (if installed).
+# NEVER bypass with --no-verify (see AGENTS.md).
+node scripts/check-secrets.mjs || exit 1
+npx lint-staged || exit 1
+if command -v gitleaks >/dev/null 2>&1; then
+  gitleaks protect --staged --redact || exit 1
+else
+  echo "⚠ gitleaks not installed, skipping generic secret scan."
+  echo "  Install: https://github.com/gitleaks/gitleaks"
+fi
