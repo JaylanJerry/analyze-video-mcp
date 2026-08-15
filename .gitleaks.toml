@@ -1,4 +1,4 @@
-title = "qwen-omni-mcp"
+title = "analyze-video-mcp"
 
 # Keep all built-in gitleaks rules (generic-api-key, etc.) and only add a
 # narrow allowlist on top. Do not drop the default config.
@@ -6,10 +6,8 @@ extend = { useDefault = true }
 
 [allowlist]
 description = "Test-only dummy values endorsed by AGENTS.md. Real Bailian (DashScope) keys use the sk-ws-... prefix and are NEVER allowlisted here."
-# tools.test.ts line 11 — dummy fixture asserted by the redaction test at
-# line 183, so the literal value cannot change. Trips generic-api-key
-# (entropy 4.02) in every commit patch that touches the file, including the
-# original introduction commit where no inline gitleaks:allow comment existed.
+# qwen-omni-mcp/test/tools.test.ts — dummy fixture asserted by the redaction test,
+# so the literal value cannot change.
 regexes = [
   '''sk-secret-key-1234567890''',
 ]
