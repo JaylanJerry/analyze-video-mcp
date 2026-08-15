@@ -31,6 +31,7 @@ describe("VideoError", () => {
     expect(new VideoError({ code: "VIDEO_UPLOAD_FAILED", stage: "uploaded" }).retryable).toBe(
       false,
     );
+    expect(new VideoError({ code: "VIDEO_TOO_LONG", stage: "authorized" }).retryable).toBe(false);
     expect(new VideoError({ code: "PROVIDER_UNAUTHORIZED", stage: "analyzing" }).retryable).toBe(
       false,
     );

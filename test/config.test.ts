@@ -1,6 +1,9 @@
 import { mkdtemp, mkdir, realpath, rm, writeFile } from "node:fs/promises";
+import { existsSync, readFileSync } from "node:fs";
+import { execFileSync, spawn } from "node:child_process";
 import { tmpdir } from "node:os";
-import { delimiter, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   ABSOLUTE_MAX_LOCAL_VIDEO_MB,
@@ -16,6 +19,7 @@ import {
 
 const ORIG_ENV = { ...process.env };
 const tempDirs: string[] = [];
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 afterEach(async () => {
   process.env = { ...ORIG_ENV };
@@ -187,5 +191,76 @@ describe("loadConfig", () => {
     } catch (err) {
       expectNoEnvValues(err instanceof Error ? err.message : String(err), filePath);
     }
+  });
+});
+
+describe("dotenv is not a runtime dependency", () => {
+  it("is absent from package.json dependencies", () => {
+    const pkg = JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf8")) as {
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+    };
+    expect(pkg.dependencies).not.toHaveProperty("dotenv");
+    expect(pkg.devDependencies ?? {}).not.toHaveProperty("dotenv");
+    expect(existsSync(join(REPO_ROOT, ".env.example"))).toBe(true);
+  });
+
+  it("omits --env-file from npm run dev when .env is missing", async () => {
+    const dir = await makeTempDir();
+    const script = join(REPO_ROOT, "scripts", "dev.mjs");
+    const out = execFileSync(
+      process.execPath,
+      [
+        "--input-type=module",
+        "--eval",
+        `import { buildDevNodeArgs } from ${JSON.stringify(pathToFileURL(script).href)};
+process.stdout.write(JSON.stringify(buildDevNodeArgs(${JSON.stringify(dir)})));`,
+      ],
+      { encoding: "utf8" },
+    );
+    const args = JSON.parse(out) as string[];
+    expect(args.some((arg) => arg.startsWith("--env-file="))).toBe(false);
+  });
+
+  it("does not load a cwd .env when starting the production entry", async () => {
+    const dir = await makeTempDir();
+    await writeFile(join(dir, ".env"), "DASHSCOPE_API_KEY=sk-from-dotenv-file\n");
+    const env: NodeJS.ProcessEnv = { ...process.env };
+    delete env.DASHSCOPE_API_KEY;
+    const tsxCli = join(REPO_ROOT, "node_modules", "tsx", "dist", "cli.mjs");
+    const entry = join(REPO_ROOT, "src", "index.ts");
+    const child = spawn(process.execPath, [tsxCli, entry], {
+      cwd: dir,
+      env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const stdoutChunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
+    child.stdout.on("data", (chunk: Buffer) => {
+      stdoutChunks.push(chunk);
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderrChunks.push(chunk);
+    });
+    const code = await new Promise<number | null>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        child.kill();
+        reject(new Error("production entry did not exit"));
+      }, 15_000);
+      child.on("error", (err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+      child.on("exit", (exitCode) => {
+        clearTimeout(timer);
+        resolve(exitCode);
+      });
+    });
+    const stdout = Buffer.concat(stdoutChunks).toString("utf8");
+    const stderr = Buffer.concat(stderrChunks).toString("utf8");
+    expect(code).not.toBe(0);
+    expect(stdout).toBe("");
+    expect(stderr).toMatch(/VIDEO_ANALYSIS_FAILED/);
+    expect(stderr).not.toContain("sk-from-dotenv-file");
   });
 });

@@ -5,6 +5,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { loadConfig } from "../src/config.js";
 import { createServer } from "../src/server.js";
+import { PACKAGE_VERSION } from "../src/version.js";
 
 function textOf(result: unknown): string {
   const r = result as { content?: { text?: string }[]; isError?: boolean };
@@ -25,7 +26,7 @@ const cfg = loadConfig();
 const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
 const mcp = createServer(cfg);
 await mcp.connect(serverTransport);
-const client = new Client({ name: "live-boundary", version: "0.4.0" });
+const client = new Client({ name: "live-boundary", version: PACKAGE_VERSION });
 await client.connect(clientTransport);
 const scratch = await mkdtemp(join(tmpdir(), "qwen-live-boundary-"));
 
@@ -73,7 +74,7 @@ try {
     const [a, b] = InMemoryTransport.createLinkedPair();
     const tightServer = createServer(tightCfg);
     await tightServer.connect(b);
-    const tightClient = new Client({ name: "live-boundary-cap", version: "0.4.0" });
+    const tightClient = new Client({ name: "live-boundary-cap", version: PACKAGE_VERSION });
     await tightClient.connect(a);
     try {
       const oversize = await tightClient.callTool({

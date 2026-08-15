@@ -30,11 +30,11 @@ npm test            # vitest, unit + mocked e2e (live tests auto-skip without LI
 npm run build       # tsc -p tsconfig.build.json -> dist/
 ```
 
-CI runs the same on Node 20 and 22. Local green ≠ CI green if you skip a step.
+CI runs the same on Node 22 and 24. Local green ≠ CI green if you skip a step.
 
 ## Scope
 
-- v1 任务在 `tasks/todo.md`，已收尾。下一阶段一次只做 `tasks/todo-general.md` 中的一个任务，且须先批准 `docs/SPEC_GENERAL.md`。
+- v1 任务在 `tasks/todo.md`，已收尾。下一阶段一次只做 `tasks/todo-v05.md` 中的一个任务（规格 [`docs/SPEC_V05.md`](docs/SPEC_V05.md) 已批准）。
 - 不改变 `analyze_video` 的名称与字段。默认值与本地上限只有在通用规格批准后才能改。
 - 不增加生产依赖。不要主动推送或发布 npm，除非用户明确要求。
 - 私人 live fixture 留在 `text/`，不要复制进仓库。CI Live Smoke 用 `test/fixtures/live-av.mp4`。
@@ -45,7 +45,7 @@ CI runs the same on Node 20 and 22. Local green ≠ CI green if you skip a step.
 
 - **TypeScript strict.** No `any` in `src/` (allowed sparingly in `test/` for fixture typing). No `@ts-ignore`. No non-null assertions in `src/`.
 - Prefer narrow types and `unknown` over `any` when parsing external JSON (see `src/bailian.ts`).
-- The DashScope payload builder (`buildPayload`) is intentionally injectable — if the `video_url` content block shape changes, change it in one place (`contentBlock` in `src/bailian.ts`).
+- The DashScope video payload builder (`buildVideoPayload`) is intentionally injectable — if the `video_url` content block shape changes, change it in one place (`contentBlock` in `src/bailian.ts`).
 - Do not add a new runtime, language, or heavy dependency without explicit maintainer approval.
 - Match existing style; let `prettier` and `eslint --fix` handle formatting.
 
@@ -78,7 +78,7 @@ Agent-facing errors must stay redacted. There are tests asserting no key, path, 
 
 1. The OpenAI-compatible endpoint accepts a `video_url` content block for `qwen3.5-omni-flash` (verified live). If a live call rejects it, the fallback is the native DashScope `video` content type. Change `contentBlock()` in `src/bailian.ts`.
 2. The exact model id string is `qwen3.5-omni-flash`. Verify against the Bailian model list if a call returns a model-not-found error.
-3. Local MP4s are streamed to Beijing temporary upload (48h). Do not Base64 whole videos. Authorization is extension + ftyp magic + size + optional allowed-root containment (`resolveVideo` in `src/media.ts`).
-4. Production `analyzeVideo` always sends `stream: true`, `modalities: ["text"]`, and `stream_options.include_usage`. The leftover non-stream `analyze()` helper is test-only.
+3. Local MP4s are streamed to Beijing temporary upload (48h). Do not Base64 whole videos. Authorization is extension + ftyp magic + size + optional allowed-root containment + `mvhd` duration probe (`resolveVideo` in `src/media.ts`). Duration **greater than** 3600 seconds is `VIDEO_TOO_LONG`; exactly 3600 is allowed; unknown duration is allowed. HTTPS is not probed.
+4. Production `analyzeVideo` always sends `stream: true`, `modalities: ["text"]`, and `stream_options.include_usage`.
 5. The default `dashscope.aliyuncs.com/compatible-mode/v1` endpoint serves `qwen3.5-omni-flash` (verified live). No workspace-specific MaaS URL is needed.
 6. MCP server `instructions` (returned in `initialize`) are surfaced to the model by Claude Code (loaded at session start, truncated at 2KB) and pi (leading ~150 chars in the mcp tool description). Some hosts (e.g. Claude.ai web) ignore them — tool descriptions carry the same guidance as a fallback. Keep both layers in sync when the guidance changes.

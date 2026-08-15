@@ -18,13 +18,15 @@ v1 已本机收尾。V2 已实施。安装：`npx` + Key；目录可选；Agent 
 
 安装规格已落地。默认用 `npx -y github:JaylanJerry/analyze-video-mcp#v0.4.0`。跟最新提交用 `#main`。未另说不要发 npm。
 
+v0.5.0 工程收口已批准：[`docs/SPEC_V05.md`](docs/SPEC_V05.md)。一次只做 `tasks/todo-v05.md` 里的下一项。
+
 绑定文档：
 
-1. [`docs/SPEC_INSTALL.md`](docs/SPEC_INSTALL.md)
-2. [`docs/SPEC_V2.md`](docs/SPEC_V2.md)
-3. [`docs/decisions/0010-npx-install-and-optional-roots.md`](docs/decisions/0010-npx-install-and-optional-roots.md)
-4. [`docs/SPEC_GENERAL.md`](docs/SPEC_GENERAL.md)
-5. [`tasks/todo-install.md`](tasks/todo-install.md)
+1. [`docs/SPEC_V05.md`](docs/SPEC_V05.md)
+2. [`docs/decisions/0012-v050-runtime-and-hygiene.md`](docs/decisions/0012-v050-runtime-and-hygiene.md)
+3. [`tasks/todo-v05.md`](tasks/todo-v05.md)
+4. [`docs/SPEC_INSTALL.md`](docs/SPEC_INSTALL.md)
+5. [`docs/SPEC_V2.md`](docs/SPEC_V2.md)
 
 ## 硬规则
 
@@ -43,7 +45,7 @@ v1 背景仍按原顺序：`AGENTS.md`、`docs/SPEC.md`、`docs/API_CONTRACT.md`
 ## 给下一模型的启动提示词
 
 ```text
-你在 analyze-video-mcp 仓库根工作。v1 本机收尾、V2 G01–G06 已完成，未发布。
-一次只做 tasks/todo-general.md 中的一项；不要改 analyze_video
+你在 analyze-video-mcp 仓库根工作。v1 / V2 / 安装已完成，未发 npm。
+v0.5.0 规格已批准。一次只做 tasks/todo-v05.md 中的一项；不要改 analyze_video
 字段，不要加依赖，不要读密钥，不要主动推送或发布。
 ```

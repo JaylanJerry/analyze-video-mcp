@@ -18,6 +18,7 @@ export default tseslint.config(
             "lint-staged.config.js",
             "scripts/check-secrets.mjs",
             "scripts/prepare.mjs",
+            "scripts/dev.mjs",
           ],
         },
         tsconfigRootDir: import.meta.dirname,

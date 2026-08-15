@@ -13,7 +13,7 @@ Media resolver / authorizer
   ├─ HTTPS URL ───────────────────────────────┐
   └─ Local absolute MP4                      │
        │ allowed roots + realpath             │
-       │ FileHandle + fstat + magic + size    │
+       │ FileHandle + ftyp + size + mvhd      │
        ▼                                      │
      DashScope temporary uploader             │
        │ stream multipart from same handle    │
@@ -53,7 +53,7 @@ Agent 不知道路径授权、上传器、`oss://`、模型 id 或 SSE 的存在
 - 把输入分类为 HTTPS 或本地绝对路径。
 - 对本地路径执行 [`SECURITY.md`](SECURITY.md) 的授权流程。
 - 返回一个已打开、已验证的 `FileHandle`；不返回可被重新打开的“可信字符串路径”作为上传依据。
-- 从同一个句柄读取少量头部判断 MP4 magic。
+- 从同一个句柄读取少量头部判断 MP4 magic，并用 box header + seek 探测 `mvhd` 时长；大于 3600 秒拒绝。HTTPS 不探测。
 - 负责关闭策略的所有权必须明确：成功转交 uploader 后由最外层 `finally` 关闭。
 
 建议内部类型：
@@ -98,6 +98,7 @@ interface MediaUploader {
 ### `src/sse.ts`
 
 - 只负责字节流到结构化 event 的增量解码。
+- 未完成 event 与累计回答各有 `MAX_SSE_BUFFER_BYTES`（4 MiB UTF-8）硬顶；超限 `PROVIDER_RESPONSE_INVALID`，不截断装成成功。
 - 正确处理 CRLF、任意 TCP 分块、多个 `data:` 行、UTF-8 跨块、usage-only chunk 和 `[DONE]`。
 - 用 Zod 做最小运行时校验。
 - 输出完整 text、终止状态和内部诊断元数据。

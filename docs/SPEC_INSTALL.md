@@ -20,12 +20,13 @@
 
 Host 配置只要求：
 
-| 项                                                   | 必需 | 说明                                             |
-| ---------------------------------------------------- | ---- | ------------------------------------------------ |
-| `npx -y github:JaylanJerry/analyze-video-mcp#v0.4.0` | 是   | 默认钉发布标签。跟最新提交用 `#main`。不发 npm。 |
-| `DASHSCOPE_API_KEY`                                  | 是   | 用户自己的百炼 Key，不要提交                     |
-| `QWEN_ALLOWED_ROOTS`                                 | 否   | 要收紧本地可读范围时再填                         |
-| Base / Upload URL                                    | 否   | 默认北京区                                       |
+| 项                                                   | 必需   | 说明                                                                                   |
+| ---------------------------------------------------- | ------ | -------------------------------------------------------------------------------------- |
+| `npx -y github:JaylanJerry/analyze-video-mcp#v0.4.0` | 是     | 默认钉发布标签。跟最新提交用 `#main`。不发 npm。                                       |
+| Node.js                                              | 视轨道 | `#main` / 即将发布的 v0.5.0 需要 22+。稳定安装 `#v0.4.0` 以该标签当时说明为准（20+）。 |
+| `DASHSCOPE_API_KEY`                                  | 是     | 用户自己的百炼 Key，不要提交                                                           |
+| `QWEN_ALLOWED_ROOTS`                                 | 否     | 要收紧本地可读范围时再填                                                               |
+| Base / Upload URL                                    | 否     | 默认北京区                                                                             |
 
 模板：[`../examples/mcp.cursor.json`](../examples/mcp.cursor.json)、[`../examples/mcp.claude-code.json`](../examples/mcp.claude-code.json)、[`../examples/mcp.codex.toml`](../examples/mcp.codex.toml)。
 

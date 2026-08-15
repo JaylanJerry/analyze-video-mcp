@@ -2,6 +2,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
+import { PACKAGE_VERSION } from "../src/version.js";
 
 const video = process.argv[2];
 const question = process.argv[3] ?? "画面里发生了什么？音频说了什么？";
@@ -55,7 +56,7 @@ const rssTimer = setInterval(() => {
   }
 }, 400);
 
-const client = new Client({ name: "t09-e2e", version: "0.4.0" });
+const client = new Client({ name: "t09-e2e", version: PACKAGE_VERSION });
 try {
   await client.connect(transport);
   const result = await client.callTool(

@@ -36,6 +36,7 @@ Tool schema 不得出现：`max_tokens`、`model`、`provider`、`thinking_budge
 当你需要理解视频而当前模型不能直接观看时，调用此工具。
 它会联合分析视频画面和视频内嵌音频，并返回文本回答。
 不要先自行抽帧或抽音频；直接传入视频路径或 HTTPS URL。
+一次最多 1 小时；本地还受 1024 MiB 与当场上传政策约束。
 把用户的分析要求写入 question：具体则原样转发，空话则先整理再调用。
 ```
 
@@ -78,6 +79,7 @@ MCP `CallToolResult`：
 | `VIDEO_NOT_FOUND`           | 文件不存在或不可读                             | 否                  |
 | `UNSUPPORTED_VIDEO`         | 非 MP4、magic 不符或不是普通文件               | 否                  |
 | `VIDEO_FILE_TOO_LARGE`      | 超过本地或动态 policy 上限                     | 否                  |
+| `VIDEO_TOO_LONG`            | 本地 MP4 时长大于 3600 秒；正好 3600 允许      | 否                  |
 | `UPLOAD_POLICY_FAILED`      | 无法取得或解析上传凭证                         | 可稍后重试          |
 | `VIDEO_UPLOAD_FAILED`       | 本地上传失败；应改用公开 HTTPS，不要重传原文件 | 否                  |
 | `PROVIDER_UNAUTHORIZED`     | API Key 或接口地址无效                         | 否                  |
@@ -98,6 +100,8 @@ Agent 错误文本禁止包含：
 - provider 原始响应体。
 
 完整诊断只能写 stderr，且同样必须脱敏凭证和本地路径；允许记录错误码、HTTP 状态、阶段、request id、耗时和文件大小。
+
+`VIDEO_TOO_LONG`：`retryable: false`；`stage` 为 `authorized`；Agent 文本与 diagnostic 不得含本地绝对路径。大于 3600 秒拒绝，正好 3600 秒允许。读不出时长（缺 `mvhd`、非法 box、`timescale == 0`）则放行，不得用本错误码。HTTPS 不探测时长。
 
 ## 兼容性规则
 

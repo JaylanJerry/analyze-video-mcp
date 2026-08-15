@@ -5,6 +5,7 @@ import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { PACKAGE_VERSION } from "../src/version.js";
 
 const repo = process.env.GITHUB_REPOSITORY ?? "JaylanJerry/analyze-video-mcp";
 const sha = process.env.GITHUB_SHA;
@@ -56,7 +57,7 @@ try {
     stderr: "pipe",
     env: childEnv(),
   });
-  const client = new Client({ name: "npx-github-e2e", version: "0.4.0" });
+  const client = new Client({ name: "npx-github-e2e", version: PACKAGE_VERSION });
   try {
     await client.connect(transport);
     const tools = await client.listTools();

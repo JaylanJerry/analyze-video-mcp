@@ -4,6 +4,7 @@ export const AGENT_ERROR_CODES = [
   "VIDEO_NOT_FOUND",
   "UNSUPPORTED_VIDEO",
   "VIDEO_FILE_TOO_LARGE",
+  "VIDEO_TOO_LONG",
   "UPLOAD_POLICY_FAILED",
   "VIDEO_UPLOAD_FAILED",
   "VIDEO_ANALYSIS_BUSY",
@@ -29,6 +30,7 @@ const AGENT_TEXT: Record<AgentErrorCode, string> = {
   VIDEO_NOT_FOUND: "找不到或无法读取该视频。",
   UNSUPPORTED_VIDEO: "只支持普通 MP4 视频文件。",
   VIDEO_FILE_TOO_LARGE: "视频超过本地允许上限。请压缩、切段，或改用公开 HTTPS。",
+  VIDEO_TOO_LONG: "视频时长超过 1 小时上限。请切成不超过 1 小时的片段后再试。",
   UPLOAD_POLICY_FAILED: "无法取得上传凭证。",
   VIDEO_UPLOAD_FAILED:
     "本地上传失败，多半是网络或上传窗口不够。不要原文件再传一遍。请把视频放到公开 HTTPS 后，把链接交给本工具。",
@@ -47,6 +49,7 @@ const RETRYABLE: Record<AgentErrorCode, boolean> = {
   VIDEO_NOT_FOUND: false,
   UNSUPPORTED_VIDEO: false,
   VIDEO_FILE_TOO_LARGE: false,
+  VIDEO_TOO_LONG: false,
   UPLOAD_POLICY_FAILED: true,
   VIDEO_UPLOAD_FAILED: false,
   VIDEO_ANALYSIS_BUSY: true,

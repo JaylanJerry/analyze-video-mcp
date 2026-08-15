@@ -186,7 +186,7 @@ Gate 4 至少执行：
 | 实际 MCP Host 调用     | 是           |
 | Ctrl+C / Host 退出中止 | 是           |
 
-Node 20 继续由 CI 做单元与 mock 支持；Bun/Windows exe 不属于 v1 验收。
+Node 22/24 由 CI 做单元与 mock 支持；Bun/Windows exe 不属于 v1 验收。
 
 ## 完整质量门
 

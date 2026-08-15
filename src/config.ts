@@ -1,6 +1,5 @@
 import { realpathSync, statSync } from "node:fs";
 import { delimiter, isAbsolute } from "node:path";
-import "dotenv/config";
 
 export interface AppConfig {
   apiKey: string;

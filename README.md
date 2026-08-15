@@ -6,9 +6,12 @@
 
 ## 安装
 
-需要 Node.js 20 或更新版本，以及阿里云百炼 `DASHSCOPE_API_KEY`。不要把 Key 写进仓库。
-
 默认安装钉在发布标签 `v0.4.0`。要跟 `main` 的最新提交，把参数改成 `github:JaylanJerry/analyze-video-mcp#main`。
+
+- 跟 `#main` / 即将发布的 v0.5.0：需要 Node.js 22 或更新版本。
+- 当前稳定安装 `#v0.4.0`：以该标签当时的说明为准（Node 20+）。
+
+还需要阿里云百炼 `DASHSCOPE_API_KEY`。不要把 Key 写进仓库。
 
 Cursor / Claude Code 用户配置示例：
 
@@ -52,7 +55,7 @@ analyze_video(video, question?)
 
 ## 限制
 
-- 本地默认最高 1024 MiB，且不超过当场百炼政策。
+- 一次最多 1 小时。本地还会再受 1024 MiB 与当场百炼政策约束。
 - 更大或上行太慢：先放到公开 HTTPS，再把链接交给工具。不要重传同一本地大文件。
 - 同一进程一次只处理一个视频。
 - 部分 Host 默认超时约 60 秒，大文件需要调长。

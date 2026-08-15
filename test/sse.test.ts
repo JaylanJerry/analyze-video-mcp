@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { VideoError } from "../src/errors.js";
-import { SseParser, aggregateSse } from "../src/sse.js";
+import { MAX_SSE_BUFFER_BYTES, SseParser, aggregateSse } from "../src/sse.js";
 
 function bytes(text: string): Uint8Array {
   return new TextEncoder().encode(text);
@@ -231,5 +231,75 @@ describe("SseParser", () => {
   it("ignores comment-only SSE blocks", async () => {
     const result = await aggregateSse(chunksOf(`: keep-alive\n\n${delta("ok")}data: [DONE]\n\n`));
     expect(result.text).toBe("ok");
+  });
+
+  it("rejects an incomplete event larger than 4 MiB before buffering it as a string", () => {
+    const parser = new SseParser();
+    const chunk = Buffer.alloc(MAX_SSE_BUFFER_BYTES + 1, 0x61);
+    try {
+      parser.push(chunk);
+      expect.unreachable();
+    } catch (err) {
+      expect(err).toMatchObject({
+        code: "PROVIDER_RESPONSE_INVALID",
+        diagnostic: { parse_reason: "sse_event_too_large" },
+      });
+    }
+  });
+
+  it("rejects a complete SSE event larger than 4 MiB", () => {
+    const parser = new SseParser();
+    const payload = "a".repeat(MAX_SSE_BUFFER_BYTES + 1);
+    const framed = `data: ${JSON.stringify({ choices: [{ delta: { content: payload } }] })}\n\n`;
+    expect(Buffer.byteLength(framed, "utf8")).toBeGreaterThan(MAX_SSE_BUFFER_BYTES);
+    try {
+      parser.push(bytes(framed));
+      expect.unreachable();
+    } catch (err) {
+      expect(err).toMatchObject({
+        code: "PROVIDER_RESPONSE_INVALID",
+        diagnostic: { parse_reason: "sse_event_too_large" },
+      });
+    }
+  });
+
+  it("rejects when aggregated UTF-8 answer bytes exceed 4 MiB", async () => {
+    const piece = "n".repeat(1024 * 1024);
+    await expect(
+      aggregateSse(
+        chunksOf(
+          delta(piece),
+          delta(piece),
+          delta(piece),
+          delta(piece),
+          delta(piece),
+          event({ choices: [{ finish_reason: "stop" }] }),
+          "data: [DONE]\n\n",
+        ),
+      ),
+    ).rejects.toMatchObject({
+      code: "PROVIDER_RESPONSE_INVALID",
+      diagnostic: { parse_reason: "sse_answer_too_large" },
+    });
+  });
+
+  it("does not truncate a successful answer under the cap", async () => {
+    const content = "你好世界";
+    const result = await aggregateSse(
+      chunksOf(delta(content), event({ choices: [{ finish_reason: "stop" }] }), "data: [DONE]\n\n"),
+    );
+    expect(result.text).toBe(content);
+  });
+
+  it("keeps a newline request id from splitting stderr", async () => {
+    const result = await aggregateSse(
+      chunksOf(
+        event({ id: "chatcmpl-1\nINJECT", choices: [{ delta: { content: "x" } }] }),
+        event({ choices: [{ finish_reason: "stop" }] }),
+        "data: [DONE]\n\n",
+      ),
+    );
+    expect(result.requestId).toBe("chatcmpl-1INJECT");
+    expect(result.requestId).not.toMatch(/[\r\n]/);
   });
 });

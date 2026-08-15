@@ -1,9 +1,12 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { http, HttpResponse } from "msw";
-import { setupServer } from "msw/node";
+import { spawn } from "node:child_process";
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { LATEST_PROTOCOL_VERSION } from "@modelcontextprotocol/sdk/types.js";
+import { http, HttpResponse } from "msw";
+import { setupServer } from "msw/node";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { type McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -26,8 +29,9 @@ import {
   PROGRESS_UPLOAD_START,
 } from "../src/server.js";
 import { PACKAGE_VERSION } from "../src/version.js";
-import type { AuthorizedLocalVideo } from "../src/media.js";
+import { type AuthorizedLocalVideo, MAX_LOCAL_VIDEO_DURATION_SECONDS } from "../src/media.js";
 import type { MediaUploader, UploadedVideo } from "../src/upload.js";
+import { mp4WithDuration, mp4WithoutMvhd } from "./mp4-fixtures.js";
 
 const SECRET_KEY = "sk-secret-key-1234567890"; // gitleaks:allow — dummy test fixture, not a real key
 const CANARY_PATH = "C:\\Users\\secret\\Videos\\private.mp4";
@@ -175,7 +179,9 @@ describe("MCP analyze_video contract", () => {
       expect(tools[0]?.description).toContain("视频画面");
       expect(tools[0]?.description).toContain("内嵌音频");
       expect(tools[0]?.description).toContain("原样转发");
+      expect(tools[0]?.description).toContain("1 小时");
       expect(instructions).toContain("原样转发");
+      expect(instructions).toContain("1 小时");
     });
   });
 
@@ -353,6 +359,51 @@ describe("local authorized video", () => {
         arguments: { video: p, question: "q" },
       });
       expect(textOf(r)).toBe("ok");
+    });
+    expect(up.uploads).toBe(1);
+  });
+
+  it("rejects a local MP4 longer than one hour before upload", async () => {
+    const rec = recordingAnalyzer("ok");
+    const up = recordingUploader();
+    const p = join(dir, "too-long.mp4");
+    await writeFile(p, mp4WithDuration(1, MAX_LOCAL_VIDEO_DURATION_SECONDS + 1));
+    await withClient(baseCfg, { analyzer: rec.analyzer, uploader: up.uploader }, async (client) => {
+      const r = await client.callTool({
+        name: "analyze_video",
+        arguments: { video: p, question: "q" },
+      });
+      expect(r.isError).toBe(true);
+      const text = textOf(r);
+      expect(text).toMatch(/^VIDEO_TOO_LONG: /);
+      expect(text).not.toContain(p);
+    });
+    expect(up.uploads).toBe(0);
+    expect(rec.calls).toHaveLength(0);
+  });
+
+  it("uploads a local MP4 that is exactly one hour", async () => {
+    const rec = recordingAnalyzer("ok");
+    const up = recordingUploader();
+    const p = join(dir, "hour.mp4");
+    await writeFile(p, mp4WithDuration(1, MAX_LOCAL_VIDEO_DURATION_SECONDS));
+    await withClient(baseCfg, { analyzer: rec.analyzer, uploader: up.uploader }, async (client) => {
+      expect(
+        textOf(await client.callTool({ name: "analyze_video", arguments: { video: p } })),
+      ).toBe("ok");
+    });
+    expect(up.uploads).toBe(1);
+  });
+
+  it("uploads a local MP4 that has no mvhd", async () => {
+    const rec = recordingAnalyzer("ok");
+    const up = recordingUploader();
+    const p = join(dir, "fragmented.mp4");
+    await writeFile(p, mp4WithoutMvhd());
+    await withClient(baseCfg, { analyzer: rec.analyzer, uploader: up.uploader }, async (client) => {
+      expect(
+        textOf(await client.callTool({ name: "analyze_video", arguments: { video: p } })),
+      ).toBe("ok");
     });
     expect(up.uploads).toBe(1);
   });
@@ -549,5 +600,70 @@ describe("lifecycle", () => {
       expect(text).not.toContain(CANARY_PATH);
       expect(text).not.toContain(CANARY_OSS);
     });
+  });
+});
+
+describe("stdio stdout is a clean JSON-RPC channel", () => {
+  const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+
+  it("writes no bytes before the initialize JSON-RPC response", async () => {
+    const tsxCli = join(repoRoot, "node_modules", "tsx", "dist", "cli.mjs");
+    const entry = join(repoRoot, "src", "index.ts");
+    const env: NodeJS.ProcessEnv = { ...process.env, DASHSCOPE_API_KEY: "sk-test" };
+    const child = spawn(process.execPath, [tsxCli, entry], {
+      cwd: repoRoot,
+      env,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    const { stdin, stdout } = child;
+    const stdoutChunks: Buffer[] = [];
+    const request = `${JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: {
+        protocolVersion: LATEST_PROTOCOL_VERSION,
+        capabilities: {},
+        clientInfo: { name: "stdout-test", version: "0.0.0" },
+      },
+    })}\n`;
+    let line: Buffer;
+    try {
+      line = await new Promise<Buffer>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          reject(new Error(`timeout stdout=${Buffer.concat(stdoutChunks).toString("utf8")}`));
+        }, 15_000);
+        const onData = (chunk: Buffer): void => {
+          stdoutChunks.push(chunk);
+          const buf = Buffer.concat(stdoutChunks);
+          const nl = buf.indexOf(0x0a);
+          if (nl !== -1) {
+            clearTimeout(timer);
+            stdout.off("data", onData);
+            resolve(buf.subarray(0, nl + 1));
+          }
+        };
+        stdout.on("data", onData);
+        child.on("error", (err) => {
+          clearTimeout(timer);
+          reject(err);
+        });
+        child.on("exit", (code) => {
+          const buf = Buffer.concat(stdoutChunks);
+          if (buf.indexOf(0x0a) === -1) {
+            clearTimeout(timer);
+            reject(new Error(`exited ${String(code)} stdout=${buf.toString("utf8")}`));
+          }
+        });
+        stdin.write(request);
+      });
+    } finally {
+      child.kill();
+    }
+    expect(line.subarray(0, 1).toString("utf8")).toBe("{");
+    const parsed: unknown = JSON.parse(line.toString("utf8"));
+    expect(parsed).toMatchObject({ jsonrpc: "2.0", id: 1 });
+    const record = parsed as { result?: { serverInfo?: { version?: string } } };
+    expect(record.result?.serverInfo?.version).toBe(PACKAGE_VERSION);
   });
 });

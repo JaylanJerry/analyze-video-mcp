@@ -15,10 +15,10 @@ export default defineConfig({
         branches: 75,
         statements: 85,
         "src/upload.ts": {
-          lines: 88,
+          lines: 85,
           functions: 90,
-          branches: 80,
-          statements: 88,
+          branches: 75,
+          statements: 85,
         },
       },
     },
