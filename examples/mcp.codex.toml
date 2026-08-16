@@ -3,4 +3,4 @@ command = "npx"
 args = ["-y", "analyze-video-mcp"]
 
 [mcp_servers.analyze-video.env]
-DASHSCOPE_API_KEY = "paste-your-key-here"
+DASHSCOPE_API_KEY = "YOUR_DASHSCOPE_API_KEY"

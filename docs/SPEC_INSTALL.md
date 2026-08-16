@@ -12,7 +12,7 @@
 
 在 Cursor、Claude Code、Codex 里加上这个 MCP，填好百炼 Key，就能分析这次对话带上的视频。
 
-用户不必自己 `npm run build`，也不必先填视频目录。推到 GitHub 之后，用 `npx` 安装。
+用户不必自己 `npm run build`，也不必先填视频目录。默认用 npm 包 `npx -y analyze-video-mcp` 安装。
 
 ---
 
@@ -67,7 +67,7 @@ Host 配置只要求：
 ## 5. 不做
 
 - 现在不加图片、独立音频 Tool。
-- 不发 npm、不推送，除非用户另说。
+- 不主动再发 npm、不推送，除非用户另说。
 - 不加生产依赖、不做 GUI、不测速、不自动重传。
 - 不把 Key 写进仓库或 Tool。
 
