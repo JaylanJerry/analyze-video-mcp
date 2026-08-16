@@ -1,17 +1,21 @@
 {
   "name": "analyze-video-mcp",
   "version": "0.5.1",
-  "description": "MCP server that adds analyze_video to local agents via Bailian Qwen3.5-Omni-Flash",
+  "description": "MCP server that lets local agents analyze video picture and embedded audio",
   "keywords": [
     "mcp",
+    "model-context-protocol",
     "video",
     "qwen",
-    "dashscope"
+    "dashscope",
+    "cursor",
+    "claude"
   ],
   "license": "MIT",
+  "homepage": "https://github.com/JaylanJerry/analyze-video-mcp#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/JaylanJerry/analyze-video-mcp.git"
+    "url": "git+https://github.com/JaylanJerry/analyze-video-mcp.git"
   },
   "type": "module",
   "engines": {
