@@ -16,7 +16,7 @@ v1 已本机收尾。V2 已实施。安装：`npx` + Key；目录可选；Agent 
 
 ## 下一阶段
 
-v0.5.0 已发布。默认安装 `npx -y github:JaylanJerry/analyze-video-mcp#v0.5.0`（Node 22+）。跟最新提交用 `#main`。未另说不要发 npm。没有下一项 `todo-v05` 任务。
+v0.5.0 已发布 GitHub 标签。默认 Host 安装：`npx -y --allow-git=all github:JaylanJerry/analyze-video-mcp#v0.5.0`（npm 12 必须带 `--allow-git=all`）。包名 `analyze-video-mcp` 尚未发 npm；发 registry 需另一次明确授权并 `npm login`。
 
 绑定文档：
 

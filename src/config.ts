@@ -1,5 +1,6 @@
 import { realpathSync, statSync } from "node:fs";
 import { delimiter, isAbsolute } from "node:path";
+import { ConfigError } from "./errors.js";
 
 export interface AppConfig {
   apiKey: string;
@@ -28,8 +29,8 @@ export const BYTES_PER_MIB = 1024 * 1024;
 function required(name: string): string {
   const value = process.env[name];
   if (value === undefined || value.trim() === "") {
-    throw new Error(
-      `Missing required environment variable: ${name}. Copy .env.example to .env and fill it in.`,
+    throw new ConfigError(
+      `Missing required environment variable: ${name}. Set it in the MCP server env and restart. Create a Bailian API key: https://bailian.console.aliyun.com/`,
     );
   }
   return value.trim();
@@ -42,7 +43,7 @@ function boundedInt(name: string, fallback: number, min: number, max: number): n
   }
   const parsed = Number(raw);
   if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
-    throw new Error(`${name} must be an integer between ${String(min)} and ${String(max)}`);
+    throw new ConfigError(`${name} must be an integer between ${String(min)} and ${String(max)}`);
   }
   return parsed;
 }
@@ -59,10 +60,10 @@ function httpsUrl(name: string, fallback: string): string {
   try {
     parsed = new URL(value);
   } catch {
-    throw new Error(`${name} must be a valid HTTPS URL`);
+    throw new ConfigError(`${name} must be a valid HTTPS URL`);
   }
   if (parsed.protocol !== "https:" || parsed.username !== "" || parsed.password !== "") {
-    throw new Error(`${name} must be a valid HTTPS URL`);
+    throw new ConfigError(`${name} must be a valid HTTPS URL`);
   }
   return `${parsed.origin}${parsed.pathname}${parsed.search}`.replace(/\/+$/, "");
 }
@@ -78,12 +79,12 @@ function parseAllowedRoots(): string[] {
 
   for (const part of parts) {
     if (!isAbsolute(part)) {
-      throw new Error("QWEN_ALLOWED_ROOTS entries must be absolute directories");
+      throw new ConfigError("QWEN_ALLOWED_ROOTS entries must be absolute directories");
     }
     try {
       const info = statSync(part);
       if (!info.isDirectory()) {
-        throw new Error("QWEN_ALLOWED_ROOTS entries must be existing directories");
+        throw new ConfigError("QWEN_ALLOWED_ROOTS entries must be existing directories");
       }
       const real = realpathSync(part);
       const key = process.platform === "win32" ? real.toLowerCase() : real;
@@ -96,7 +97,7 @@ function parseAllowedRoots(): string[] {
       if (err instanceof Error && err.message.startsWith("QWEN_ALLOWED_ROOTS")) {
         throw err;
       }
-      throw new Error("QWEN_ALLOWED_ROOTS entries must be existing directories");
+      throw new ConfigError("QWEN_ALLOWED_ROOTS entries must be existing directories");
     }
   }
 

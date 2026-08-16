@@ -116,6 +116,10 @@ function sanitizeDiagnostic(
   return out;
 }
 
+export class ConfigError extends Error {
+  override readonly name = "ConfigError";
+}
+
 export class VideoError extends Error {
   readonly code: AgentErrorCode;
   readonly stage: ErrorStage;
@@ -157,4 +161,18 @@ export function agentErrorText(err: unknown): string {
     return err.agentMessage();
   }
   return `VIDEO_ANALYSIS_FAILED: ${AGENT_TEXT.VIDEO_ANALYSIS_FAILED}`;
+}
+
+/** stderr for process startup. Config mistakes stay readable; secrets still drop. */
+export function startupErrorText(err: unknown): string {
+  if (err instanceof VideoError) {
+    return err.agentMessage();
+  }
+  if (err instanceof ConfigError) {
+    const message = err.message.replace(/\s+/g, " ").trim();
+    if (message !== "" && !looksSensitive(message)) {
+      return message;
+    }
+  }
+  return agentErrorText(err);
 }

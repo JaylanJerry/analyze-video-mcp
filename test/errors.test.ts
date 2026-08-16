@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { AGENT_ERROR_CODES, VideoError, agentErrorText, looksSensitive } from "../src/errors.js";
+import {
+  AGENT_ERROR_CODES,
+  ConfigError,
+  VideoError,
+  agentErrorText,
+  looksSensitive,
+  startupErrorText,
+} from "../src/errors.js";
 
 const CANARY_KEY = "sk-canary-secret-key-123456";
 const CANARY_PATH = "C:\\Users\\secret\\Videos\\private.mp4";
@@ -80,6 +87,21 @@ describe("VideoError", () => {
     });
     expect(agentErrorText({ raw: dumped })).toBe("VIDEO_ANALYSIS_FAILED: 视频分析失败。");
     expect(agentErrorText({ raw: dumped })).not.toContain(CANARY_KEY);
+  });
+});
+
+describe("startupErrorText", () => {
+  it("keeps a missing-key ConfigError readable", () => {
+    const err = new ConfigError(
+      "Missing required environment variable: DASHSCOPE_API_KEY. Set it in the MCP server env and restart.",
+    );
+    expect(startupErrorText(err)).toContain("DASHSCOPE_API_KEY");
+    expect(startupErrorText(err)).not.toContain("VIDEO_ANALYSIS_FAILED");
+  });
+
+  it("still redacts unknown errors that dump secrets", () => {
+    expect(startupErrorText({ raw: CANARY_KEY })).toBe("VIDEO_ANALYSIS_FAILED: 视频分析失败。");
+    expect(startupErrorText({ raw: CANARY_KEY })).not.toContain(CANARY_KEY);
   });
 });
 

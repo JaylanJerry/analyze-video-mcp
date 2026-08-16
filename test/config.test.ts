@@ -16,6 +16,7 @@ import {
   DEFAULT_UPLOAD_URL,
   loadConfig,
 } from "../src/config.js";
+import { ConfigError } from "../src/errors.js";
 
 const ORIG_ENV = { ...process.env };
 const tempDirs: string[] = [];
@@ -111,7 +112,10 @@ describe("loadConfig", () => {
     try {
       loadConfig();
     } catch (err) {
-      expectNoEnvValues(err instanceof Error ? err.message : String(err), canary);
+      expect(err).toBeInstanceOf(ConfigError);
+      const message = err instanceof Error ? err.message : String(err);
+      expectNoEnvValues(message, canary);
+      expect(message).toContain("bailian.console.aliyun.com");
     }
   });
 
@@ -260,7 +264,48 @@ process.stdout.write(JSON.stringify(buildDevNodeArgs(${JSON.stringify(dir)})));`
     const stderr = Buffer.concat(stderrChunks).toString("utf8");
     expect(code).not.toBe(0);
     expect(stdout).toBe("");
-    expect(stderr).toMatch(/VIDEO_ANALYSIS_FAILED/);
+    expect(stderr).toMatch(/DASHSCOPE_API_KEY/);
+    expect(stderr).not.toMatch(/VIDEO_ANALYSIS_FAILED/);
     expect(stderr).not.toContain("sk-from-dotenv-file");
+  });
+
+  it("prints the package version without requiring an API key", async () => {
+    const env: NodeJS.ProcessEnv = { ...process.env };
+    delete env.DASHSCOPE_API_KEY;
+    const tsxCli = join(REPO_ROOT, "node_modules", "tsx", "dist", "cli.mjs");
+    const entry = join(REPO_ROOT, "src", "index.ts");
+    const pkg = JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf8")) as {
+      version: string;
+    };
+    const child = spawn(process.execPath, [tsxCli, entry, "--version"], {
+      cwd: REPO_ROOT,
+      env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const stdoutChunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
+    child.stdout.on("data", (chunk: Buffer) => {
+      stdoutChunks.push(chunk);
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderrChunks.push(chunk);
+    });
+    const code = await new Promise<number | null>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        child.kill();
+        reject(new Error("version flag did not exit"));
+      }, 15_000);
+      child.on("error", (err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+      child.on("exit", (exitCode) => {
+        clearTimeout(timer);
+        resolve(exitCode);
+      });
+    });
+    expect(code).toBe(0);
+    expect(Buffer.concat(stdoutChunks).toString("utf8").trim()).toBe(pkg.version);
+    expect(Buffer.concat(stderrChunks).toString("utf8")).not.toMatch(/DASHSCOPE_API_KEY/);
   });
 });

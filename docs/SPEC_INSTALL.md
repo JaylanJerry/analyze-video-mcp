@@ -20,13 +20,13 @@
 
 Host 配置只要求：
 
-| 项                                                   | 必需 | 说明                                                                        |
-| ---------------------------------------------------- | ---- | --------------------------------------------------------------------------- |
-| `npx -y github:JaylanJerry/analyze-video-mcp#v0.5.0` | 是   | 默认钉发布标签。跟最新提交用 `#main`。不发 npm。                            |
-| Node.js                                              | 是   | 默认安装与 `#main` 需要 22+。旧标签 `#v0.4.0` 以该标签当时说明为准（20+）。 |
-| `DASHSCOPE_API_KEY`                                  | 是   | 用户自己的百炼 Key，不要提交                                                |
-| `QWEN_ALLOWED_ROOTS`                                 | 否   | 要收紧本地可读范围时再填                                                    |
-| Base / Upload URL                                    | 否   | 默认北京区                                                                  |
+| 项                                                                   | 必需 | 说明                                                                                                  |
+| -------------------------------------------------------------------- | ---- | ----------------------------------------------------------------------------------------------------- |
+| `npx -y --allow-git=all github:JaylanJerry/analyze-video-mcp#v0.5.0` | 是   | 默认钉发布标签。npm 12 必须带 `--allow-git=all`，否则 `EALLOWGIT`。跟最新提交用 `#main`。尚未发 npm。 |
+| Node.js                                                              | 是   | 默认安装与 `#main` 需要 22+。旧标签 `#v0.4.0` 以该标签当时说明为准（20+）。                           |
+| `DASHSCOPE_API_KEY`                                                  | 是   | 用户自己的百炼 Key，不要提交                                                                          |
+| `QWEN_ALLOWED_ROOTS`                                                 | 否   | 要收紧本地可读范围时再填                                                                              |
+| Base / Upload URL                                                    | 否   | 默认北京区                                                                                            |
 
 模板：[`../examples/mcp.cursor.json`](../examples/mcp.cursor.json)、[`../examples/mcp.claude-code.json`](../examples/mcp.claude-code.json)、[`../examples/mcp.codex.toml`](../examples/mcp.codex.toml)。
 
@@ -74,7 +74,7 @@ Host 配置只要求：
 
 ## 6. 完成标准
 
-- 模板用 `npx`，默认钉 `#v0.5.0`；跟最新提交用 `#main`。普通人只填 Key 就能分析本地绝对 MP4。建议填写 `QWEN_ALLOWED_ROOTS`。
+- 模板用 `npx`，默认钉 `#v0.5.0`，并带 `--allow-git=all`（npm 12）。跟最新提交用 `#main`。普通人只填 Key 就能分析本地绝对 MP4。建议填写 `QWEN_ALLOWED_ROOTS`。
 - 根 package 声明运行时依赖，用 `files` 白名单带上完整 `dist`，并用 `.npmignore` 避免 `dist/` 被 gitignore 滤掉。
 - `npm run test:pack-install` 对 `npm pack` 产物做 initialize 与 `listTools`，且只有 `analyze_video`。
 - CI 在全新 npm cache 上对 `npx github:<仓库>#<SHA>` 再做一次握手。
