@@ -1,6 +1,7 @@
 # analyze-video-mcp
 
 [![CI](https://github.com/JaylanJerry/analyze-video-mcp/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/JaylanJerry/analyze-video-mcp/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/analyze-video-mcp)](https://www.npmjs.com/package/analyze-video-mcp)
 [![Release](https://img.shields.io/github/v/release/JaylanJerry/analyze-video-mcp)](https://github.com/JaylanJerry/analyze-video-mcp/releases/latest)
 [![License: MIT](https://img.shields.io/github/license/JaylanJerry/analyze-video-mcp)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22-339933)](https://nodejs.org)
@@ -15,7 +16,11 @@ One MCP tool. Install with `npx` and your own [Alibaba Cloud Bailian](https://ba
 
 ## Install
 
-Requires **Node.js 22+**. npm 12 (the default on current Node 22/24) blocks git packages unless you pass `--allow-git=all`.
+Requires **Node.js 22+**.
+
+```text
+npx -y analyze-video-mcp
+```
 
 Get a key: [Bailian console](https://bailian.console.aliyun.com/) → API-KEY. It looks like `sk-…`. Put it in the MCP `env`, not in the repo.
 
@@ -26,7 +31,7 @@ Cursor / Claude Code:
   "mcpServers": {
     "analyze-video": {
       "command": "npx",
-      "args": ["-y", "--allow-git=all", "github:JaylanJerry/analyze-video-mcp#v0.5.0"],
+      "args": ["-y", "analyze-video-mcp"],
       "env": {
         "DASHSCOPE_API_KEY": "paste-your-key-here"
       }
@@ -35,15 +40,11 @@ Cursor / Claude Code:
 }
 ```
 
-Without `--allow-git=all`, npm 12 fails with `EALLOWGIT`. To follow `main` instead of the release, change the spec to `#main`.
-
 Codex: [`examples/mcp.codex.toml`](examples/mcp.codex.toml). Other templates: [`examples/mcp.cursor.json`](examples/mcp.cursor.json), [`examples/mcp.claude-code.json`](examples/mcp.claude-code.json).
 
-The first `npx` download builds from source and needs network. Do not commit a Host config that contains a real key.
+Do not commit a Host config that contains a real key. The first `npx` download needs network. From GitHub instead: `npx -y --allow-git=all github:JaylanJerry/analyze-video-mcp#v0.5.0` (npm 12 requires `--allow-git=all`).
 
-If `npx` is not an option, clone `v0.5.0`, run `npm install` and `npm run build`, then point the Host at `node` + `dist/index.js`.
-
-Then ask the agent to analyze a **small** local MP4 (or a public `https://` URL). There is no separate health tool; `npx … --version` prints the package version without calling Bailian. If the server never starts, read stderr — a missing key names `DASHSCOPE_API_KEY` instead of a generic analysis failure.
+Then ask the agent to analyze a **small** local MP4 (or a public `https://` URL). `npx analyze-video-mcp --version` prints the version without calling Bailian. If the server never starts, read stderr — a missing key names `DASHSCOPE_API_KEY`.
 
 装好后对 Agent 说「分析这个视频」，并带上本地绝对路径或公开链接。用一个很小的 MP4 先试一次。
 

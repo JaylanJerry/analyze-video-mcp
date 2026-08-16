@@ -20,4 +20,4 @@
 | [`../tasks/plan-v05.md`](../tasks/plan-v05.md)               | v0.5.0 实施计划                        |
 | [`../tasks/todo-v05.md`](../tasks/todo-v05.md)               | v0.5.0 任务                            |
 
-架构决策见 [`decisions`](decisions)。工作区 git 根见 [0006](decisions/0006-workspace-root-git.md)；实现提到仓库根见 [0011](decisions/0011-flatten-implementation-to-repo-root.md)；Gate 1 运行时见 [0007](decisions/0007-gate1-node24.md)；通用方向见 [0009](decisions/0009-general-host-config-and-1gib.md)；v0.5.0 收口见 [0012](decisions/0012-v050-runtime-and-hygiene.md)。v1 / V2 / 安装 / v0.5.0 已收尾。默认安装钉 `#v0.5.0`。
+架构决策见 [`decisions`](decisions)。工作区 git 根见 [0006](decisions/0006-workspace-root-git.md)；实现提到仓库根见 [0011](decisions/0011-flatten-implementation-to-repo-root.md)；Gate 1 运行时见 [0007](decisions/0007-gate1-node24.md)；通用方向见 [0009](decisions/0009-general-host-config-and-1gib.md)；v0.5.0 收口见 [0012](decisions/0012-v050-runtime-and-hygiene.md)。v1 / V2 / 安装 / v0.5.0 已收尾。默认安装 `npx -y analyze-video-mcp`。
