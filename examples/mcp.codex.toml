@@ -1,6 +1,6 @@
 [mcp_servers.analyze-video]
 command = "npx"
-args = ["-y", "github:JaylanJerry/analyze-video-mcp#v0.5.0"]
+args = ["-y", "--allow-git=all", "github:JaylanJerry/analyze-video-mcp#v0.5.0"]
 
 [mcp_servers.analyze-video.env]
 DASHSCOPE_API_KEY = "paste-your-key-here"

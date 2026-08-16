@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { agentErrorText } from "./errors.js";
+import { startupErrorText } from "./errors.js";
 import { abortActiveAnalysis, createServer } from "./server.js";
+import { PACKAGE_VERSION } from "./version.js";
 
-let shuttingDown = false;
-
-try {
+async function runServer(): Promise<void> {
+  let shuttingDown = false;
   const server = createServer();
   const transport = new StdioServerTransport();
 
@@ -24,7 +24,15 @@ try {
   process.stdin.on("close", shutdown);
 
   await server.connect(transport);
-} catch (err) {
-  process.stderr.write(`${agentErrorText(err)}\n`);
-  process.exitCode = 1;
+}
+
+if (process.argv.includes("--version") || process.argv.includes("-v")) {
+  process.stdout.write(`${PACKAGE_VERSION}\n`);
+} else {
+  try {
+    await runServer();
+  } catch (err) {
+    process.stderr.write(`${startupErrorText(err)}\n`);
+    process.exitCode = 1;
+  }
 }

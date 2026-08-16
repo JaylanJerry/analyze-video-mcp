@@ -25,12 +25,15 @@ function childEnv(): Record<string, string> {
       value !== undefined &&
       key !== "DASHSCOPE_API_KEY" &&
       key !== "npm_config_ignore_scripts" &&
-      key !== "npm_config_allow_git"
+      key !== "npm_config_allow_git" &&
+      key !== "NPM_CONFIG_ALLOW_GIT"
     ) {
       out[key] = value;
     }
   }
   out.DASHSCOPE_API_KEY = "sk-test";
+  out.npm_config_allow_git = "all";
+  out.NPM_CONFIG_ALLOW_GIT = "all";
   out.npm_config_cache = cache;
   out.NPM_CONFIG_CACHE = cache;
   out.npm_config_loglevel = "error";
@@ -39,7 +42,7 @@ function childEnv(): Record<string, string> {
 }
 
 try {
-  execFileSync("npm", ["install", spec], {
+  execFileSync("npm", ["install", "--allow-git=all", spec], {
     cwd: work,
     shell: true,
     stdio: "inherit",

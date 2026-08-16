@@ -2,6 +2,12 @@
   "name": "analyze-video-mcp",
   "version": "0.5.0",
   "description": "MCP server that adds analyze_video to local agents via Bailian Qwen3.5-Omni-Flash",
+  "keywords": [
+    "mcp",
+    "video",
+    "qwen",
+    "dashscope"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -10,6 +16,9 @@
   "type": "module",
   "engines": {
     "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "bin": {
     "analyze-video-mcp": "dist/index.js"

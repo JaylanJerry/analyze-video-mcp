@@ -9,17 +9,15 @@ Give Cursor, Claude Code, and Codex **video understanding**: the model reads pic
 
 给本地 Agent 增加视频理解：同时看画面、听视频里的音轨，只返回文本。
 
-One MCP tool. Not an npm package. Install with `npx` and your own [Alibaba Cloud Bailian](https://bailian.console.aliyun.com/) `DASHSCOPE_API_KEY`.
+One MCP tool. Install with `npx` and your own [Alibaba Cloud Bailian](https://bailian.console.aliyun.com/) `DASHSCOPE_API_KEY`.
 
-公开工具只有 `analyze_video`。不是 npm 包。填自己的百炼 Key 即可使用。
+公开工具只有 `analyze_video`。填自己的百炼 Key 即可使用。
 
 ## Install
 
-Requires **Node.js 22+**. Pin the release tag:
+Requires **Node.js 22+**. npm 12 (the default on current Node 22/24) blocks git packages unless you pass `--allow-git=all`.
 
-```text
-npx -y github:JaylanJerry/analyze-video-mcp#v0.5.0
-```
+Get a key: [Bailian console](https://bailian.console.aliyun.com/) → API-KEY. It looks like `sk-…`. Put it in the MCP `env`, not in the repo.
 
 Cursor / Claude Code:
 
@@ -28,7 +26,7 @@ Cursor / Claude Code:
   "mcpServers": {
     "analyze-video": {
       "command": "npx",
-      "args": ["-y", "github:JaylanJerry/analyze-video-mcp#v0.5.0"],
+      "args": ["-y", "--allow-git=all", "github:JaylanJerry/analyze-video-mcp#v0.5.0"],
       "env": {
         "DASHSCOPE_API_KEY": "paste-your-key-here"
       }
@@ -37,13 +35,17 @@ Cursor / Claude Code:
 }
 ```
 
+Without `--allow-git=all`, npm 12 fails with `EALLOWGIT`. To follow `main` instead of the release, change the spec to `#main`.
+
 Codex: [`examples/mcp.codex.toml`](examples/mcp.codex.toml). Other templates: [`examples/mcp.cursor.json`](examples/mcp.cursor.json), [`examples/mcp.claude-code.json`](examples/mcp.claude-code.json).
 
-The first `npx` download builds from source and needs network. Do not commit a Host config that contains a real key. To follow `main` instead of the release, use `#main`.
+The first `npx` download builds from source and needs network. Do not commit a Host config that contains a real key.
 
-Then ask the agent to analyze a video and pass a local absolute MP4 path or a public `https://` URL. Try a small file first. There is no separate “test connection” tool.
+If `npx` is not an option, clone `v0.5.0`, run `npm install` and `npm run build`, then point the Host at `node` + `dist/index.js`.
 
-装好后对 Agent 说「分析这个视频」，并带上本地绝对路径或公开链接。
+Then ask the agent to analyze a **small** local MP4 (or a public `https://` URL). There is no separate health tool; `npx … --version` prints the package version without calling Bailian. If the server never starts, read stderr — a missing key names `DASHSCOPE_API_KEY` instead of a generic analysis failure.
+
+装好后对 Agent 说「分析这个视频」，并带上本地绝对路径或公开链接。用一个很小的 MP4 先试一次。
 
 ## Tool
 
