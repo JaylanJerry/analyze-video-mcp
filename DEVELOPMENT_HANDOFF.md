@@ -1,6 +1,6 @@
 # Video MCP 开发交接
 
-状态：v1 本机收尾完成；V2 与安装形态已实施。公开仓库 `JaylanJerry/analyze-video-mcp`。未发 npm。实现已提到仓库根（ADR 0011）。
+状态：v1 本机收尾完成；V2 与安装形态已实施。公开仓库 `JaylanJerry/analyze-video-mcp`。已发 npm `analyze-video-mcp`。实现已提到仓库根（ADR 0011）。
 
 基线快照：`sommio/qwen-omni-mcp@8a07182554a985456153644e0006a22bd1c769f7`。
 
@@ -16,7 +16,7 @@ v1 已本机收尾。V2 已实施。安装：`npx` + Key；目录可选；Agent 
 
 ## 下一阶段
 
-v0.5.0 已发布 GitHub 标签。默认 Host 安装：`npx -y --allow-git=all github:JaylanJerry/analyze-video-mcp#v0.5.0`（npm 12 必须带 `--allow-git=all`）。包名 `analyze-video-mcp` 尚未发 npm；发 registry 需另一次明确授权并 `npm login`。
+v0.5.1 已发 npm。默认 Host 安装：`npx -y analyze-video-mcp`。GitHub 回退：`npx -y --allow-git=all github:JaylanJerry/analyze-video-mcp#v0.5.0`（npm 12 必须带 `--allow-git=all`）。
 
 绑定文档：
 
@@ -43,7 +43,7 @@ v1 背景仍按原顺序：`AGENTS.md`、`docs/SPEC.md`、`docs/API_CONTRACT.md`
 ## 给下一模型的启动提示词
 
 ```text
-你在 analyze-video-mcp 仓库根工作。v1 / V2 / 安装 / v0.5.0 已完成，未发 npm。
-默认安装钉 github:JaylanJerry/analyze-video-mcp#v0.5.0。不要改 analyze_video
+你在 analyze-video-mcp 仓库根工作。v1 / V2 / 安装 / v0.5.0 已完成，0.5.1 已发 npm。
+默认安装 `npx -y analyze-video-mcp`。不要改 analyze_video
 字段，不要加依赖，不要读密钥，不要主动推送或发布。
 ```
