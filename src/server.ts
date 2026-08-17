@@ -6,6 +6,7 @@ import { type AppConfig, loadConfig } from "./config.js";
 import { agentErrorText, VideoError } from "./errors.js";
 import { closeResolvedVideo, resolveVideo } from "./media.js";
 import { printableRequestId } from "./sse.js";
+import { createCachedUploader } from "./upload-cache.js";
 import { createTemporaryUploader, type MediaUploader } from "./upload.js";
 import { PACKAGE_VERSION } from "./version.js";
 
@@ -13,12 +14,13 @@ export const DEFAULT_QUESTION = "画面里发生了什么？音频说了什么�
 export const MAX_QUESTION_CHARS = 8000;
 
 const AV_CONSTRAINT =
-  "你必须同时依据视频画面和视频内嵌音轨作答。即使问题没有提到声音，也要说明听到了什么；若没有对白或明显音效，请明确说没有听到可用的声音。";
+  "你必须同时依据视频画面和视频内嵌音轨作答。把「音轨里实际听到的」和「只根据画面推断可能有的声音」分开写；没听到对白或音效就明确说没有听到，不要把画面里该有的声音写成实测。时间戳必须正序且不超出视频时长；吃不准就写大约，禁止倒序。即使问题没有提到声音，也要说明听到了什么。";
 
 const QUESTION_GUIDANCE =
   "把用户的分析要求写入 question。用户说得具体就尽量原样转发；只说「分析一下」这类空话时，先整理成具体的画面与声音问题（切点、节奏、配音是否统一、声画是否对上、哪些好、哪些要改）再调用。不要编造视频里没有的内容。";
 
-const DURATION_GUIDANCE = "一次最多 1 小时；本地还受 1024 MiB 与当场上传政策约束。";
+const DURATION_GUIDANCE =
+  "一次最多 1 小时；本地还受 1024 MiB 与当场上传政策约束。这是抽样理解，不是帧级剪辑定位。同一本地文件在本进程内会复用已上传地址；未命中则全量上传。";
 
 const SERVER_INSTRUCTIONS = `此工具联合分析视频画面和视频内嵌音频，并返回文本回答。当你需要理解视频而当前模型不能直接观看时，调用 analyze_video。不要先自行抽帧或抽音频；直接传入本地绝对 MP4 路径或公开 HTTPS URL。${DURATION_GUIDANCE}${QUESTION_GUIDANCE}`;
 
@@ -111,13 +113,13 @@ export function createServer(cfg: AppConfig = loadConfig(), deps: ServerDeps = {
       return analyzeVideo(cfg, input, request, signal);
     },
   };
-  const uploader = deps.uploader ?? createTemporaryUploader(cfg);
+  const uploader = createCachedUploader(cfg, deps.uploader ?? createTemporaryUploader(cfg));
   let busy = false;
   let active: AbortController | undefined;
 
   const server = new McpServer(
     {
-      name: "analyze-video-mcp",
+      name: cfg.serverName,
       version: PACKAGE_VERSION,
     },
     { instructions: SERVER_INSTRUCTIONS },

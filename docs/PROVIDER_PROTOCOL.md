@@ -41,7 +41,7 @@ data.x_oss_forbid_overwrite
 - `expire_in_seconds` 必须为正数；实测为 300 秒，不能硬编码。
 - `max_file_size_mb` 必须为正数；在上传任何字节前与文件大小比较。
 - 上传与推理必须使用同一个模型 id、同一账号的 API Key。
-- policy API 有每账户每模型 100 QPS 限制；v1 不缓存 credential，也不并发预取。
+- policy API 有每账户每模型 100 QPS 限制；不缓存 credential，也不并发预取。已成功上传的 `oss://` 可在同一进程内按文件身份 + 模型复用约 47 小时，见 [ADR 0013](decisions/0013-upload-cache-and-host-server-name.md)。
 
 2026-08-15 真实验证：`qwen3.5-omni-flash` 返回的 `max_file_size_mb` 为 `1024`，因此 500 MiB 项目上限可行。实现仍须动态检查，不能把 1024 当常量。
 

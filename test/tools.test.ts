@@ -41,6 +41,7 @@ const CANARY_OSS = "oss://dashscope-tmp/abcdef/video.mp4";
 const baseCfg: AppConfig = {
   apiKey: SECRET_KEY,
   model: "qwen3.5-omni-flash",
+  serverName: "analyze-video-mcp",
   baseUrl: "https://dashscope.test/v1",
   uploadUrl: "https://dashscope.test/api/v1/uploads",
   allowedRoots: [],
@@ -182,12 +183,28 @@ describe("MCP analyze_video contract", () => {
       expect(tools[0]?.description).toContain("1 小时");
       expect(instructions).toContain("原样转发");
       expect(instructions).toContain("1 小时");
+      expect(instructions).toContain("抽样理解");
+      expect(instructions).toContain("全量上传");
+      expect(tools[0]?.description).toContain("抽样理解");
+    });
+  });
+
+  it("uses QWEN_MCP_SERVER_NAME as initialize name without changing the tool", async () => {
+    await withClient({ ...baseCfg, serverName: "mcp_analyze_video" }, {}, async (client) => {
+      expect(client.getServerVersion()).toEqual({
+        name: "mcp_analyze_video",
+        version: PACKAGE_VERSION,
+      });
+      const { tools } = await client.listTools();
+      expect(tools.map((t) => t.name)).toEqual(["analyze_video"]);
     });
   });
 
   it("wraps the default question with an AV constraint", () => {
     const prompt = buildProviderQuestion(DEFAULT_QUESTION);
     expect(prompt).toContain("内嵌音轨");
+    expect(prompt).toContain("音轨里实际听到的");
+    expect(prompt).toContain("禁止倒序");
     expect(prompt).toContain(DEFAULT_QUESTION);
     expect(DEFAULT_QUESTION).toContain("画面");
     expect(DEFAULT_QUESTION).toContain("音频");
@@ -406,6 +423,32 @@ describe("local authorized video", () => {
       ).toBe("ok");
     });
     expect(up.uploads).toBe(1);
+  });
+
+  it("reuses the uploaded object for a second question on the same local file", async () => {
+    const rec = recordingAnalyzer("again");
+    const up = recordingUploader();
+    const p = join(dir, "clip.mp4");
+    await writeFile(p, MP4_HEADER);
+    await withClient(
+      { ...baseCfg, allowedRoots: [await realpath(dir)] },
+      { analyzer: rec.analyzer, uploader: up.uploader },
+      async (client) => {
+        await client.callTool({
+          name: "analyze_video",
+          arguments: { video: p, question: "first" },
+        });
+        await client.callTool({
+          name: "analyze_video",
+          arguments: { video: p, question: "second" },
+        });
+      },
+    );
+    expect(up.uploads).toBe(1);
+    expect(rec.calls).toHaveLength(2);
+    expect(rec.calls[0]?.input).toEqual(rec.calls[1]?.input);
+    expect(rec.calls[0]?.request.question).toContain("用户问题：first");
+    expect(rec.calls[1]?.request.question).toContain("用户问题：second");
   });
 
   it("uploads a local MP4 and analyzes the returned object", async () => {

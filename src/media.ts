@@ -8,6 +8,7 @@ export interface AuthorizedLocalVideo {
   kind: "local";
   handle: FileHandle;
   sizeBytes: number;
+  identityKey: string;
   safeUploadName: "video.mp4";
 }
 
@@ -37,6 +38,11 @@ export async function closeResolvedVideo(video: ResolvedVideo): Promise<void> {
 export function isContainedInRoot(root: string, candidate: string): boolean {
   const rel = relative(root, candidate);
   return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+}
+
+function uploadIdentityKey(realPath: string, sizeBytes: number, mtimeMs: number): string {
+  const pathKey = process.platform === "win32" ? realPath.toLowerCase() : realPath;
+  return `${pathKey}|${String(sizeBytes)}|${String(mtimeMs)}`;
 }
 
 function sameIdentity(left: Stats, right: Stats): boolean {
@@ -338,6 +344,7 @@ async function authorizeLocalMp4(raw: string, cfg: AppConfig): Promise<ResolvedV
       kind: "local",
       handle,
       sizeBytes: opened.size,
+      identityKey: uploadIdentityKey(requestedReal, opened.size, opened.mtimeMs),
       safeUploadName: "video.mp4",
     };
   } catch (err) {

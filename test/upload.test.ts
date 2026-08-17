@@ -55,6 +55,7 @@ function cfg(overrides: Partial<AppConfig> = {}): AppConfig {
   return {
     apiKey: "sk-test",
     model: "qwen3.5-omni-flash",
+    serverName: "analyze-video-mcp",
     baseUrl: "https://dashscope.test/v1",
     uploadUrl: POLICY_URL,
     allowedRoots: [],
@@ -121,6 +122,7 @@ async function localVideo(bytes: Buffer): Promise<AuthorizedLocalVideo> {
     kind: "local",
     handle,
     sizeBytes: bytes.length,
+    identityKey: `clip|${String(bytes.length)}|1`,
     safeUploadName: "video.mp4",
   };
 }
@@ -131,7 +133,13 @@ async function sparseVideo(size: number): Promise<AuthorizedLocalVideo> {
   await created.truncate(size);
   await created.close();
   const handle = await open(path, "r");
-  return { kind: "local", handle, sizeBytes: size, safeUploadName: "video.mp4" };
+  return {
+    kind: "local",
+    handle,
+    sizeBytes: size,
+    identityKey: `sparse|${String(size)}|1`,
+    safeUploadName: "video.mp4",
+  };
 }
 
 function parseMultipart(

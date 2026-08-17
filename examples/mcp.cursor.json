@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "analyze-video": {
+    "mcp_analyze_video": {
       "command": "npx",
       "args": ["-y", "analyze-video-mcp"],
       "env": {

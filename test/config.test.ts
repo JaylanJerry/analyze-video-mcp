@@ -12,6 +12,7 @@ import {
   DEFAULT_BASE_URL,
   DEFAULT_MAX_LOCAL_VIDEO_MB,
   DEFAULT_MODEL,
+  DEFAULT_SERVER_NAME,
   DEFAULT_UPLOAD_TIMEOUT_SECONDS,
   DEFAULT_UPLOAD_URL,
   loadConfig,
@@ -49,12 +50,14 @@ describe("loadConfig", () => {
     delete process.env.QWEN_UPLOAD_TIMEOUT;
     delete process.env.QWEN_ANALYSIS_TIMEOUT;
     delete process.env.QWEN_ANALYSIS_RETRIES;
+    delete process.env.QWEN_MCP_SERVER_NAME;
     process.env.DASHSCOPE_API_KEY = "sk-test";
 
     const cfg = loadConfig();
     expect(cfg.apiKey).toBe("sk-test");
     expect(cfg.model).toBe("qwen3.5-omni-flash");
     expect(cfg.model).toBe(DEFAULT_MODEL);
+    expect(cfg.serverName).toBe(DEFAULT_SERVER_NAME);
     expect(cfg.baseUrl).toBe(DEFAULT_BASE_URL);
     expect(cfg.uploadUrl).toBe(DEFAULT_UPLOAD_URL);
     expect(cfg.allowedRoots).toEqual([]);
@@ -78,10 +81,12 @@ describe("loadConfig", () => {
     process.env.QWEN_UPLOAD_TIMEOUT = "60";
     process.env.QWEN_ANALYSIS_TIMEOUT = "90";
     process.env.QWEN_ANALYSIS_RETRIES = "0";
+    process.env.QWEN_MCP_SERVER_NAME = "mcp_analyze_video";
 
     expect(loadConfig()).toEqual({
       apiKey: "k",
       model: "qwen-vl-max-latest",
+      serverName: "mcp_analyze_video",
       baseUrl: "https://example.test/v1",
       uploadUrl: "https://example.test/api/v1/uploads",
       allowedRoots: [root],
@@ -102,6 +107,18 @@ describe("loadConfig", () => {
 
     const cfg = loadConfig();
     expect(cfg.allowedRoots).toEqual([root, nested]);
+  });
+
+  it("rejects an invalid QWEN_MCP_SERVER_NAME without echoing other env values", () => {
+    process.env.DASHSCOPE_API_KEY = "k";
+    process.env.QWEN_MCP_SERVER_NAME = "bad name";
+    expect(() => loadConfig()).toThrow(/QWEN_MCP_SERVER_NAME/);
+    try {
+      loadConfig();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      expect(message).not.toContain("bad name");
+    }
   });
 
   it("throws when the API key is missing without echoing other env values", () => {

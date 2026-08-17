@@ -1,6 +1,6 @@
 {
   "name": "analyze-video-mcp",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "MCP server that lets local agents analyze video picture and embedded audio",
   "keywords": [
     "mcp",
