@@ -16,20 +16,20 @@ v1 已本机收尾。V2 已实施。安装：`npx` + Key；目录可选；Agent 
 
 ## 下一阶段
 
-v0.5.2：进程内上传缓存、公开 `QWEN_MODEL`、示例 Host 键 `mcp_analyze_video`。规格 [`docs/SPEC_V052.md`](docs/SPEC_V052.md)，ADR 0013。不发 npm，除非用户另说。
+v0.5.2 已在 npm。推已授权的 `v*` tag 时，`release.yml` 用 Trusted Publishing 发 npm 并建 GitHub Release（[ADR 0014](docs/decisions/0014-npm-trusted-publishing.md)）。人须在 npm 包设置里点一次 Trusted Publisher。不要添加 `NPM_TOKEN`。打 tag 仍须另授权。
 
 绑定文档：
 
-1. [`docs/SPEC_V052.md`](docs/SPEC_V052.md)
-2. [`docs/decisions/0013-upload-cache-and-host-server-name.md`](docs/decisions/0013-upload-cache-and-host-server-name.md)
-3. [`tasks/todo-v052.md`](tasks/todo-v052.md)
-4. [`docs/SPEC_V05.md`](docs/SPEC_V05.md)
-5. [`docs/SPEC_INSTALL.md`](docs/SPEC_INSTALL.md)
+1. [`docs/decisions/0014-npm-trusted-publishing.md`](docs/decisions/0014-npm-trusted-publishing.md)
+2. [`docs/SPEC_V052.md`](docs/SPEC_V052.md)
+3. [`docs/decisions/0013-upload-cache-and-host-server-name.md`](docs/decisions/0013-upload-cache-and-host-server-name.md)
+4. [`docs/SPEC_INSTALL.md`](docs/SPEC_INSTALL.md)
+5. [`docs/SPEC_V05.md`](docs/SPEC_V05.md)
 
 ## 硬规则
 
 - 不改变 `analyze_video` 的名称与字段。
-- 不增加生产依赖。不要主动推送或发布 npm，除非用户明确要求。
+- 不增加生产依赖。不要从本机主动推送或 `npm publish`，除非用户明确要求。已授权的 `v*` tag 由 `release.yml` 发 npm。
 - 不读取、复制、打印或提交密钥或 `text/*.key`。
 - 私人 live fixture 留在 `text/`。CI 用 `test/fixtures/live-av.mp4`。
 - 付费 live 必须用户明确授权。
@@ -45,5 +45,5 @@ v1 背景仍按原顺序：`AGENTS.md`、`docs/SPEC.md`、`docs/API_CONTRACT.md`
 ```text
 你在 analyze-video-mcp 仓库根工作。v1 / V2 / 安装 / v0.5.0 已完成，0.5.1 已发 npm。v0.5.2 见 docs/SPEC_V052.md。
 默认安装 `npx -y analyze-video-mcp`。不要改 analyze_video
-字段，不要加依赖，不要读密钥，不要主动推送或发布。
+字段，不要加依赖，不要读密钥。不要本机 npm publish。已授权的 v* tag 由 release.yml 发 npm。
 ```

@@ -36,7 +36,7 @@ CI runs the same on Node 22 and 24. Local green ≠ CI green if you skip a step.
 
 - v1 任务在 `tasks/todo.md`，已收尾。v0.5.0 已发布（[`docs/SPEC_V05.md`](docs/SPEC_V05.md)）。v0.5.2 见 [`docs/SPEC_V052.md`](docs/SPEC_V052.md)。默认安装 `npx -y analyze-video-mcp`；GitHub 回退钉 `#v0.5.0`，npm 12 需 `--allow-git=all`。
 - 不改变 `analyze_video` 的名称与字段。默认值与本地上限只有在通用规格批准后才能改。
-- 不增加生产依赖。不要主动推送或发布 npm，除非用户明确要求。
+- 不增加生产依赖。不要从本机主动推送或 `npm publish`，除非用户明确要求。已授权的 `v*` tag 由 [`release.yml`](.github/workflows/release.yml) 用 npm Trusted Publishing 发布（见 [ADR 0014](docs/decisions/0014-npm-trusted-publishing.md)）。不要添加 `NPM_TOKEN` secret。
 - 私人 live fixture 留在 `text/`，不要复制进仓库。CI Live Smoke 用 `test/fixtures/live-av.mp4`。
 - 付费 live test 只有用户明确授权且已注入 `DASHSCOPE_API_KEY` 后才能跑。
 - 专项 Tool 表面以 ADR 0001 和 `docs/API_CONTRACT.md` 为准，不要为迁就上游五 Tool 测试而保留旧接口。
