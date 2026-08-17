@@ -147,6 +147,21 @@ npm test
 npm run build
 ```
 
+## Release
+
+Pushing an authorized `v*` tag (must equal `v${package.version}`) runs [`.github/workflows/release.yml`](.github/workflows/release.yml): pack probes, `npm publish`, then a GitHub Release. Authentication is npm [Trusted Publishing](https://docs.npmjs.com/trusted-publishers/) (OIDC), not a local OTP and not an `NPM_TOKEN` secret.
+
+One-time setup on [the npm package](https://www.npmjs.com/package/analyze-video-mcp) → Settings → Trusted Publisher → GitHub Actions:
+
+| Field                | Value               |
+| -------------------- | ------------------- |
+| Organization or user | `JaylanJerry`       |
+| Repository           | `analyze-video-mcp` |
+| Workflow filename    | `release.yml`       |
+| Allowed actions      | `npm publish`       |
+
+Do not publish on every `main` push. Do not retag a version that is already on npm.
+
 ## Install from GitHub
 
 If you cannot use the npm registry:
