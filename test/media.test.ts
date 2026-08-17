@@ -39,6 +39,7 @@ function videoCfg(roots: string[], maxLocalVideoBytes = 1024 * 1024 * 1024): App
   return {
     apiKey: "sk-test",
     model: "qwen3.5-omni-flash",
+    serverName: "analyze-video-mcp",
     baseUrl: "https://dashscope.test/v1",
     uploadUrl: "https://dashscope.test/api/v1/uploads",
     allowedRoots: roots,
@@ -87,6 +88,7 @@ describe("resolveVideo", () => {
       if (resolved.kind !== "local") return;
       expect(resolved.safeUploadName).toBe("video.mp4");
       expect(resolved.sizeBytes).toBe(FTYP.length);
+      expect(resolved.identityKey).toContain(`|${String(FTYP.length)}|`);
       const header = Buffer.alloc(8);
       const read = await resolved.handle.read(header, 0, 8, 0);
       expect(read.bytesRead).toBe(8);

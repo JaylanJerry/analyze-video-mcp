@@ -10,7 +10,7 @@ MCP server that gives local agents **video understanding**: the model reads pict
 
 给本地 Agent 增加视频理解：同时看画面、听视频里的音轨，只返回文本。把下面的标准配置贴进 MCP 客户端，填入百炼 Key。
 
-[![Install MCP Server](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=analyze-video&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsImFuYWx5emUtdmlkZW8tbWNwIl0sImVudiI6eyJEQVNIU0NPUEVfQVBJX0tFWSI6IllPVVJfREFTSFNDT1BFX0FQSV9LRVkifX0=)
+[![Install MCP Server](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=mcp_analyze_video&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsImFuYWx5emUtdmlkZW8tbWNwIl0sImVudiI6eyJEQVNIU0NPUEVfQVBJX0tFWSI6IllPVVJfREFTSFNDT1BFX0FQSV9LRVkifX0=)
 
 ## Requirements
 
@@ -34,7 +34,7 @@ Works in Cursor, Claude Desktop, and most `mcpServers` clients:
 ```json
 {
   "mcpServers": {
-    "analyze-video": {
+    "mcp_analyze_video": {
       "command": "npx",
       "args": ["-y", "analyze-video-mcp"],
       "env": {
@@ -45,6 +45,8 @@ Works in Cursor, Claude Desktop, and most `mcpServers` clients:
 }
 ```
 
+The Host config key (`mcp_analyze_video` in the examples) is yours to rename. The tool name stays `analyze_video`.
+
 Copy-paste templates: [`examples/mcp.cursor.json`](examples/mcp.cursor.json), [`examples/mcp.claude-code.json`](examples/mcp.claude-code.json), [`examples/mcp.codex.toml`](examples/mcp.codex.toml).
 
 ### Cursor
@@ -54,13 +56,13 @@ Use the install button above, or put the standard config in `~/.cursor/mcp.json`
 ### Claude Code
 
 ```bash
-claude mcp add --env DASHSCOPE_API_KEY=YOUR_DASHSCOPE_API_KEY --transport stdio analyze-video -- npx -y analyze-video-mcp
+claude mcp add --env DASHSCOPE_API_KEY=YOUR_DASHSCOPE_API_KEY --transport stdio mcp_analyze_video -- npx -y analyze-video-mcp
 ```
 
 On native Windows, wrap `npx` if the server fails to start:
 
 ```bash
-claude mcp add --env DASHSCOPE_API_KEY=YOUR_DASHSCOPE_API_KEY --transport stdio analyze-video -- cmd /c npx -y analyze-video-mcp
+claude mcp add --env DASHSCOPE_API_KEY=YOUR_DASHSCOPE_API_KEY --transport stdio mcp_analyze_video -- cmd /c npx -y analyze-video-mcp
 ```
 
 ### Claude Desktop
@@ -83,7 +85,7 @@ User settings → **MCP: Open User Configuration**, or workspace `.vscode/mcp.js
 ```json
 {
   "servers": {
-    "analyze-video": {
+    "mcp_analyze_video": {
       "command": "npx",
       "args": ["-y", "analyze-video-mcp"],
       "env": {
@@ -116,17 +118,20 @@ What happens on screen, and what does the soundtrack say?
 
 ## Environment
 
-| Variable               | Required | Description                                                                                                                                 |
-| ---------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DASHSCOPE_API_KEY`    | yes      | Bailian API key                                                                                                                             |
-| `QWEN_ALLOWED_ROOTS`   | no       | Optional folder allowlist for local files. Unset: the server does not scan the disk, but will read any valid absolute MP4 the caller passes |
-| `DASHSCOPE_BASE_URL`   | no       | Default: Beijing compatible-mode endpoint                                                                                                   |
-| `DASHSCOPE_UPLOAD_URL` | no       | Default: Beijing temporary upload                                                                                                           |
+| Variable               | Required | Description                                                                                                                                                        |
+| ---------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `DASHSCOPE_API_KEY`    | yes      | Bailian API key                                                                                                                                                    |
+| `QWEN_MODEL`           | no       | DashScope video model id. Default `qwen3.5-omni-flash`. Must accept `video_url` plus embedded audio. Not a Tool field; VL-only models will not hear the soundtrack |
+| `QWEN_MCP_SERVER_NAME` | no       | MCP `initialize.name`. Default `analyze-video-mcp`. Does not change the tool name `analyze_video`                                                                  |
+| `QWEN_ALLOWED_ROOTS`   | no       | Optional folder allowlist for local files. Unset: the server does not scan the disk, but will read any valid absolute MP4 the caller passes                        |
+| `DASHSCOPE_BASE_URL`   | no       | Default: Beijing compatible-mode endpoint                                                                                                                          |
+| `DASHSCOPE_UPLOAD_URL` | no       | Default: Beijing temporary upload                                                                                                                                  |
 
 ## Limits
 
+- This is **sampled understanding**, not frame-accurate editorial timing. Shot lists and timestamps can miss cuts or invert ranges; use `ffmpeg` (or similar) when you need objective cut points or silence.
 - One video per call, up to **1 hour**. Local files are also capped at 1024 MiB and by live Bailian policy.
-- Bigger or slow-to-upload files: host them on public HTTPS and pass the URL. Do not retry the same large local upload.
+- Local files upload in full on a cache miss. The same file + same `QWEN_MODEL` in this process reuses the temporary object for about 47 hours. Bigger or slow-to-upload files: host them on public HTTPS and pass the URL. Do not retry the same large local upload after a failed transfer.
 - One in-flight analysis per process. Some hosts time out around 60 seconds; raise that for large files.
 - Images and standalone audio are not tools yet.
 

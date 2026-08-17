@@ -23,13 +23,15 @@ Host 配置只要求：
 | 项                                                                   | 必需 | 说明                                                                                   |
 | -------------------------------------------------------------------- | ---- | -------------------------------------------------------------------------------------- |
 | `npx -y analyze-video-mcp`                                           | 是   | 默认安装 npm 包。                                                                      |
+| `QWEN_MODEL`                                                         | 否   | 默认 `qwen3.5-omni-flash`。人配，不进 Tool。须支持 `video_url` + 内嵌音轨。            |
+| `QWEN_MCP_SERVER_NAME`                                               | 否   | 默认 `analyze-video-mcp`。只改协议 `initialize.name`，不改 Tool 名。                   |
 | `npx -y --allow-git=all github:JaylanJerry/analyze-video-mcp#v0.5.0` | 否   | GitHub 回退。npm 12 必须带 `--allow-git=all`，否则 `EALLOWGIT`。跟最新提交用 `#main`。 |
 | Node.js                                                              | 是   | 默认安装与 `#main` 需要 22+。旧标签 `#v0.4.0` 以该标签当时说明为准（20+）。            |
 | `DASHSCOPE_API_KEY`                                                  | 是   | 用户自己的百炼 Key，不要提交                                                           |
 | `QWEN_ALLOWED_ROOTS`                                                 | 否   | 要收紧本地可读范围时再填                                                               |
 | Base / Upload URL                                                    | 否   | 默认北京区                                                                             |
 
-模板：[`../examples/mcp.cursor.json`](../examples/mcp.cursor.json)、[`../examples/mcp.claude-code.json`](../examples/mcp.claude-code.json)、[`../examples/mcp.codex.toml`](../examples/mcp.codex.toml)。
+模板：[`../examples/mcp.cursor.json`](../examples/mcp.cursor.json)、[`../examples/mcp.claude-code.json`](../examples/mcp.claude-code.json)、[`../examples/mcp.codex.toml`](../examples/mcp.codex.toml)。示例 Host 键是 `mcp_analyze_video`，用户可改；Tool 仍是 `analyze_video`。
 
 本机开发仍可用 `node dist/index.js`。`text/*.key` 脚本不是产品安装方式。
 

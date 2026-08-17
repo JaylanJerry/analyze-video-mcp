@@ -15,6 +15,7 @@ const MP4_HEADER = Buffer.from([
 const baseCfg: AppConfig = {
   apiKey: "sk-secret-key-1234567890",
   model: "qwen3.5-omni-flash",
+  serverName: "analyze-video-mcp",
   baseUrl: "https://dashscope.test/v1",
   uploadUrl: "https://dashscope.test/api/v1/uploads",
   allowedRoots: [],

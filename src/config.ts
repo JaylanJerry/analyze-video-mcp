@@ -5,6 +5,7 @@ import { ConfigError } from "./errors.js";
 export interface AppConfig {
   apiKey: string;
   model: string;
+  serverName: string;
   baseUrl: string;
   uploadUrl: string;
   allowedRoots: string[];
@@ -15,6 +16,8 @@ export interface AppConfig {
 }
 
 export const DEFAULT_MODEL = "qwen3.5-omni-flash";
+export const DEFAULT_SERVER_NAME = "analyze-video-mcp";
+const SERVER_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 export const DEFAULT_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1";
 export const DEFAULT_UPLOAD_URL = "https://dashscope.aliyuncs.com/api/v1/uploads";
 export const DEFAULT_MAX_LOCAL_VIDEO_MB = 1024;
@@ -68,6 +71,20 @@ function httpsUrl(name: string, fallback: string): string {
   return `${parsed.origin}${parsed.pathname}${parsed.search}`.replace(/\/+$/, "");
 }
 
+function parseServerName(): string {
+  const raw = process.env.QWEN_MCP_SERVER_NAME;
+  if (raw === undefined || raw.trim() === "") {
+    return DEFAULT_SERVER_NAME;
+  }
+  const value = raw.trim();
+  if (!SERVER_NAME_PATTERN.test(value) || value.length > 64) {
+    throw new ConfigError(
+      "QWEN_MCP_SERVER_NAME must be 1-64 characters: letters, digits, dot, underscore, hyphen",
+    );
+  }
+  return value;
+}
+
 function parseAllowedRoots(): string[] {
   const raw = process.env.QWEN_ALLOWED_ROOTS ?? "";
   const parts = raw
@@ -114,6 +131,7 @@ export function loadConfig(): AppConfig {
   return {
     apiKey: required("DASHSCOPE_API_KEY"),
     model: process.env.QWEN_MODEL?.trim() || DEFAULT_MODEL,
+    serverName: parseServerName(),
     baseUrl: httpsUrl("DASHSCOPE_BASE_URL", DEFAULT_BASE_URL),
     uploadUrl: httpsUrl("DASHSCOPE_UPLOAD_URL", DEFAULT_UPLOAD_URL),
     allowedRoots: parseAllowedRoots(),

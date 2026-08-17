@@ -34,7 +34,7 @@ CI runs the same on Node 22 and 24. Local green ≠ CI green if you skip a step.
 
 ## Scope
 
-- v1 任务在 `tasks/todo.md`，已收尾。v0.5.0 已发布（[`docs/SPEC_V05.md`](docs/SPEC_V05.md)）。默认安装 `npx -y analyze-video-mcp`；GitHub 回退钉 `#v0.5.0`，npm 12 需 `--allow-git=all`。
+- v1 任务在 `tasks/todo.md`，已收尾。v0.5.0 已发布（[`docs/SPEC_V05.md`](docs/SPEC_V05.md)）。v0.5.2 见 [`docs/SPEC_V052.md`](docs/SPEC_V052.md)。默认安装 `npx -y analyze-video-mcp`；GitHub 回退钉 `#v0.5.0`，npm 12 需 `--allow-git=all`。
 - 不改变 `analyze_video` 的名称与字段。默认值与本地上限只有在通用规格批准后才能改。
 - 不增加生产依赖。不要主动推送或发布 npm，除非用户明确要求。
 - 私人 live fixture 留在 `text/`，不要复制进仓库。CI Live Smoke 用 `test/fixtures/live-av.mp4`。
@@ -58,9 +58,9 @@ Agent-facing errors must stay redacted. There are tests asserting no key, path, 
 ## Backend
 
 - Endpoint: Bailian (DashScope) OpenAI-compatible mode, `${DASHSCOPE_BASE_URL}/chat/completions` (default `https://dashscope.aliyuncs.com/compatible-mode/v1`).
-- Model: `qwen3.5-omni-flash` for `analyze_video`. The call must jointly read picture and embedded audio. Do not add client-side frame or audio extraction.
+- Model: default `qwen3.5-omni-flash` for `analyze_video`, overridable with env `QWEN_MODEL` (not a Tool field). The call must jointly read picture and embedded audio. Do not add client-side frame or audio extraction.
 - Requests use `stream: true`, `modalities: ["text"]`, and `stream_options.include_usage`. Do not send Thinking or audio-output parameters.
-- Local files are authorized FileHandles streamed to Beijing temporary upload (48h). Do not Base64 whole videos.
+- Local files are authorized FileHandles streamed to Beijing temporary upload (48h). Same file + same model may reuse the `oss://` URL in-process for ~47h; do not cache upload credentials. Do not Base64 whole videos.
 - The Anthropic-compatible `/apps/anthropic` endpoint does NOT support video input. Do not switch to it.
 
 ## Testing
@@ -77,7 +77,7 @@ Agent-facing errors must stay redacted. There are tests asserting no key, path, 
 ## Fragile assumptions (verify before relying on)
 
 1. The OpenAI-compatible endpoint accepts a `video_url` content block for `qwen3.5-omni-flash` (verified live). If a live call rejects it, the fallback is the native DashScope `video` content type. Change `contentBlock()` in `src/bailian.ts`.
-2. The exact model id string is `qwen3.5-omni-flash`. Verify against the Bailian model list if a call returns a model-not-found error.
+2. The default model id string is `qwen3.5-omni-flash`. `QWEN_MODEL` may point at another DashScope id that accepts the same `video_url` protocol; VL-only models will not hear embedded audio. Verify against the Bailian model list if a call returns a model-not-found error.
 3. Local MP4s are streamed to Beijing temporary upload (48h). Do not Base64 whole videos. Authorization is extension + ftyp magic + size + optional allowed-root containment + `mvhd` duration probe (`resolveVideo` in `src/media.ts`). Duration **greater than** 3600 seconds is `VIDEO_TOO_LONG`; exactly 3600 is allowed; unknown duration is allowed. HTTPS is not probed.
 4. Production `analyzeVideo` always sends `stream: true`, `modalities: ["text"]`, and `stream_options.include_usage`.
 5. The default `dashscope.aliyuncs.com/compatible-mode/v1` endpoint serves `qwen3.5-omni-flash` (verified live). No workspace-specific MaaS URL is needed.
