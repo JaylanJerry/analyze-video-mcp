@@ -19,7 +19,7 @@ import { type AppConfig } from "../src/config.js";
 import { VideoError } from "../src/errors.js";
 import {
   abortActiveAnalysis,
-  buildProviderQuestion,
+  buildUserQuestion,
   createServer,
   DEFAULT_QUESTION,
   notifyProgress,
@@ -49,6 +49,8 @@ const baseCfg: AppConfig = {
   uploadTimeoutMs: 5_000,
   analysisTimeoutMs: 5_000,
   analysisRetries: 1,
+  uploadCache: true,
+  uploadCachePath: undefined,
 };
 
 const endpoint = "https://dashscope.test/v1/chat/completions";
@@ -146,7 +148,41 @@ function textOf(result: unknown): string {
   return r.content?.[0]?.text ?? "";
 }
 
+function structuredOf(result: unknown): Record<string, unknown> | undefined {
+  return (result as { structuredContent?: Record<string, unknown> }).structuredContent;
+}
+
 describe("MCP analyze_video contract", () => {
+  it("registers analyze_video without an API key and returns CONFIG_MISSING on call", async () => {
+    const orig = process.env.DASHSCOPE_API_KEY;
+    delete process.env.DASHSCOPE_API_KEY;
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const mcp = createServer();
+    await mcp.connect(serverTransport);
+    const client = new Client({ name: "test-client", version: "1.0.0" });
+    await client.connect(clientTransport);
+    try {
+      const { tools } = await client.listTools();
+      expect(tools.map((t) => t.name)).toEqual(["analyze_video"]);
+      const r = await client.callTool({
+        name: "analyze_video",
+        arguments: { video: "https://cdn.example/v.mp4" },
+      });
+      expect(r.isError).toBe(true);
+      expect(textOf(r)).toMatch(/^CONFIG_MISSING: /);
+      expect(structuredOf(r)?.code).toBe("CONFIG_MISSING");
+      expect(JSON.stringify(r)).not.toContain(SECRET_KEY);
+    } finally {
+      await client.close();
+      await mcp.close();
+      if (orig === undefined) {
+        delete process.env.DASHSCOPE_API_KEY;
+      } else {
+        process.env.DASHSCOPE_API_KEY = orig;
+      }
+    }
+  });
+
   it("reports the package version on initialize", async () => {
     await withClient(baseCfg, {}, (client) => {
       expect(client.getServerVersion()).toEqual({
@@ -185,7 +221,10 @@ describe("MCP analyze_video contract", () => {
       expect(instructions).toContain("1 小时");
       expect(instructions).toContain("抽样理解");
       expect(instructions).toContain("全量上传");
+      expect(instructions).toContain("QWEN_ALLOWED_ROOTS");
       expect(tools[0]?.description).toContain("抽样理解");
+      expect(tools[0]?.description).toContain("5–30");
+      expect(tools[0]?.description).toContain("QWEN_ALLOWED_ROOTS");
     });
   });
 
@@ -200,12 +239,11 @@ describe("MCP analyze_video contract", () => {
     });
   });
 
-  it("wraps the default question with an AV constraint", () => {
-    const prompt = buildProviderQuestion(DEFAULT_QUESTION);
-    expect(prompt).toContain("内嵌音轨");
-    expect(prompt).toContain("音轨里实际听到的");
-    expect(prompt).toContain("禁止倒序");
-    expect(prompt).toContain(DEFAULT_QUESTION);
+  it("keeps the user question intact and adds a duration hint for long local files", () => {
+    expect(buildUserQuestion(DEFAULT_QUESTION, undefined)).toBe(DEFAULT_QUESTION);
+    expect(buildUserQuestion("q", 30)).toBe("q");
+    expect(buildUserQuestion("q", 121)).toContain("121");
+    expect(buildUserQuestion("q", 121)).toContain("5–30");
     expect(DEFAULT_QUESTION).toContain("画面");
     expect(DEFAULT_QUESTION).toContain("音频");
   });
@@ -225,8 +263,7 @@ describe("MCP analyze_video contract", () => {
       url: "https://cdn.example/v.mp4",
       requiresOssResolve: false,
     });
-    expect(rec.calls[0]?.request.question).toContain("用户问题：what");
-    expect(rec.calls[0]?.request.question).toContain("内嵌音轨");
+    expect(rec.calls[0]?.request.question).toBe("what");
     expect(rec.calls[0]?.request).not.toHaveProperty("maxTokens");
   });
 
@@ -296,6 +333,9 @@ describe("MCP analyze_video contract", () => {
     expect(body).not.toHaveProperty("thinking_budget");
     expect(body).not.toHaveProperty("max_tokens");
     expect(JSON.stringify(body)).not.toContain(SECRET_KEY);
+    const messages = body?.messages as { role?: string }[] | undefined;
+    expect(messages?.[0]?.role).toBe("system");
+    expect(messages?.[1]?.role).toBe("user");
   });
 
   it("maps provider failure to a redacted isError result", async () => {
@@ -308,6 +348,13 @@ describe("MCP analyze_video contract", () => {
       expect(r.isError).toBe(true);
       const text = textOf(r);
       expect(text).toBe("VIDEO_ANALYSIS_FAILED: 视频分析失败。");
+      expect(structuredOf(r)).toEqual({
+        ok: false,
+        code: "VIDEO_ANALYSIS_FAILED",
+        stage: "analyzing",
+        retryable: false,
+        http_status: 500,
+      });
       expect(text).not.toContain(SECRET_KEY);
       expect(text).not.toContain("oss://");
     });
@@ -322,7 +369,7 @@ describe("MCP analyze_video contract", () => {
       expect(r.isError).toBe(true);
       const text = textOf(r);
       if (process.platform === "win32") {
-        expect(text).toMatch(/^VIDEO_NOT_FOUND: /);
+        expect(text).toMatch(/^VIDEO_PATH_NOT_ALLOWED: /);
       } else {
         expect(text).toMatch(/^INVALID_VIDEO_INPUT: /);
       }
@@ -330,7 +377,7 @@ describe("MCP analyze_video contract", () => {
     });
   });
 
-  it("rejects a missing local path without leaking it when no allowed roots are set", async () => {
+  it("rejects a local path when no allowed roots are set without leaking it", async () => {
     await withClient(baseCfg, {}, async (client) => {
       const r = await client.callTool({
         name: "analyze_video",
@@ -338,8 +385,9 @@ describe("MCP analyze_video contract", () => {
       });
       expect(r.isError).toBe(true);
       const text = textOf(r);
-      expect(text).toMatch(/^VIDEO_NOT_FOUND: /);
+      expect(text).toMatch(/^VIDEO_PATH_NOT_ALLOWED: /);
       expect(text).not.toContain(MISSING_LOCAL);
+      expect(structuredOf(r)?.code).toBe("VIDEO_PATH_NOT_ALLOWED");
     });
   });
 
@@ -365,7 +413,7 @@ describe("local authorized video", () => {
     await rm(dir, { recursive: true, force: true });
   });
 
-  it("uploads a local MP4 when no allowed roots are configured", async () => {
+  it("refuses a local MP4 when no allowed roots are configured", async () => {
     const rec = recordingAnalyzer("ok");
     const up = recordingUploader();
     const p = join(dir, "clip.mp4");
@@ -375,9 +423,12 @@ describe("local authorized video", () => {
         name: "analyze_video",
         arguments: { video: p, question: "q" },
       });
-      expect(textOf(r)).toBe("ok");
+      expect(r.isError).toBe(true);
+      expect(textOf(r)).toMatch(/^VIDEO_PATH_NOT_ALLOWED: /);
+      expect(textOf(r)).not.toContain(p);
     });
-    expect(up.uploads).toBe(1);
+    expect(up.uploads).toBe(0);
+    expect(rec.calls).toHaveLength(0);
   });
 
   it("rejects a local MP4 longer than one hour before upload", async () => {
@@ -385,16 +436,20 @@ describe("local authorized video", () => {
     const up = recordingUploader();
     const p = join(dir, "too-long.mp4");
     await writeFile(p, mp4WithDuration(1, MAX_LOCAL_VIDEO_DURATION_SECONDS + 1));
-    await withClient(baseCfg, { analyzer: rec.analyzer, uploader: up.uploader }, async (client) => {
-      const r = await client.callTool({
-        name: "analyze_video",
-        arguments: { video: p, question: "q" },
-      });
-      expect(r.isError).toBe(true);
-      const text = textOf(r);
-      expect(text).toMatch(/^VIDEO_TOO_LONG: /);
-      expect(text).not.toContain(p);
-    });
+    await withClient(
+      { ...baseCfg, allowedRoots: [await realpath(dir)] },
+      { analyzer: rec.analyzer, uploader: up.uploader },
+      async (client) => {
+        const r = await client.callTool({
+          name: "analyze_video",
+          arguments: { video: p, question: "q" },
+        });
+        expect(r.isError).toBe(true);
+        const text = textOf(r);
+        expect(text).toMatch(/^VIDEO_TOO_LONG: /);
+        expect(text).not.toContain(p);
+      },
+    );
     expect(up.uploads).toBe(0);
     expect(rec.calls).toHaveLength(0);
   });
@@ -404,12 +459,18 @@ describe("local authorized video", () => {
     const up = recordingUploader();
     const p = join(dir, "hour.mp4");
     await writeFile(p, mp4WithDuration(1, MAX_LOCAL_VIDEO_DURATION_SECONDS));
-    await withClient(baseCfg, { analyzer: rec.analyzer, uploader: up.uploader }, async (client) => {
-      expect(
-        textOf(await client.callTool({ name: "analyze_video", arguments: { video: p } })),
-      ).toBe("ok");
-    });
+    await withClient(
+      { ...baseCfg, allowedRoots: [await realpath(dir)] },
+      { analyzer: rec.analyzer, uploader: up.uploader },
+      async (client) => {
+        expect(
+          textOf(await client.callTool({ name: "analyze_video", arguments: { video: p } })),
+        ).toBe("ok");
+      },
+    );
     expect(up.uploads).toBe(1);
+    expect(rec.calls[0]?.request.question).toContain("3600");
+    expect(rec.calls[0]?.request.question).toContain("5–30");
   });
 
   it("uploads a local MP4 that has no mvhd", async () => {
@@ -417,11 +478,15 @@ describe("local authorized video", () => {
     const up = recordingUploader();
     const p = join(dir, "fragmented.mp4");
     await writeFile(p, mp4WithoutMvhd());
-    await withClient(baseCfg, { analyzer: rec.analyzer, uploader: up.uploader }, async (client) => {
-      expect(
-        textOf(await client.callTool({ name: "analyze_video", arguments: { video: p } })),
-      ).toBe("ok");
-    });
+    await withClient(
+      { ...baseCfg, allowedRoots: [await realpath(dir)] },
+      { analyzer: rec.analyzer, uploader: up.uploader },
+      async (client) => {
+        expect(
+          textOf(await client.callTool({ name: "analyze_video", arguments: { video: p } })),
+        ).toBe("ok");
+      },
+    );
     expect(up.uploads).toBe(1);
   });
 
@@ -447,8 +512,45 @@ describe("local authorized video", () => {
     expect(up.uploads).toBe(1);
     expect(rec.calls).toHaveLength(2);
     expect(rec.calls[0]?.input).toEqual(rec.calls[1]?.input);
-    expect(rec.calls[0]?.request.question).toContain("用户问题：first");
-    expect(rec.calls[1]?.request.question).toContain("用户问题：second");
+    expect(rec.calls[0]?.request.question).toBe("first");
+    expect(rec.calls[1]?.request.question).toBe("second");
+  });
+
+  it("retries hedging heard evidence once and returns the answer field", async () => {
+    const answers = [
+      JSON.stringify({
+        visual_observations: [],
+        audio_observations: [{ evidence: "heard", description: "可能存在风声" }],
+        inferences: [],
+        uncertainties: [],
+        answer: "bad",
+      }),
+      JSON.stringify({
+        visual_observations: [],
+        audio_observations: [{ time: "00:01", evidence: "heard", description: "短促脚步" }],
+        inferences: [],
+        uncertainties: [],
+        answer: "脚步清晰",
+      }),
+    ];
+    let calls = 0;
+    const analyzer = {
+      analyze() {
+        const answer = answers[calls] ?? "x";
+        calls += 1;
+        return Promise.resolve({ answer, requestId: "x", receivedEvents: 1 });
+      },
+    };
+    await withClient(baseCfg, { analyzer }, async (client) => {
+      const r = await client.callTool({
+        name: "analyze_video",
+        arguments: { video: "https://cdn.example/v.mp4", question: "听什么" },
+      });
+      expect(textOf(r)).toBe("脚步清晰");
+      expect(structuredOf(r)?.ok).toBe(true);
+      expect(JSON.stringify(r)).not.toContain("可能存在");
+    });
+    expect(calls).toBe(2);
   });
 
   it("uploads a local MP4 and analyzes the returned object", async () => {

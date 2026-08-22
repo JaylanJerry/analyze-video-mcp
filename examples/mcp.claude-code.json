@@ -2,9 +2,11 @@
   "mcpServers": {
     "mcp_analyze_video": {
       "command": "npx",
-      "args": ["-y", "analyze-video-mcp"],
+      "args": ["-y", "--prefer-offline", "analyze-video-mcp@0.6.0"],
       "env": {
-        "DASHSCOPE_API_KEY": "YOUR_DASHSCOPE_API_KEY"
+        "DASHSCOPE_API_KEY": "YOUR_DASHSCOPE_API_KEY",
+        "QWEN_MODEL": "qwen3.5-omni-plus",
+        "QWEN_ALLOWED_ROOTS": "C:\\Users\\用户名\\Videos"
       }
     }
   }

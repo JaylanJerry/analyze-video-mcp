@@ -1,6 +1,6 @@
 # Video MCP 安装规格
 
-状态：已批准并实施。公开仓库：`JaylanJerry/analyze-video-mcp`。已发 npm `analyze-video-mcp`。
+状态：已批准并实施。公开仓库：`JaylanJerry/analyze-video-mcp`。已发 npm `analyze-video-mcp`。**v0.6 的模板、默认模型与允许根以 [`SPEC_V06.md`](SPEC_V06.md) 为准。**
 
 本规格在 V2 之上，只改「别人怎么装」和「本地路径默许这次传入的文件」。不改 `analyze_video` 名称与字段。图片、独立音频后做。
 

@@ -37,7 +37,8 @@ Tool schema 不得出现：`max_tokens`、`model`、`provider`、`thinking_budge
 它会联合分析视频画面和视频内嵌音频，并返回文本回答。
 不要先自行抽帧或抽音频；直接传入视频路径或 HTTPS URL。
 一次最多 1 小时；本地还受 1024 MiB 与当场上传政策约束。
-这是抽样理解，不是帧级剪辑定位。同一本地文件在本进程内会复用已上传地址；未命中则全量上传。
+这是抽样理解，不是帧级剪辑定位。精确转场请先提供 5–30 秒片段。
+本地文件必须位于 QWEN_ALLOWED_ROOTS。同一本地文件会复用已上传地址；未命中则全量上传。
 把用户的分析要求写入 question：具体则原样转发，空话则先整理再调用。
 ```
 
@@ -50,14 +51,22 @@ MCP `CallToolResult`：
 ```json
 {
   "content": [{ "type": "text", "text": "模型回答" }],
+  "structuredContent": {
+    "ok": true,
+    "visual_observations": [],
+    "audio_observations": [],
+    "inferences": [],
+    "uncertainties": []
+  },
   "isError": false
 }
 ```
 
 规则：
 
-- 文本必须是聚合后的完整模型回答。
-- 不加固定标题、JSON envelope、模型名、request id 或耗时。
+- 文本必须是完整中文回答（模型 JSON 的 `answer`，或模型未返回 JSON 时的原文）。
+- 不加固定标题、模型名、request id 或耗时。不得把原始 JSON 当作唯一可见结果。
+- 若模型返回了合格的证据 JSON，可附加安全的 `structuredContent`（无路径、无 Key、无 OSS）。旧 Host 忽略该字段。
 - 空白回答视为错误。
 - Tool 不流式向 Agent 暴露 provider chunk；内部 SSE 只用于满足 provider 协议并聚合结果。
 - 若 Host 在调用时提供 `progressToken`，本地路径会在上传开始、上传结束、推理开始各发一次 `notifications/progress`；HTTPS 只发推理开始。消息为中文通用句，不含路径或密钥。无 token 的旧 Host 仍只收到最终纯文本。
@@ -67,6 +76,12 @@ MCP `CallToolResult`：
 ```json
 {
   "content": [{ "type": "text", "text": "VIDEO_FILE_TOO_LARGE: 视频超过本地允许上限。" }],
+  "structuredContent": {
+    "ok": false,
+    "code": "VIDEO_FILE_TOO_LARGE",
+    "stage": "authorized",
+    "retryable": false
+  },
   "isError": true
 }
 ```
@@ -90,6 +105,7 @@ MCP `CallToolResult`：
 | `PROVIDER_UNAVAILABLE`      | 502/503 等暂时故障                             | 可重试              |
 | `PROVIDER_RESPONSE_INVALID` | SSE/JSON 不符合契约或中途截断                  | 可重试              |
 | `VIDEO_ANALYSIS_FAILED`     | 其他已脱敏错误                                 | 视情况              |
+| `CONFIG_MISSING`            | 启动后调用时仍缺 Key、端点或允许根配置         | 否                  |
 
 Agent 错误文本禁止包含：
 
@@ -100,7 +116,9 @@ Agent 错误文本禁止包含：
 - 本地绝对路径；
 - provider 原始响应体。
 
-完整诊断只能写 stderr，且同样必须脱敏凭证和本地路径；允许记录错误码、HTTP 状态、阶段、request id、耗时和文件大小。
+完整诊断只能写 stderr，且同样必须脱敏凭证和本地路径；允许记录错误码、HTTP 状态、阶段、request id、耗时和文件大小。Agent 同时收到安全的 `structuredContent`（`ok`/`code`/`stage`/`retryable`，可选 `http_status`），仍不得含路径、Key、OSS、policy 或 signature。
+
+缺 Key 或坏配置不得阻止 MCP `initialize` / `listTools`。工具调用时返回 `CONFIG_MISSING`。`analyze-video-mcp --doctor --json` 供本机自检，绝不打印 Key。
 
 `VIDEO_TOO_LONG`：`retryable: false`；`stage` 为 `authorized`；Agent 文本与 diagnostic 不得含本地绝对路径。大于 3600 秒拒绝，正好 3600 秒允许。读不出时长（缺 `mvhd`、非法 box、`timescale == 0`）则放行，不得用本错误码。HTTPS 不探测时长。
 

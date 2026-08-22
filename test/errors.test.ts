@@ -3,6 +3,7 @@ import {
   AGENT_ERROR_CODES,
   ConfigError,
   VideoError,
+  agentErrorStructured,
   agentErrorText,
   looksSensitive,
   startupErrorText,
@@ -78,6 +79,22 @@ describe("VideoError", () => {
       http_status: 503,
     });
     expect(err.agentMessage()).toBe("VIDEO_ANALYSIS_FAILED: 视频分析失败。");
+  });
+
+  it("returns a redacted structured error object", () => {
+    const err = new VideoError({
+      code: "VIDEO_UPLOAD_FAILED",
+      stage: "uploaded",
+      httpStatus: 400,
+    });
+    expect(agentErrorStructured(err)).toEqual({
+      ok: false,
+      code: "VIDEO_UPLOAD_FAILED",
+      stage: "uploaded",
+      retryable: false,
+      http_status: 400,
+    });
+    expect(JSON.stringify(agentErrorStructured(err))).not.toContain(CANARY_PATH);
   });
 
   it("does not serialize an unknown value into the agent text", () => {

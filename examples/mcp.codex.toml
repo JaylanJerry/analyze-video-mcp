@@ -1,6 +1,16 @@
 [mcp_servers.mcp_analyze_video]
-command = "npx"
-args = ["-y", "analyze-video-mcp"]
+command = "cmd"
+args = ["/c", "npx", "--prefer-offline", "-y", "analyze-video-mcp@0.6.0"]
+startup_timeout_sec = 120
+tool_timeout_sec = 1200
 
 [mcp_servers.mcp_analyze_video.env]
 DASHSCOPE_API_KEY = "YOUR_DASHSCOPE_API_KEY"
+QWEN_MODEL = "qwen3.5-omni-plus"
+QWEN_ALLOWED_ROOTS = "C:\\Users\\用户名\\Videos"
+
+# Unix / macOS: command = "npx", args = ["--prefer-offline", "-y", "analyze-video-mcp@0.6.0"]
+# After adding the server, start a new Codex thread. Old threads may not remount tools.
+# Verify: codex mcp list   then   codex mcp get mcp_analyze_video
+# --prefer-offline only reduces registry lookups. For a stable install, npm i -g analyze-video-mcp@0.6.0
+# and point command at the local binary or dist/index.js.

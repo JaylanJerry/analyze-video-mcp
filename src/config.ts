@@ -1,5 +1,6 @@
 import { realpathSync, statSync } from "node:fs";
-import { delimiter, isAbsolute } from "node:path";
+import { homedir } from "node:os";
+import { delimiter, isAbsolute, join } from "node:path";
 import { ConfigError } from "./errors.js";
 
 export interface AppConfig {
@@ -13,9 +14,12 @@ export interface AppConfig {
   uploadTimeoutMs: number;
   analysisTimeoutMs: number;
   analysisRetries: 0 | 1;
+  uploadCache: boolean;
+  uploadCachePath: string | undefined;
 }
 
-export const DEFAULT_MODEL = "qwen3.5-omni-flash";
+export const DEFAULT_MODEL = "qwen3.5-omni-plus";
+export const FAST_MODEL = "qwen3.5-omni-flash";
 export const DEFAULT_SERVER_NAME = "analyze-video-mcp";
 const SERVER_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 export const DEFAULT_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1";
@@ -85,6 +89,44 @@ function parseServerName(): string {
   return value;
 }
 
+/** Initialize.name must never crash the MCP handshake. */
+export function readBootstrapServerName(): string {
+  try {
+    return parseServerName();
+  } catch {
+    return DEFAULT_SERVER_NAME;
+  }
+}
+
+export function defaultUploadCachePath(): string {
+  if (process.platform === "win32") {
+    const base = process.env.LOCALAPPDATA?.trim() || join(homedir(), "AppData", "Local");
+    return join(base, "analyze-video-mcp", "upload-cache.json");
+  }
+  const xdg = process.env.XDG_CACHE_HOME?.trim();
+  const base = xdg !== undefined && xdg.length > 0 ? xdg : join(homedir(), ".cache");
+  return join(base, "analyze-video-mcp", "upload-cache.json");
+}
+
+function parseUploadCache(): boolean {
+  const raw = process.env.QWEN_UPLOAD_CACHE;
+  if (raw === undefined || raw.trim() === "") {
+    return true;
+  }
+  const value = raw.trim().toLowerCase();
+  if (value === "off" || value === "0" || value === "false") {
+    return false;
+  }
+  if (value === "on" || value === "1" || value === "true") {
+    return true;
+  }
+  throw new ConfigError("QWEN_UPLOAD_CACHE must be on or off");
+}
+
+export function readAllowedRoots(): string[] {
+  return parseAllowedRoots();
+}
+
 function parseAllowedRoots(): string[] {
   const raw = process.env.QWEN_ALLOWED_ROOTS ?? "";
   const parts = raw
@@ -128,6 +170,7 @@ export function loadConfig(): AppConfig {
     1,
     ABSOLUTE_MAX_LOCAL_VIDEO_MB,
   );
+  const uploadCache = parseUploadCache();
   return {
     apiKey: required("DASHSCOPE_API_KEY"),
     model: process.env.QWEN_MODEL?.trim() || DEFAULT_MODEL,
@@ -151,5 +194,7 @@ export function loadConfig(): AppConfig {
         MAX_TIMEOUT_SECONDS,
       ) * 1000,
     analysisRetries: zeroOrOne("QWEN_ANALYSIS_RETRIES", DEFAULT_ANALYSIS_RETRIES),
+    uploadCache,
+    uploadCachePath: uploadCache ? defaultUploadCachePath() : undefined,
   };
 }
