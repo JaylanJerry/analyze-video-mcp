@@ -3,7 +3,13 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { DEFAULT_BASE_URL, DEFAULT_UPLOAD_URL, readAllowedRoots } from "./config.js";
+import { DEFAULT_BASE_URL, DEFAULT_UPLOAD_URL, loadConfig, readAllowedRoots } from "./config.js";
+import {
+  type ConfigLookupOptions,
+  type ConfigSource,
+  inspectConfig,
+  lookupConfigValue,
+} from "./config-lookup.js";
 import { createServer } from "./server.js";
 import { formatPackageBanner, PACKAGE_VERSION } from "./version.js";
 
@@ -13,8 +19,8 @@ export interface DoctorReport {
   git: string | undefined;
   banner: string;
   node: { version: string; supported: boolean };
-  api_key: { configured: boolean };
-  allowed_roots: { configured: boolean; count: number; valid: boolean };
+  api_key: { configured: boolean; source: ConfigSource };
+  allowed_roots: { configured: boolean; source: ConfigSource; count: number; valid: boolean };
   endpoints: { base_url_ok: boolean; upload_url_ok: boolean };
   handshake: { tool: string; registered: boolean };
   warnings: string[];
@@ -59,7 +65,10 @@ function nodeMajor(version: string): number {
   return raw === undefined ? 0 : Number(raw);
 }
 
-export async function runDoctor(cwd = process.cwd()): Promise<DoctorReport> {
+export async function runDoctor(
+  cwd = process.cwd(),
+  lookup?: ConfigLookupOptions,
+): Promise<DoctorReport> {
   const warnings: string[] = [];
   const nodeVersion = process.version;
   const supported = nodeMajor(nodeVersion) >= MIN_NODE_MAJOR;
@@ -67,19 +76,18 @@ export async function runDoctor(cwd = process.cwd()): Promise<DoctorReport> {
     warnings.push("Node.js 22+ is required");
   }
 
-  const keyConfigured = (process.env.DASHSCOPE_API_KEY?.trim() ?? "").length > 0;
+  const inspection = inspectConfig(lookup);
+  const keyConfigured = inspection.api_key.configured;
   if (!keyConfigured) {
     warnings.push("DASHSCOPE_API_KEY is not set");
   }
 
-  let rootsConfigured = false;
   let rootsCount = 0;
   let rootsValid = true;
-  const rootsRaw = process.env.QWEN_ALLOWED_ROOTS?.trim() ?? "";
-  if (rootsRaw.length > 0) {
-    rootsConfigured = true;
+  const rootsConfigured = inspection.allowed_roots.configured;
+  if (rootsConfigured) {
     try {
-      rootsCount = readAllowedRoots().length;
+      rootsCount = readAllowedRoots(lookup).length;
       rootsValid = rootsCount > 0;
     } catch {
       rootsValid = false;
@@ -89,8 +97,14 @@ export async function runDoctor(cwd = process.cwd()): Promise<DoctorReport> {
     warnings.push("QWEN_ALLOWED_ROOTS is unset; local MP4s will be refused");
   }
 
-  const baseOk = httpsEndpointOk(process.env.DASHSCOPE_BASE_URL, DEFAULT_BASE_URL);
-  const uploadOk = httpsEndpointOk(process.env.DASHSCOPE_UPLOAD_URL, DEFAULT_UPLOAD_URL);
+  const baseOk = httpsEndpointOk(
+    lookupConfigValue("DASHSCOPE_BASE_URL", lookup).value,
+    DEFAULT_BASE_URL,
+  );
+  const uploadOk = httpsEndpointOk(
+    lookupConfigValue("DASHSCOPE_UPLOAD_URL", lookup).value,
+    DEFAULT_UPLOAD_URL,
+  );
   if (!baseOk) {
     warnings.push("DASHSCOPE_BASE_URL must be HTTPS");
   }
@@ -117,16 +131,32 @@ export async function runDoctor(cwd = process.cwd()): Promise<DoctorReport> {
     warnings.push("analyze_video was not registered");
   }
 
+  let runtimeOk = true;
+  if (keyConfigured) {
+    try {
+      loadConfig(lookup);
+    } catch {
+      runtimeOk = false;
+      warnings.push("runtime config could not be loaded");
+    }
+  }
+
   const git = readGitCommit(cwd);
-  const ok = supported && keyConfigured && baseOk && uploadOk && registered && rootsValid;
+  const ok =
+    supported && keyConfigured && runtimeOk && baseOk && uploadOk && registered && rootsValid;
   return {
     ok,
     version: PACKAGE_VERSION,
     git,
     banner: formatPackageBanner(git),
     node: { version: nodeVersion, supported },
-    api_key: { configured: keyConfigured },
-    allowed_roots: { configured: rootsConfigured, count: rootsCount, valid: rootsValid },
+    api_key: { configured: keyConfigured, source: inspection.api_key.source },
+    allowed_roots: {
+      configured: rootsConfigured,
+      source: inspection.allowed_roots.source,
+      count: rootsCount,
+      valid: rootsValid,
+    },
     endpoints: { base_url_ok: baseOk, upload_url_ok: uploadOk },
     handshake: { tool: "analyze_video", registered },
     warnings,
@@ -138,8 +168,8 @@ export function formatDoctorText(report: DoctorReport): string {
     report.banner,
     `ok=${report.ok ? "true" : "false"}`,
     `node=${report.node.version} supported=${String(report.node.supported)}`,
-    `api_key.configured=${String(report.api_key.configured)}`,
-    `allowed_roots.configured=${String(report.allowed_roots.configured)} count=${String(report.allowed_roots.count)} valid=${String(report.allowed_roots.valid)}`,
+    `api_key.configured=${String(report.api_key.configured)} source=${report.api_key.source}`,
+    `allowed_roots.configured=${String(report.allowed_roots.configured)} source=${report.allowed_roots.source} count=${String(report.allowed_roots.count)} valid=${String(report.allowed_roots.valid)}`,
     `endpoints.base_url_ok=${String(report.endpoints.base_url_ok)} upload_url_ok=${String(report.endpoints.upload_url_ok)}`,
     `handshake.registered=${String(report.handshake.registered)}`,
   ];

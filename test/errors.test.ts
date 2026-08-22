@@ -97,6 +97,27 @@ describe("VideoError", () => {
     expect(JSON.stringify(agentErrorStructured(err))).not.toContain(CANARY_PATH);
   });
 
+  it("names the missing variable for CONFIG_MISSING without leaking values", () => {
+    const err = new VideoError({
+      code: "CONFIG_MISSING",
+      stage: "received",
+      missing: ["DASHSCOPE_API_KEY"],
+      suggestion: "请在 MCP server 的 env 配置或宿主进程环境中提供该变量",
+    });
+    expect(err.agentMessage()).toContain("DASHSCOPE_API_KEY");
+    expect(err.agentMessage()).not.toContain(CANARY_KEY);
+    expect(agentErrorStructured(err)).toMatchObject({
+      ok: false,
+      code: "CONFIG_MISSING",
+      missing: ["DASHSCOPE_API_KEY"],
+      error: {
+        code: "CONFIG_MISSING",
+        message: "缺少 DASHSCOPE_API_KEY",
+        missing: ["DASHSCOPE_API_KEY"],
+      },
+    });
+  });
+
   it("does not serialize an unknown value into the agent text", () => {
     const dumped = JSON.stringify({
       key: CANARY_KEY,

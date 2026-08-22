@@ -1,6 +1,6 @@
 # ADR 0013：进程内复用临时上传，安装名可配
 
-- Status: Accepted
+- Status: Accepted（示例 Host 键已被 [ADR 0017](0017-host-config-key-analyze-video-mcp.md) 取代；上传缓存与 `QWEN_MODEL` 仍有效）
 - Date: 2026-08-17
 
 ## Context

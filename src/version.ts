@@ -1,5 +1,5 @@
 /** Single source for package.json and MCP initialize. */
-export const PACKAGE_VERSION = "0.6.0";
+export const PACKAGE_VERSION = "0.6.1";
 
 export function formatPackageBanner(gitCommit?: string): string {
   const commit = gitCommit?.trim();

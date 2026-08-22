@@ -34,7 +34,7 @@ CI runs the same on Node 22 and 24. Local green ≠ CI green if you skip a step.
 
 ## Scope
 
-- v1 任务在 `tasks/todo.md`，已收尾。v0.5.0 已发布（[`docs/SPEC_V05.md`](docs/SPEC_V05.md)）。v0.5.2 见 [`docs/SPEC_V052.md`](docs/SPEC_V052.md)。v0.6 见 [`docs/SPEC_V06.md`](docs/SPEC_V06.md)。默认安装钉 `npx -y --prefer-offline analyze-video-mcp@0.6.0`；GitHub 回退钉 `#v0.5.0`，npm 12 需 `--allow-git=all`。
+- v1 任务在 `tasks/todo.md`，已收尾。v0.5.0 已发布（[`docs/SPEC_V05.md`](docs/SPEC_V05.md)）。v0.5.2 见 [`docs/SPEC_V052.md`](docs/SPEC_V052.md)。v0.6 见 [`docs/SPEC_V06.md`](docs/SPEC_V06.md)。v0.6.1 见 [`docs/SPEC_V061.md`](docs/SPEC_V061.md)。默认安装钉 `npx -y --prefer-offline analyze-video-mcp@0.6.1`；GitHub 回退钉 `#v0.5.0`，npm 12 需 `--allow-git=all`。
 - 不改变 `analyze_video` 的名称与字段。默认值与本地上限只有在通用规格批准后才能改。
 - 不增加生产依赖。不要从本机主动推送或 `npm publish`，除非用户明确要求。已授权的 `v*` tag 由 [`release.yml`](.github/workflows/release.yml) 用 npm Trusted Publishing 发布（见 [ADR 0014](docs/decisions/0014-npm-trusted-publishing.md)）。不要添加 `NPM_TOKEN` secret。
 - 私人 live fixture 留在 `text/`，不要复制进仓库。CI Live Smoke 用 `test/fixtures/live-av.mp4`。

@@ -19,13 +19,13 @@
 Windows Codex 模板：
 
 ```toml
-[mcp_servers.mcp_analyze_video]
+[mcp_servers.analyze_video_mcp]
 command = "cmd"
 args = ["/c", "npx", "--prefer-offline", "-y", "analyze-video-mcp@0.6.0"]
 startup_timeout_sec = 120
 tool_timeout_sec = 1200
 
-[mcp_servers.mcp_analyze_video.env]
+[mcp_servers.analyze_video_mcp.env]
 DASHSCOPE_API_KEY = "YOUR_DASHSCOPE_API_KEY"
 QWEN_MODEL = "qwen3.5-omni-plus"
 QWEN_ALLOWED_ROOTS = "C:\\Users\\用户名\\Videos"
@@ -37,7 +37,7 @@ QWEN_ALLOWED_ROOTS = "C:\\Users\\用户名\\Videos"
 
 ```powershell
 codex mcp list
-codex mcp get mcp_analyze_video
+codex mcp get analyze_video_mcp
 ```
 
 MCP 新增后应开新任务；创建于配置之前的旧任务可能不会重新挂载工具。

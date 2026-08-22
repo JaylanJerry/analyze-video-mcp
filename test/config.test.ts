@@ -18,6 +18,7 @@ import {
   loadConfig,
 } from "../src/config.js";
 import { ConfigError } from "../src/errors.js";
+import { setCliConfigPath } from "../src/config-lookup.js";
 
 const ORIG_ENV = { ...process.env };
 const tempDirs: string[] = [];
@@ -25,6 +26,7 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 afterEach(async () => {
   process.env = { ...ORIG_ENV };
+  setCliConfigPath(undefined);
   await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
@@ -84,12 +86,12 @@ describe("loadConfig", () => {
     process.env.QWEN_UPLOAD_TIMEOUT = "60";
     process.env.QWEN_ANALYSIS_TIMEOUT = "90";
     process.env.QWEN_ANALYSIS_RETRIES = "0";
-    process.env.QWEN_MCP_SERVER_NAME = "mcp_analyze_video";
+    process.env.QWEN_MCP_SERVER_NAME = "custom-analyze-video";
 
     const cfg = loadConfig();
     expect(cfg.apiKey).toBe("k");
     expect(cfg.model).toBe("qwen-vl-max-latest");
-    expect(cfg.serverName).toBe("mcp_analyze_video");
+    expect(cfg.serverName).toBe("custom-analyze-video");
     expect(cfg.baseUrl).toBe("https://example.test/v1");
     expect(cfg.uploadUrl).toBe("https://example.test/api/v1/uploads");
     expect(cfg.allowedRoots).toEqual([root]);

@@ -155,7 +155,9 @@ function structuredOf(result: unknown): Record<string, unknown> | undefined {
 describe("MCP analyze_video contract", () => {
   it("registers analyze_video without an API key and returns CONFIG_MISSING on call", async () => {
     const orig = process.env.DASHSCOPE_API_KEY;
+    const origConfigFile = process.env.QWEN_CONFIG_FILE;
     delete process.env.DASHSCOPE_API_KEY;
+    delete process.env.QWEN_CONFIG_FILE;
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     const mcp = createServer();
     await mcp.connect(serverTransport);
@@ -170,7 +172,14 @@ describe("MCP analyze_video contract", () => {
       });
       expect(r.isError).toBe(true);
       expect(textOf(r)).toMatch(/^CONFIG_MISSING: /);
+      expect(textOf(r)).toContain("DASHSCOPE_API_KEY");
       expect(structuredOf(r)?.code).toBe("CONFIG_MISSING");
+      expect(structuredOf(r)?.missing).toEqual(["DASHSCOPE_API_KEY"]);
+      expect(structuredOf(r)?.error).toMatchObject({
+        code: "CONFIG_MISSING",
+        message: "缺少 DASHSCOPE_API_KEY",
+        missing: ["DASHSCOPE_API_KEY"],
+      });
       expect(JSON.stringify(r)).not.toContain(SECRET_KEY);
     } finally {
       await client.close();
@@ -179,6 +188,11 @@ describe("MCP analyze_video contract", () => {
         delete process.env.DASHSCOPE_API_KEY;
       } else {
         process.env.DASHSCOPE_API_KEY = orig;
+      }
+      if (origConfigFile === undefined) {
+        delete process.env.QWEN_CONFIG_FILE;
+      } else {
+        process.env.QWEN_CONFIG_FILE = origConfigFile;
       }
     }
   });
@@ -229,9 +243,9 @@ describe("MCP analyze_video contract", () => {
   });
 
   it("uses QWEN_MCP_SERVER_NAME as initialize name without changing the tool", async () => {
-    await withClient({ ...baseCfg, serverName: "mcp_analyze_video" }, {}, async (client) => {
+    await withClient({ ...baseCfg, serverName: "custom-analyze-video" }, {}, async (client) => {
       expect(client.getServerVersion()).toEqual({
-        name: "mcp_analyze_video",
+        name: "custom-analyze-video",
         version: PACKAGE_VERSION,
       });
       const { tools } = await client.listTools();
@@ -548,9 +562,50 @@ describe("local authorized video", () => {
       });
       expect(textOf(r)).toBe("脚步清晰");
       expect(structuredOf(r)?.ok).toBe(true);
+      expect(structuredOf(r)?.coverage).toMatchObject({
+        video_strategy: "sampled_multimodal",
+        ocr_performed: false,
+      });
+      expect(structuredOf(r)?.subtitle_audit).toMatchObject({
+        mode: "sampled",
+        complete_verification: false,
+      });
       expect(JSON.stringify(r)).not.toContain("可能存在");
     });
     expect(calls).toBe(2);
+  });
+
+  it("does not keep soldier identity as seen after the evidence gate", async () => {
+    const analyzer = {
+      analyze() {
+        return Promise.resolve({
+          answer: JSON.stringify({
+            visual_observations: [
+              { time: "00:02", evidence: "seen", description: "整齐列队的士兵", confidence: 0.95 },
+            ],
+            audio_observations: [{ time: "00:02", evidence: "heard", description: "街道环境声" }],
+            inferences: [],
+            uncertainties: [],
+            answer: "画面是整齐列队的士兵。",
+          }),
+          requestId: "x",
+          receivedEvents: 1,
+        });
+      },
+    };
+    await withClient(baseCfg, { analyzer }, async (client) => {
+      const r = await client.callTool({
+        name: "analyze_video",
+        arguments: { video: "https://cdn.example/crowd.mp4", question: "画面是什么人" },
+      });
+      const visual = structuredOf(r)?.visual_observations as
+        { evidence?: string; description?: string }[] | undefined;
+      expect(
+        visual?.some((item) => item.evidence === "seen" && item.description?.includes("士兵")),
+      ).toBe(false);
+      expect(textOf(r)).toContain("推断");
+      expect(structuredOf(r)?.subtitle_audit).toMatchObject({ complete_verification: false });
+    });
   });
 
   it("uploads a local MP4 and analyzes the returned object", async () => {

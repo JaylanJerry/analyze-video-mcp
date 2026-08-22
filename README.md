@@ -10,7 +10,7 @@ MCP server that gives local agents **video understanding**: the model reads pict
 
 给本地 Agent 增加视频理解：同时看画面、听视频里的音轨，只返回文本。把下面的标准配置贴进 MCP 客户端，填入百炼 Key。
 
-[![Install MCP Server](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=mcp_analyze_video&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIi0tcHJlZmVyLW9mZmxpbmUiLCJhbmFseXplLXZpZGVvLW1jcEAwLjYuMCJdLCJlbnYiOnsiREFTSFNDT1BFX0FQSV9LRVkiOiJZT1VSX0RBU0hTQ09QRV9BUElfS0VZIiwiUVdFTl9NT0RFTCI6InF3ZW4zLjUtb21uaS1wbHVzIiwiUVdFTl9BTExPV0VEX1JPT1RTIjoiQzpcXFxcVXNlcnNcXFxc55So5oi35ZCNXFxcXFZpZGVvcyJ9fQ==)
+[![Install MCP Server](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=analyze_video_mcp&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIi0tcHJlZmVyLW9mZmxpbmUiLCJhbmFseXplLXZpZGVvLW1jcEAwLjYuMSJdLCJlbnYiOnsiREFTSFNDT1BFX0FQSV9LRVkiOiJZT1VSX0RBU0hTQ09QRV9BUElfS0VZIiwiUVdFTl9NT0RFTCI6InF3ZW4zLjUtb21uaS1wbHVzIiwiUVdFTl9BTExPV0VEX1JPT1RTIjoiQzpcXFxcVXNlcnNcXFxc55So5oi35ZCNXFxcXFZpZGVvcyJ9fQ==)
 
 ## Requirements
 
@@ -34,9 +34,9 @@ Works in Cursor, Claude Desktop, and most `mcpServers` clients:
 ```json
 {
   "mcpServers": {
-    "mcp_analyze_video": {
+    "analyze_video_mcp": {
       "command": "npx",
-      "args": ["-y", "--prefer-offline", "analyze-video-mcp@0.6.0"],
+      "args": ["-y", "--prefer-offline", "analyze-video-mcp@0.6.1"],
       "env": {
         "DASHSCOPE_API_KEY": "YOUR_DASHSCOPE_API_KEY",
         "QWEN_MODEL": "qwen3.5-omni-plus",
@@ -47,7 +47,15 @@ Works in Cursor, Claude Desktop, and most `mcpServers` clients:
 }
 ```
 
-The Host config key (`mcp_analyze_video` in the examples) is yours to rename. The tool name stays `analyze_video`.
+Names (do not mix them):
+
+| Layer                                               | Name                |
+| --------------------------------------------------- | ------------------- |
+| Repository, npm package, CLI, MCP `initialize.name` | `analyze-video-mcp` |
+| Host config key                                     | `analyze_video_mcp` |
+| Tool                                                | `analyze_video`     |
+
+The Host config key is yours to rename. Changing it does not change the tool name. Old keys (`analyze-video`, `mcp_analyze_video`) still work if already installed.
 
 Copy-paste templates: [`examples/mcp.cursor.json`](examples/mcp.cursor.json), [`examples/mcp.claude-code.json`](examples/mcp.claude-code.json), [`examples/mcp.codex.toml`](examples/mcp.codex.toml).
 
@@ -58,13 +66,13 @@ Use the install button above, or put the standard config in `~/.cursor/mcp.json`
 ### Claude Code
 
 ```bash
-claude mcp add --env DASHSCOPE_API_KEY=YOUR_DASHSCOPE_API_KEY --env QWEN_MODEL=qwen3.5-omni-plus --env QWEN_ALLOWED_ROOTS="C:\Users\用户名\Videos" --transport stdio mcp_analyze_video -- npx -y --prefer-offline analyze-video-mcp@0.6.0
+claude mcp add --env DASHSCOPE_API_KEY=YOUR_DASHSCOPE_API_KEY --env QWEN_MODEL=qwen3.5-omni-plus --env QWEN_ALLOWED_ROOTS="C:\Users\用户名\Videos" --transport stdio analyze_video_mcp -- npx -y --prefer-offline analyze-video-mcp@0.6.1
 ```
 
 On native Windows, wrap `npx` if the server fails to start:
 
 ```bash
-claude mcp add --env DASHSCOPE_API_KEY=YOUR_DASHSCOPE_API_KEY --env QWEN_MODEL=qwen3.5-omni-plus --env QWEN_ALLOWED_ROOTS="C:\Users\用户名\Videos" --transport stdio mcp_analyze_video -- cmd /c npx -y --prefer-offline analyze-video-mcp@0.6.0
+claude mcp add --env DASHSCOPE_API_KEY=YOUR_DASHSCOPE_API_KEY --env QWEN_MODEL=qwen3.5-omni-plus --env QWEN_ALLOWED_ROOTS="C:\Users\用户名\Videos" --transport stdio analyze_video_mcp -- cmd /c npx -y --prefer-offline analyze-video-mcp@0.6.1
 ```
 
 ### Claude Desktop
@@ -74,15 +82,15 @@ Add the standard config to `claude_desktop_config.json`:
 - macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
 - Windows: `%APPDATA%\Claude\claude_desktop_config.json`
 
-If Windows cannot find `npx`, use `"command": "cmd"` and `"args": ["/c", "npx", "-y", "--prefer-offline", "analyze-video-mcp@0.6.0"]`.
+If Windows cannot find `npx`, use `"command": "cmd"` and `"args": ["/c", "npx", "-y", "--prefer-offline", "analyze-video-mcp@0.6.1"]`.
 
 ### Codex
 
-See [`examples/mcp.codex.toml`](examples/mcp.codex.toml). On Windows Codex, set `startup_timeout_sec = 120` and pin `@0.6.0`. After adding the server, start a **new** thread; old threads may not remount tools.
+See [`examples/mcp.codex.toml`](examples/mcp.codex.toml). On Windows Codex, set `startup_timeout_sec = 120` and pin `@0.6.1`. Put `DASHSCOPE_API_KEY` in the MCP `env` block (Codex may not inherit the user/system environment). After adding the server, start a **new** thread; old threads may not remount tools.
 
 ```powershell
 codex mcp list
-codex mcp get mcp_analyze_video
+codex mcp get analyze_video_mcp
 ```
 
 ### VS Code
@@ -92,9 +100,9 @@ User settings → **MCP: Open User Configuration**, or workspace `.vscode/mcp.js
 ```json
 {
   "servers": {
-    "mcp_analyze_video": {
+    "analyze_video_mcp": {
       "command": "npx",
-      "args": ["-y", "--prefer-offline", "analyze-video-mcp@0.6.0"],
+      "args": ["-y", "--prefer-offline", "analyze-video-mcp@0.6.1"],
       "env": {
         "DASHSCOPE_API_KEY": "YOUR_DASHSCOPE_API_KEY",
         "QWEN_MODEL": "qwen3.5-omni-plus",
@@ -129,7 +137,8 @@ What happens on screen, and what does the soundtrack say?
 
 | Variable               | Required        | Description                                                                                                                                                                                                                       |
 | ---------------------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DASHSCOPE_API_KEY`    | yes             | Bailian API key                                                                                                                                                                                                                   |
+| `DASHSCOPE_API_KEY`    | yes             | Bailian API key. Resolved from `--config` / `QWEN_CONFIG_FILE`, then MCP/`process.env`, then `~/.analyze-video-mcp/config.env`, then Windows user env                                                                             |
+| `QWEN_CONFIG_FILE`     | no              | Optional env-file path (same format as `--config`). Not a cwd `.env`                                                                                                                                                              |
 | `QWEN_MODEL`           | no              | DashScope video model id. Default `qwen3.5-omni-plus` (quality). Set `qwen3.5-omni-flash` for the cheaper/faster tier. Must accept `video_url` plus embedded audio. Not a Tool field; VL-only models will not hear the soundtrack |
 | `QWEN_MCP_SERVER_NAME` | no              | MCP `initialize.name`. Default `analyze-video-mcp`. Does not change the tool name `analyze_video`                                                                                                                                 |
 | `QWEN_ALLOWED_ROOTS`   | for local files | Absolute folder allowlist. Unset: local MP4s are refused; HTTPS still works. Required in the install templates. Platform path delimiter (`;` on Windows)                                                                          |
@@ -145,7 +154,7 @@ What happens on screen, and what does the soundtrack say?
 - One in-flight analysis per process. Some hosts time out around 60 seconds; Codex templates set `tool_timeout_sec = 1200`.
 - Images and standalone audio are not tools yet.
 
-`npx analyze-video-mcp --version` prints the version without calling Bailian. `npx analyze-video-mcp --doctor --json` checks Node, whether the key is set, allowed roots, endpoints, and handshake — it never prints the key. A missing key no longer prevents MCP initialize; calling the tool returns `CONFIG_MISSING`.
+`npx analyze-video-mcp --version` prints the version without calling Bailian. `npx analyze-video-mcp --doctor --json` uses the same config resolver as `analyze_video` and reports whether the key is set **and from which source** — it never prints the key. A missing key no longer prevents MCP initialize; calling the tool returns `CONFIG_MISSING` with the variable name.
 
 ## Development
 

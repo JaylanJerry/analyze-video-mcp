@@ -1,8 +1,8 @@
 {
   "mcpServers": {
-    "mcp_analyze_video": {
+    "analyze_video_mcp": {
       "command": "npx",
-      "args": ["-y", "--prefer-offline", "analyze-video-mcp@0.6.0"],
+      "args": ["-y", "--prefer-offline", "analyze-video-mcp@0.6.1"],
       "env": {
         "DASHSCOPE_API_KEY": "YOUR_DASHSCOPE_API_KEY",
         "QWEN_MODEL": "qwen3.5-omni-plus",

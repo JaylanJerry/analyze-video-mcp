@@ -31,7 +31,7 @@ Host 配置只要求：
 | `QWEN_ALLOWED_ROOTS`                                                 | 否   | 要收紧本地可读范围时再填                                                               |
 | Base / Upload URL                                                    | 否   | 默认北京区                                                                             |
 
-模板：[`../examples/mcp.cursor.json`](../examples/mcp.cursor.json)、[`../examples/mcp.claude-code.json`](../examples/mcp.claude-code.json)、[`../examples/mcp.codex.toml`](../examples/mcp.codex.toml)。示例 Host 键是 `mcp_analyze_video`，用户可改；Tool 仍是 `analyze_video`。
+模板：[`../examples/mcp.cursor.json`](../examples/mcp.cursor.json)、[`../examples/mcp.claude-code.json`](../examples/mcp.claude-code.json)、[`../examples/mcp.codex.toml`](../examples/mcp.codex.toml)。示例 Host 键是 `analyze_video_mcp`，用户可改；Tool 仍是 `analyze_video`。仓库 / npm / CLI / `initialize.name` 默认都是 `analyze-video-mcp`。
 
 本机开发仍可用 `node dist/index.js`。`text/*.key` 脚本不是产品安装方式。
 

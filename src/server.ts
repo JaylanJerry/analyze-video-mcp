@@ -3,18 +3,22 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { createVideoAnalyzer, type VideoAnalyzer } from "./bailian.js";
 import { type AppConfig, loadConfig, readBootstrapServerName } from "./config.js";
+import { formatConfigSourceLog, inspectConfig } from "./config-lookup.js";
 import {
   agentErrorStructuredContent,
   agentErrorText,
-  ConfigError,
   configToVideoError,
   VideoError,
 } from "./errors.js";
 import {
   EVIDENCE_CORRECTION,
+  buildCoverage,
   evidenceStructuredContent,
   parseEvidence,
+  proseNeedsCorrection,
+  sampledSubtitleAudit,
   sanitizeEvidenceReport,
+  sanitizeProseAnswer,
   type EvidenceReport,
 } from "./evidence.js";
 import { closeResolvedVideo, MACRO_ANALYSIS_SECONDS, resolveVideo } from "./media.js";
@@ -30,7 +34,7 @@ const QUESTION_GUIDANCE =
   "把用户的分析要求写入 question。用户说得具体就尽量原样转发；只说「分析一下」这类空话时，先整理成具体的画面与声音问题（切点、节奏、配音是否统一、声画是否对上、哪些好、哪些要改）再调用。不要编造视频里没有的内容。";
 
 const DURATION_GUIDANCE =
-  "一次最多 1 小时；本地还受 1024 MiB 与当场上传政策约束。这是抽样理解，不是帧级剪辑定位。精确转场、半秒内 J/L-cut、削波与响度请先提供 5–30 秒片段。同一本地文件会复用已上传地址；未命中则全量上传。本地文件必须位于 QWEN_ALLOWED_ROOTS。";
+  "一次最多 1 小时；本地还受 1024 MiB 与当场上传政策约束。这是抽样理解，不是帧级剪辑定位。精确转场、半秒内 J/L-cut、削波与响度请先提供 5–30 秒片段。同一本地文件会复用已上传地址；未命中则全量上传。本地文件必须位于 QWEN_ALLOWED_ROOTS。不得把抽样结果说成逐帧或全部核对。";
 
 const SERVER_INSTRUCTIONS = `此工具联合分析视频画面和视频内嵌音频，并返回文本回答。当你需要理解视频而当前模型不能直接观看时，调用 analyze_video。不要先自行抽帧或抽音频；直接传入本地绝对 MP4 路径或公开 HTTPS URL。${DURATION_GUIDANCE}${QUESTION_GUIDANCE}`;
 
@@ -97,24 +101,24 @@ export function abortActiveAnalysis(server: McpServer): void {
   aborters.get(server)?.();
 }
 
-function ok(text: string, report?: EvidenceReport): CallToolResult {
-  const result: CallToolResult = {
+function ok(
+  text: string,
+  report: EvidenceReport | undefined,
+  durationSeconds: number | undefined,
+): CallToolResult {
+  return {
     content: [{ type: "text", text }],
     isError: false,
+    structuredContent: evidenceStructuredContent(
+      report,
+      buildCoverage(durationSeconds),
+      sampledSubtitleAudit(),
+    ),
   };
-  if (report === undefined) {
-    return result;
-  }
-  return { ...result, structuredContent: evidenceStructuredContent(report) };
 }
 
 function fail(err: unknown): CallToolResult {
-  const mapped =
-    err instanceof VideoError
-      ? err
-      : err instanceof ConfigError
-        ? new VideoError({ code: "CONFIG_MISSING", stage: "received" })
-        : configToVideoError(err);
+  const mapped = err instanceof VideoError ? err : configToVideoError(err);
   if (mapped instanceof VideoError) {
     const requestId = printableRequestId(mapped.requestId ?? "") ?? "";
     process.stderr.write(
@@ -150,8 +154,8 @@ async function applyEvidenceGate(
   signal: AbortSignal,
 ): Promise<{ answer: string; report: EvidenceReport | undefined; result: typeof first }> {
   const parsed = parseEvidence(first.answer);
-  if (parsed.kind === "prose") {
-    return { answer: first.answer, report: undefined, result: first };
+  if (parsed.kind === "prose" && !proseNeedsCorrection(parsed.answer)) {
+    return { answer: parsed.answer, report: undefined, result: first };
   }
   if (parsed.kind === "report" && parsed.violations.length === 0) {
     return { answer: parsed.report.answer, report: parsed.report, result: first };
@@ -173,7 +177,7 @@ async function applyEvidenceGate(
     return { answer: report.answer, report, result: first };
   }
   const fallback = retry.answer.trim().length > 0 ? retry.answer : first.answer;
-  return { answer: fallback, report: undefined, result: retry };
+  return { answer: sanitizeProseAnswer(fallback), report: undefined, result: retry };
 }
 
 export function createServer(cfg?: AppConfig, deps: ServerDeps = {}): McpServer {
@@ -205,6 +209,7 @@ export function createServer(cfg?: AppConfig, deps: ServerDeps = {}): McpServer 
     }
     try {
       runtime = loadConfig();
+      process.stderr.write(`${formatConfigSourceLog(inspectConfig())}\n`);
       return runtime;
     } catch (err) {
       throw configToVideoError(err);
@@ -293,7 +298,7 @@ export function createServer(cfg?: AppConfig, deps: ServerDeps = {}): McpServer 
           process.stderr.write(
             `analyze_video ok request_id=${printableRequestId(gated.result.requestId ?? "") ?? ""} events=${String(gated.result.receivedEvents)}\n`,
           );
-          return ok(gated.answer, gated.report);
+          return ok(gated.answer, gated.report, durationSeconds);
         } finally {
           await closeResolvedVideo(resolved);
         }

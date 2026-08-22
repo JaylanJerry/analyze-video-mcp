@@ -53,6 +53,14 @@ MCP `CallToolResult`：
   "content": [{ "type": "text", "text": "模型回答" }],
   "structuredContent": {
     "ok": true,
+    "coverage": {
+      "video_strategy": "sampled_multimodal",
+      "ocr_performed": false
+    },
+    "subtitle_audit": {
+      "mode": "sampled",
+      "complete_verification": false
+    },
     "visual_observations": [],
     "audio_observations": [],
     "inferences": [],
@@ -66,7 +74,7 @@ MCP `CallToolResult`：
 
 - 文本必须是完整中文回答（模型 JSON 的 `answer`，或模型未返回 JSON 时的原文）。
 - 不加固定标题、模型名、request id 或耗时。不得把原始 JSON 当作唯一可见结果。
-- 若模型返回了合格的证据 JSON，可附加安全的 `structuredContent`（无路径、无 Key、无 OSS）。旧 Host 忽略该字段。
+- 若模型返回了合格的证据 JSON，可附加安全的 `structuredContent`（无路径、无 Key、无 OSS）。成功结果还带 `coverage` 与 `subtitle_audit`；本版 `complete_verification` 恒为 `false`。旧 Host 忽略未知字段。
 - 空白回答视为错误。
 - Tool 不流式向 Agent 暴露 provider chunk；内部 SSE 只用于满足 provider 协议并聚合结果。
 - 若 Host 在调用时提供 `progressToken`，本地路径会在上传开始、上传结束、推理开始各发一次 `notifications/progress`；HTTPS 只发推理开始。消息为中文通用句，不含路径或密钥。无 token 的旧 Host 仍只收到最终纯文本。
@@ -88,24 +96,24 @@ MCP `CallToolResult`：
 
 允许的 Agent 错误码：
 
-| 错误码                      | 含义                                           | 是否建议 Agent 重试 |
-| --------------------------- | ---------------------------------------------- | ------------------- |
-| `INVALID_VIDEO_INPUT`       | schema 之外的输入问题                          | 否                  |
-| `VIDEO_PATH_NOT_ALLOWED`    | 本地路径不在允许根目录                         | 否                  |
-| `VIDEO_NOT_FOUND`           | 文件不存在或不可读                             | 否                  |
-| `UNSUPPORTED_VIDEO`         | 非 MP4、magic 不符或不是普通文件               | 否                  |
-| `VIDEO_FILE_TOO_LARGE`      | 超过本地或动态 policy 上限                     | 否                  |
-| `VIDEO_TOO_LONG`            | 本地 MP4 时长大于 3600 秒；正好 3600 允许      | 否                  |
-| `UPLOAD_POLICY_FAILED`      | 无法取得或解析上传凭证                         | 可稍后重试          |
-| `VIDEO_UPLOAD_FAILED`       | 本地上传失败；应改用公开 HTTPS，不要重传原文件 | 否                  |
-| `PROVIDER_UNAUTHORIZED`     | API Key 或接口地址无效                         | 否                  |
-| `VIDEO_ANALYSIS_BUSY`       | 已有一个视频任务正在上传或分析                 | 稍后重试            |
-| `PROVIDER_RATE_LIMITED`     | 429                                            | 按提示稍后重试      |
-| `PROVIDER_TIMEOUT`          | 推理超时                                       | 可重试              |
-| `PROVIDER_UNAVAILABLE`      | 502/503 等暂时故障                             | 可重试              |
-| `PROVIDER_RESPONSE_INVALID` | SSE/JSON 不符合契约或中途截断                  | 可重试              |
-| `VIDEO_ANALYSIS_FAILED`     | 其他已脱敏错误                                 | 视情况              |
-| `CONFIG_MISSING`            | 启动后调用时仍缺 Key、端点或允许根配置         | 否                  |
+| 错误码                      | 含义                                              | 是否建议 Agent 重试 |
+| --------------------------- | ------------------------------------------------- | ------------------- |
+| `INVALID_VIDEO_INPUT`       | schema 之外的输入问题                             | 否                  |
+| `VIDEO_PATH_NOT_ALLOWED`    | 本地路径不在允许根目录                            | 否                  |
+| `VIDEO_NOT_FOUND`           | 文件不存在或不可读                                | 否                  |
+| `UNSUPPORTED_VIDEO`         | 非 MP4、magic 不符或不是普通文件                  | 否                  |
+| `VIDEO_FILE_TOO_LARGE`      | 超过本地或动态 policy 上限                        | 否                  |
+| `VIDEO_TOO_LONG`            | 本地 MP4 时长大于 3600 秒；正好 3600 允许         | 否                  |
+| `UPLOAD_POLICY_FAILED`      | 无法取得或解析上传凭证                            | 可稍后重试          |
+| `VIDEO_UPLOAD_FAILED`       | 本地上传失败；应改用公开 HTTPS，不要重传原文件    | 否                  |
+| `PROVIDER_UNAUTHORIZED`     | API Key 或接口地址无效                            | 否                  |
+| `VIDEO_ANALYSIS_BUSY`       | 已有一个视频任务正在上传或分析                    | 稍后重试            |
+| `PROVIDER_RATE_LIMITED`     | 429                                               | 按提示稍后重试      |
+| `PROVIDER_TIMEOUT`          | 推理超时                                          | 可重试              |
+| `PROVIDER_UNAVAILABLE`      | 502/503 等暂时故障                                | 可重试              |
+| `PROVIDER_RESPONSE_INVALID` | SSE/JSON 不符合契约或中途截断                     | 可重试              |
+| `VIDEO_ANALYSIS_FAILED`     | 其他已脱敏错误                                    | 视情况              |
+| `CONFIG_MISSING`            | 启动后调用时仍缺 Key 等配置；`missing` 列出变量名 | 否                  |
 
 Agent 错误文本禁止包含：
 
@@ -116,9 +124,9 @@ Agent 错误文本禁止包含：
 - 本地绝对路径；
 - provider 原始响应体。
 
-完整诊断只能写 stderr，且同样必须脱敏凭证和本地路径；允许记录错误码、HTTP 状态、阶段、request id、耗时和文件大小。Agent 同时收到安全的 `structuredContent`（`ok`/`code`/`stage`/`retryable`，可选 `http_status`），仍不得含路径、Key、OSS、policy 或 signature。
+完整诊断只能写 stderr，且同样必须脱敏凭证和本地路径；允许记录错误码、HTTP 状态、阶段、request id、耗时和文件大小。Agent 同时收到安全的 `structuredContent`（`ok`/`code`/`stage`/`retryable`，可选 `http_status`）。`CONFIG_MISSING` 另含 `missing`、`suggestion` 与嵌套 `error`，仍不得含路径、Key、OSS、policy 或 signature。
 
-缺 Key 或坏配置不得阻止 MCP `initialize` / `listTools`。工具调用时返回 `CONFIG_MISSING`。`analyze-video-mcp --doctor --json` 供本机自检，绝不打印 Key。
+缺 Key 或坏配置不得阻止 MCP `initialize` / `listTools`。工具调用时返回 `CONFIG_MISSING`。`analyze-video-mcp --doctor --json` 与运行时共用同一配置解析器，绝不打印 Key。
 
 `VIDEO_TOO_LONG`：`retryable: false`；`stage` 为 `authorized`；Agent 文本与 diagnostic 不得含本地绝对路径。大于 3600 秒拒绝，正好 3600 秒允许。读不出时长（缺 `mvhd`、非法 box、`timescale == 0`）则放行，不得用本错误码。HTTPS 不探测时长。
 

@@ -21,6 +21,7 @@ describe("doctor", () => {
     expect(report.ok).toBe(false);
     expect(report.version).toBe(PACKAGE_VERSION);
     expect(report.api_key.configured).toBe(false);
+    expect(report.api_key.source).toBe("unset");
     expect(report.handshake.registered).toBe(true);
     expect(report.handshake.tool).toBe("analyze_video");
     const json = JSON.stringify(report);
@@ -29,6 +30,7 @@ describe("doctor", () => {
     expect(text).not.toContain(canary);
     expect(json).not.toContain("oss://");
     expect(text).toContain("DASHSCOPE_API_KEY is not set");
+    expect(text).toContain("source=unset");
   });
 
   it("counts configured allowed roots without echoing paths", async () => {
