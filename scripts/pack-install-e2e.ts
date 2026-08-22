@@ -13,10 +13,15 @@ const required = [
   "dist/index.js",
   "dist/server.js",
   "dist/errors.js",
+  "dist/cli.js",
   "dist/config.js",
+  "dist/config-lookup.js",
   "dist/media.js",
   "dist/upload.js",
+  "dist/upload-cache.js",
   "dist/bailian.js",
+  "dist/evidence.js",
+  "dist/doctor.js",
   "scripts/prepare.mjs",
 ];
 

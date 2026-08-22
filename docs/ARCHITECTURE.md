@@ -21,7 +21,7 @@ Media resolver / authorizer
      oss:// URL + requiresOssResolve=true     │
                                               ▼
                                   Qwen provider adapter
-                                    │ qwen3.5-omni-flash
+                                    │ qwen3.5-omni-plus（默认）
                                     │ stream:true, modalities:["text"]
                                     ▼
                                   SSE aggregator
@@ -38,13 +38,14 @@ Agent 不知道路径授权、上传器、`oss://`、模型 id 或 SSE 的存在
 
 - 只注册 `analyze_video`。
 - 维护 Agent-facing schema、默认 prompt 和错误映射。
-- 将成功结果转换为单个 text content。
+- 缺 Key 时仍完成握手并注册 `analyze_video`；调用时再 `loadConfig()`。
+- 将成功结果转换为单个 text content，可附带安全 `structuredContent`。
 - 不拼装 provider HTTP，不读取文件，不记录原始错误体。
 
 ### `src/config.ts`
 
-- 只在启动阶段读取环境变量。
-- 将 allowed roots 解析为绝对真实目录。
+- 启动时只取 `initialize.name`；完整配置在 tool 调用时读取。
+- 将 allowed roots 解析为绝对真实目录。未配置则拒绝本地文件。
 - 验证固定上限、超时、重试数和 HTTPS 端点。
 - 不打印 API Key；状态输出也不显示首尾片段。
 

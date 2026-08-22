@@ -23,6 +23,8 @@ const baseCfg: AppConfig = {
   uploadTimeoutMs: 5_000,
   analysisTimeoutMs: 5_000,
   analysisRetries: 1,
+  uploadCache: true,
+  uploadCachePath: undefined,
 };
 
 function textOf(result: unknown): string {

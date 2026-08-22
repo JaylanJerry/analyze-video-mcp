@@ -1,5 +1,6 @@
 import type { AppConfig } from "./config.js";
 import { VideoError } from "./errors.js";
+import { EVIDENCE_POLICY } from "./evidence.js";
 import { SseParser } from "./sse.js";
 
 export function contentBlock(url: string): Record<string, unknown> {
@@ -45,8 +46,12 @@ export function buildVideoPayload(
     model: cfg.model,
     messages: [
       {
+        role: "system",
+        content: [{ type: "text", text: EVIDENCE_POLICY }],
+      },
+      {
         role: "user",
-        content: [{ type: "text", text: request.question }, contentBlock(video.url)],
+        content: [contentBlock(video.url), { type: "text", text: request.question }],
       },
     ],
     modalities: ["text"],

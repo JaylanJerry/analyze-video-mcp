@@ -9,6 +9,7 @@ export interface AuthorizedLocalVideo {
   handle: FileHandle;
   sizeBytes: number;
   identityKey: string;
+  durationSeconds: number | undefined;
   safeUploadName: "video.mp4";
 }
 
@@ -24,6 +25,7 @@ export interface PositionedReader {
 }
 
 export const MAX_LOCAL_VIDEO_DURATION_SECONDS = 3600;
+export const MACRO_ANALYSIS_SECONDS = 120;
 export const MAX_MP4_PROBE_BYTES = 64 * 1024;
 const MAX_MP4_PROBE_BOXES = 4096;
 const HEADER_BYTES = 12;
@@ -38,6 +40,19 @@ export async function closeResolvedVideo(video: ResolvedVideo): Promise<void> {
 export function isContainedInRoot(root: string, candidate: string): boolean {
   const rel = relative(root, candidate);
   return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+}
+
+function durationSecondsFromProbe(
+  probed: { duration: bigint; timescale: bigint } | undefined,
+): number | undefined {
+  if (probed === undefined || probed.timescale === 0n) {
+    return undefined;
+  }
+  const seconds = probed.duration / probed.timescale;
+  if (seconds > BigInt(Number.MAX_SAFE_INTEGER)) {
+    return undefined;
+  }
+  return Number(seconds);
 }
 
 function uploadIdentityKey(realPath: string, sizeBytes: number, mtimeMs: number): string {
@@ -282,13 +297,16 @@ async function authorizeLocalMp4(raw: string, cfg: AppConfig): Promise<ResolvedV
   if (!isAbsolute(raw) || extname(raw).toLowerCase() !== ".mp4") {
     throw new VideoError({ code: "INVALID_VIDEO_INPUT", stage: "received" });
   }
+  if (cfg.allowedRoots.length === 0) {
+    throw new VideoError({ code: "VIDEO_PATH_NOT_ALLOWED", stage: "authorized" });
+  }
   let requestedReal: string;
   try {
     requestedReal = await realpath(raw);
   } catch {
     throw new VideoError({ code: "VIDEO_NOT_FOUND", stage: "authorized" });
   }
-  if (cfg.allowedRoots.length > 0 && !isInsideAllowedRoots(requestedReal, cfg.allowedRoots)) {
+  if (!isInsideAllowedRoots(requestedReal, cfg.allowedRoots)) {
     throw new VideoError({ code: "VIDEO_PATH_NOT_ALLOWED", stage: "authorized" });
   }
 
@@ -322,7 +340,7 @@ async function authorizeLocalMp4(raw: string, cfg: AppConfig): Promise<ResolvedV
     if (recheckPath !== requestedReal || !sameIdentity(snapshot, recheckStat)) {
       throw new VideoError({ code: "VIDEO_NOT_FOUND", stage: "authorized" });
     }
-    if (cfg.allowedRoots.length > 0 && !isInsideAllowedRoots(recheckPath, cfg.allowedRoots)) {
+    if (!isInsideAllowedRoots(recheckPath, cfg.allowedRoots)) {
       throw new VideoError({ code: "VIDEO_PATH_NOT_ALLOWED", stage: "authorized" });
     }
 
@@ -345,6 +363,7 @@ async function authorizeLocalMp4(raw: string, cfg: AppConfig): Promise<ResolvedV
       handle,
       sizeBytes: opened.size,
       identityKey: uploadIdentityKey(requestedReal, opened.size, opened.mtimeMs),
+      durationSeconds: durationSecondsFromProbe(probed),
       safeUploadName: "video.mp4",
     };
   } catch (err) {
@@ -360,7 +379,7 @@ async function authorizeLocalMp4(raw: string, cfg: AppConfig): Promise<ResolvedV
 
 /**
  * Classify and authorize a v1 video input. HTTPS URLs are not fetched.
- * Local MP4s are opened from an allowed root and returned as a FileHandle.
+ * Local MP4s require QWEN_ALLOWED_ROOTS and are returned as a FileHandle.
  * The caller owns the handle and must close it.
  */
 export async function resolveVideo(raw: string, cfg: AppConfig): Promise<ResolvedVideo> {

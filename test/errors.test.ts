@@ -3,6 +3,7 @@ import {
   AGENT_ERROR_CODES,
   ConfigError,
   VideoError,
+  agentErrorStructured,
   agentErrorText,
   looksSensitive,
   startupErrorText,
@@ -78,6 +79,43 @@ describe("VideoError", () => {
       http_status: 503,
     });
     expect(err.agentMessage()).toBe("VIDEO_ANALYSIS_FAILED: 视频分析失败。");
+  });
+
+  it("returns a redacted structured error object", () => {
+    const err = new VideoError({
+      code: "VIDEO_UPLOAD_FAILED",
+      stage: "uploaded",
+      httpStatus: 400,
+    });
+    expect(agentErrorStructured(err)).toEqual({
+      ok: false,
+      code: "VIDEO_UPLOAD_FAILED",
+      stage: "uploaded",
+      retryable: false,
+      http_status: 400,
+    });
+    expect(JSON.stringify(agentErrorStructured(err))).not.toContain(CANARY_PATH);
+  });
+
+  it("names the missing variable for CONFIG_MISSING without leaking values", () => {
+    const err = new VideoError({
+      code: "CONFIG_MISSING",
+      stage: "received",
+      missing: ["DASHSCOPE_API_KEY"],
+      suggestion: "请在 MCP server 的 env 配置或宿主进程环境中提供该变量",
+    });
+    expect(err.agentMessage()).toContain("DASHSCOPE_API_KEY");
+    expect(err.agentMessage()).not.toContain(CANARY_KEY);
+    expect(agentErrorStructured(err)).toMatchObject({
+      ok: false,
+      code: "CONFIG_MISSING",
+      missing: ["DASHSCOPE_API_KEY"],
+      error: {
+        code: "CONFIG_MISSING",
+        message: "缺少 DASHSCOPE_API_KEY",
+        missing: ["DASHSCOPE_API_KEY"],
+      },
+    });
   });
 
   it("does not serialize an unknown value into the agent text", () => {

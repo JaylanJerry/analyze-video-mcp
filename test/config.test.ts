@@ -18,6 +18,7 @@ import {
   loadConfig,
 } from "../src/config.js";
 import { ConfigError } from "../src/errors.js";
+import { setCliConfigPath } from "../src/config-lookup.js";
 
 const ORIG_ENV = { ...process.env };
 const tempDirs: string[] = [];
@@ -25,6 +26,7 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 afterEach(async () => {
   process.env = { ...ORIG_ENV };
+  setCliConfigPath(undefined);
   await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
@@ -41,7 +43,7 @@ function expectNoEnvValues(message: string, ...values: string[]): void {
 }
 
 describe("loadConfig", () => {
-  it("defaults the model to qwen3.5-omni-flash when only the API key is set", () => {
+  it("defaults the model to qwen3.5-omni-plus when only the API key is set", () => {
     delete process.env.QWEN_MODEL;
     delete process.env.DASHSCOPE_BASE_URL;
     delete process.env.DASHSCOPE_UPLOAD_URL;
@@ -51,11 +53,12 @@ describe("loadConfig", () => {
     delete process.env.QWEN_ANALYSIS_TIMEOUT;
     delete process.env.QWEN_ANALYSIS_RETRIES;
     delete process.env.QWEN_MCP_SERVER_NAME;
+    delete process.env.QWEN_UPLOAD_CACHE;
     process.env.DASHSCOPE_API_KEY = "sk-test";
 
     const cfg = loadConfig();
     expect(cfg.apiKey).toBe("sk-test");
-    expect(cfg.model).toBe("qwen3.5-omni-flash");
+    expect(cfg.model).toBe("qwen3.5-omni-plus");
     expect(cfg.model).toBe(DEFAULT_MODEL);
     expect(cfg.serverName).toBe(DEFAULT_SERVER_NAME);
     expect(cfg.baseUrl).toBe(DEFAULT_BASE_URL);
@@ -68,6 +71,8 @@ describe("loadConfig", () => {
     expect(cfg.uploadTimeoutMs).toBe(DEFAULT_UPLOAD_TIMEOUT_SECONDS * 1000);
     expect(cfg.analysisTimeoutMs).toBe(DEFAULT_ANALYSIS_TIMEOUT_SECONDS * 1000);
     expect(cfg.analysisRetries).toBe(1);
+    expect(cfg.uploadCache).toBe(true);
+    expect(cfg.uploadCachePath).toEqual(expect.any(String));
   });
 
   it("respects environment overrides", async () => {
@@ -81,20 +86,22 @@ describe("loadConfig", () => {
     process.env.QWEN_UPLOAD_TIMEOUT = "60";
     process.env.QWEN_ANALYSIS_TIMEOUT = "90";
     process.env.QWEN_ANALYSIS_RETRIES = "0";
-    process.env.QWEN_MCP_SERVER_NAME = "mcp_analyze_video";
+    process.env.QWEN_MCP_SERVER_NAME = "custom-analyze-video";
 
-    expect(loadConfig()).toEqual({
-      apiKey: "k",
-      model: "qwen-vl-max-latest",
-      serverName: "mcp_analyze_video",
-      baseUrl: "https://example.test/v1",
-      uploadUrl: "https://example.test/api/v1/uploads",
-      allowedRoots: [root],
-      maxLocalVideoBytes: 250 * BYTES_PER_MIB,
-      uploadTimeoutMs: 60_000,
-      analysisTimeoutMs: 90_000,
-      analysisRetries: 0,
-    });
+    const cfg = loadConfig();
+    expect(cfg.apiKey).toBe("k");
+    expect(cfg.model).toBe("qwen-vl-max-latest");
+    expect(cfg.serverName).toBe("custom-analyze-video");
+    expect(cfg.baseUrl).toBe("https://example.test/v1");
+    expect(cfg.uploadUrl).toBe("https://example.test/api/v1/uploads");
+    expect(cfg.allowedRoots).toEqual([root]);
+    expect(cfg.maxLocalVideoBytes).toBe(250 * BYTES_PER_MIB);
+    expect(cfg.uploadTimeoutMs).toBe(60_000);
+    expect(cfg.analysisTimeoutMs).toBe(90_000);
+    expect(cfg.analysisRetries).toBe(0);
+    expect(cfg.uploadCache).toBe(true);
+    expect(typeof cfg.uploadCachePath).toBe("string");
+    expect(cfg.uploadCachePath?.length ?? 0).toBeGreaterThan(0);
   });
 
   it("parses, realpaths, and deduplicates allowed roots", async () => {
@@ -107,6 +114,14 @@ describe("loadConfig", () => {
 
     const cfg = loadConfig();
     expect(cfg.allowedRoots).toEqual([root, nested]);
+  });
+
+  it("disables upload cache when QWEN_UPLOAD_CACHE is off", () => {
+    process.env.DASHSCOPE_API_KEY = "k";
+    process.env.QWEN_UPLOAD_CACHE = "off";
+    const cfg = loadConfig();
+    expect(cfg.uploadCache).toBe(false);
+    expect(cfg.uploadCachePath).toBeUndefined();
   });
 
   it("rejects an invalid QWEN_MCP_SERVER_NAME without echoing other env values", () => {
@@ -253,7 +268,7 @@ process.stdout.write(JSON.stringify(buildDevNodeArgs(${JSON.stringify(dir)})));`
     const child = spawn(process.execPath, [tsxCli, entry], {
       cwd: dir,
       env,
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: ["pipe", "pipe", "pipe"],
     });
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
@@ -263,27 +278,47 @@ process.stdout.write(JSON.stringify(buildDevNodeArgs(${JSON.stringify(dir)})));`
     child.stderr.on("data", (chunk: Buffer) => {
       stderrChunks.push(chunk);
     });
-    const code = await new Promise<number | null>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        child.kill();
-        reject(new Error("production entry did not exit"));
-      }, 15_000);
-      child.on("error", (err) => {
-        clearTimeout(timer);
-        reject(err);
+    try {
+      const stderr = await new Promise<string>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          reject(new Error(`timeout stderr=${Buffer.concat(stderrChunks).toString("utf8")}`));
+        }, 15_000);
+        const onData = (): void => {
+          const text = Buffer.concat(stderrChunks).toString("utf8");
+          if (text.includes("analyze-video-mcp")) {
+            clearTimeout(timer);
+            child.stderr.off("data", onData);
+            resolve(text);
+          }
+        };
+        child.stderr.on("data", onData);
+        onData();
+        child.on("error", (err) => {
+          clearTimeout(timer);
+          reject(err);
+        });
+        child.on("exit", (code) => {
+          const text = Buffer.concat(stderrChunks).toString("utf8");
+          if (!text.includes("analyze-video-mcp")) {
+            clearTimeout(timer);
+            reject(new Error(`exited ${String(code)} stderr=${text}`));
+          }
+        });
       });
-      child.on("exit", (exitCode) => {
-        clearTimeout(timer);
-        resolve(exitCode);
+      const stdout = Buffer.concat(stdoutChunks).toString("utf8");
+      expect(stdout).toBe("");
+      expect(stderr).toContain("analyze-video-mcp");
+      expect(stderr).not.toMatch(/DASHSCOPE_API_KEY/);
+      expect(stderr).not.toContain("sk-from-dotenv-file");
+    } finally {
+      child.kill();
+      await new Promise<void>((resolve) => {
+        child.once("exit", () => {
+          resolve();
+        });
+        setTimeout(resolve, 1000);
       });
-    });
-    const stdout = Buffer.concat(stdoutChunks).toString("utf8");
-    const stderr = Buffer.concat(stderrChunks).toString("utf8");
-    expect(code).not.toBe(0);
-    expect(stdout).toBe("");
-    expect(stderr).toMatch(/DASHSCOPE_API_KEY/);
-    expect(stderr).not.toMatch(/VIDEO_ANALYSIS_FAILED/);
-    expect(stderr).not.toContain("sk-from-dotenv-file");
+    }
   });
 
   it("prints the package version without requiring an API key", async () => {

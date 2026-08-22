@@ -63,6 +63,8 @@ function cfg(overrides: Partial<AppConfig> = {}): AppConfig {
     uploadTimeoutMs: 30_000,
     analysisTimeoutMs: 5_000,
     analysisRetries: 1,
+    uploadCache: true,
+    uploadCachePath: undefined,
     ...overrides,
   };
 }
@@ -123,6 +125,7 @@ async function localVideo(bytes: Buffer): Promise<AuthorizedLocalVideo> {
     handle,
     sizeBytes: bytes.length,
     identityKey: `clip|${String(bytes.length)}|1`,
+    durationSeconds: undefined,
     safeUploadName: "video.mp4",
   };
 }
@@ -138,6 +141,7 @@ async function sparseVideo(size: number): Promise<AuthorizedLocalVideo> {
     handle,
     sizeBytes: size,
     identityKey: `sparse|${String(size)}|1`,
+    durationSeconds: undefined,
     safeUploadName: "video.mp4",
   };
 }

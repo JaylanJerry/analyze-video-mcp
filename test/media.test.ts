@@ -47,6 +47,8 @@ function videoCfg(roots: string[], maxLocalVideoBytes = 1024 * 1024 * 1024): App
     uploadTimeoutMs: 5_000,
     analysisTimeoutMs: 5_000,
     analysisRetries: 1,
+    uploadCache: true,
+    uploadCachePath: undefined,
   };
 }
 
@@ -98,15 +100,12 @@ describe("resolveVideo", () => {
     }
   });
 
-  it("authorizes a local MP4 when no allowed roots are configured", async () => {
+  it("rejects a local MP4 when no allowed roots are configured", async () => {
     const p = join(dir, "ok.mp4");
     await writeFile(p, FTYP);
-    const resolved = await resolveVideo(p, videoCfg([]));
-    try {
-      expect(resolved.kind).toBe("local");
-    } finally {
-      await closeResolvedVideo(resolved);
-    }
+    await expect(resolveVideo(p, videoCfg([]))).rejects.toMatchObject({
+      code: "VIDEO_PATH_NOT_ALLOWED",
+    });
   });
 
   it("rejects a sibling-prefix path outside the allowed root", async () => {

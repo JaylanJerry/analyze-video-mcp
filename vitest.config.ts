@@ -4,6 +4,10 @@ export default defineConfig({
   test: {
     include: ["test/**/*.test.ts"],
     exclude: ["node_modules", "dist"],
+    env: {
+      QWEN_DISABLE_CONFIG_FALLBACKS: "1",
+      QWEN_CONFIG_FILE: "",
+    },
     coverage: {
       provider: "v8",
       reporter: ["text", "lcov"],

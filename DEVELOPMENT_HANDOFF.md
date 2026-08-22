@@ -1,6 +1,6 @@
 # Video MCP 开发交接
 
-状态：v1 本机收尾完成；V2 与安装形态已实施。公开仓库 `JaylanJerry/analyze-video-mcp`。已发 npm `analyze-video-mcp`。实现已提到仓库根（ADR 0011）。
+状态：v0.5.2 已在 npm。当前开发版本 **0.6.1**，见 [`docs/SPEC_V061.md`](docs/SPEC_V061.md) 与 [ADR 0016](docs/decisions/0016-config-sources-and-evidence-audit.md)。v0.6.0 基线见 [`docs/SPEC_V06.md`](docs/SPEC_V06.md)。推已授权的 `v*` tag 时，`release.yml` 用 Trusted Publishing 发 npm 并建 GitHub Release（[ADR 0014](docs/decisions/0014-npm-trusted-publishing.md)）。人须在 npm 包设置里点一次 Trusted Publisher。不要添加 `NPM_TOKEN`。打 tag 仍须另授权。不要补打已发 npm 的 `v0.5.1` / `v0.5.2`，也不要未授权补打 `v0.6.0`。
 
 基线快照：`sommio/qwen-omni-mcp@8a07182554a985456153644e0006a22bd1c769f7`。
 
@@ -10,21 +10,23 @@
 
 ## 当前产品
 
-v1 已本机收尾。V2 已实施。安装：`npx` + Key；目录可选；Agent 应转发或整理 `question`。
+v1 已本机收尾。V2 已实施。安装：钉版本 `npx` + 显式 MCP `env` 里的 Key + `QWEN_ALLOWED_ROOTS`；Agent 应转发或整理 `question`。
 
-已在 Windows Node 24 + Cursor 上验证：中文文件名小视频、口播、496.8 MiB 漫剧。Cursor 用户级 MCP 名称是 `analyze-video`。
+已在 Windows Node 24 + Cursor 上验证：中文文件名小视频、口播、496.8 MiB 漫剧。示例 Host 键是 `analyze_video_mcp`；已装的旧键（`analyze-video` / `mcp_analyze_video`）可继续用。
 
 ## 下一阶段
 
-v0.5.2 已在 npm。推已授权的 `v*` tag 时，`release.yml` 用 Trusted Publishing 发 npm 并建 GitHub Release（[ADR 0014](docs/decisions/0014-npm-trusted-publishing.md)）。人须在 npm 包设置里点一次 Trusted Publisher。不要添加 `NPM_TOKEN`。打 tag 仍须另授权。
+P0（0.6.1）已落地，见 [`docs/SPEC_V061.md`](docs/SPEC_V061.md)。纯音频 / FFmpeg / `audit_media` 推迟到 [`docs/SPEC_V07.md`](docs/SPEC_V07.md)，须另批 ADR。
 
 绑定文档：
 
-1. [`docs/decisions/0014-npm-trusted-publishing.md`](docs/decisions/0014-npm-trusted-publishing.md)
-2. [`docs/SPEC_V052.md`](docs/SPEC_V052.md)
-3. [`docs/decisions/0013-upload-cache-and-host-server-name.md`](docs/decisions/0013-upload-cache-and-host-server-name.md)
-4. [`docs/SPEC_INSTALL.md`](docs/SPEC_INSTALL.md)
-5. [`docs/SPEC_V05.md`](docs/SPEC_V05.md)
+1. [`docs/SPEC_V061.md`](docs/SPEC_V061.md)
+2. [`docs/decisions/0016-config-sources-and-evidence-audit.md`](docs/decisions/0016-config-sources-and-evidence-audit.md)
+3. [`docs/SPEC_V06.md`](docs/SPEC_V06.md)
+4. [`docs/decisions/0015-host-reliability-and-evidence-gate.md`](docs/decisions/0015-host-reliability-and-evidence-gate.md)
+5. [`docs/decisions/0014-npm-trusted-publishing.md`](docs/decisions/0014-npm-trusted-publishing.md)
+6. [`docs/SPEC_V07.md`](docs/SPEC_V07.md)
+7. [`docs/decisions/0017-host-config-key-analyze-video-mcp.md`](docs/decisions/0017-host-config-key-analyze-video-mcp.md)
 
 ## 硬规则
 
@@ -43,7 +45,8 @@ v1 背景仍按原顺序：`AGENTS.md`、`docs/SPEC.md`、`docs/API_CONTRACT.md`
 ## 给下一模型的启动提示词
 
 ```text
-你在 analyze-video-mcp 仓库根工作。v1 / V2 / 安装 / v0.5.0 已完成，0.5.1 已发 npm。v0.5.2 见 docs/SPEC_V052.md。
-默认安装 `npx -y analyze-video-mcp`。不要改 analyze_video
+你在 analyze-video-mcp 仓库根工作。v1 / V2 / 安装 / v0.5.x / v0.6.0 已完成，当前是 v0.6.1，见 docs/SPEC_V061.md。
+默认安装钉 analyze-video-mcp@0.6.1。不要改 analyze_video
 字段，不要加依赖，不要读密钥。不要本机 npm publish。已授权的 v* tag 由 release.yml 发 npm。
+不要在本轮实现 analyze_audio、FFmpeg 或 audit_media。
 ```

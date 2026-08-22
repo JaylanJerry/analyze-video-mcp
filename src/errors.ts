@@ -14,6 +14,7 @@ export const AGENT_ERROR_CODES = [
   "PROVIDER_RESPONSE_INVALID",
   "VIDEO_ANALYSIS_FAILED",
   "PROVIDER_UNAUTHORIZED",
+  "CONFIG_MISSING",
 ] as const;
 
 export type AgentErrorCode = (typeof AGENT_ERROR_CODES)[number];
@@ -41,7 +42,12 @@ const AGENT_TEXT: Record<AgentErrorCode, string> = {
   PROVIDER_RESPONSE_INVALID: "分析服务返回了无效结果。",
   VIDEO_ANALYSIS_FAILED: "视频分析失败。",
   PROVIDER_UNAUTHORIZED: "请检查 API Key 和接口地址。",
+  CONFIG_MISSING:
+    "配置不完整。请检查 API Key、接口地址和允许目录，或运行 analyze-video-mcp --doctor --json。",
 };
+
+export const CONFIG_MISSING_SUGGESTION =
+  "请在 MCP server 的 env 配置、--config 文件、用户配置文件或宿主进程环境中提供该变量";
 
 const RETRYABLE: Record<AgentErrorCode, boolean> = {
   INVALID_VIDEO_INPUT: false,
@@ -59,6 +65,7 @@ const RETRYABLE: Record<AgentErrorCode, boolean> = {
   PROVIDER_RESPONSE_INVALID: true,
   VIDEO_ANALYSIS_FAILED: false,
   PROVIDER_UNAUTHORIZED: false,
+  CONFIG_MISSING: false,
 };
 
 const DIAGNOSTIC_KEYS = new Set([
@@ -81,6 +88,8 @@ export interface VideoErrorInit {
   httpStatus?: number;
   requestId?: string;
   diagnostic?: Record<string, unknown>;
+  missing?: string[];
+  suggestion?: string;
 }
 
 export function looksSensitive(value: string): boolean {
@@ -118,6 +127,22 @@ function sanitizeDiagnostic(
 
 export class ConfigError extends Error {
   override readonly name = "ConfigError";
+  readonly missing: string[];
+  readonly suggestion: string | undefined;
+
+  constructor(message: string, init: { missing?: string[]; suggestion?: string } = {}) {
+    super(message);
+    this.missing = init.missing ?? [];
+    this.suggestion = init.suggestion;
+  }
+}
+
+function configMissingMessage(missing: string[], suggestion: string | undefined): string {
+  if (missing.length === 0) {
+    return `CONFIG_MISSING: ${AGENT_TEXT.CONFIG_MISSING}`;
+  }
+  const hint = suggestion ?? CONFIG_MISSING_SUGGESTION;
+  return `CONFIG_MISSING: 缺少 ${missing.join("、")}。${hint}`;
 }
 
 export class VideoError extends Error {
@@ -127,9 +152,20 @@ export class VideoError extends Error {
   readonly httpStatus: number | undefined;
   readonly requestId: string | undefined;
   readonly diagnostic: Record<string, DiagnosticValue>;
+  readonly missing: string[];
+  readonly suggestion: string | undefined;
 
   constructor(init: VideoErrorInit) {
-    super(`${init.code}: ${AGENT_TEXT[init.code]}`);
+    const missing = (init.missing ?? []).filter((name) => /^[A-Z][A-Z0-9_]*$/.test(name));
+    const suggestion =
+      init.suggestion !== undefined && !looksSensitive(init.suggestion)
+        ? init.suggestion
+        : undefined;
+    super(
+      init.code === "CONFIG_MISSING"
+        ? configMissingMessage(missing, suggestion)
+        : `${init.code}: ${AGENT_TEXT[init.code]}`,
+    );
     this.name = "VideoError";
     this.code = init.code;
     this.stage = init.stage;
@@ -138,6 +174,8 @@ export class VideoError extends Error {
     this.requestId =
       init.requestId !== undefined && !looksSensitive(init.requestId) ? init.requestId : undefined;
     this.diagnostic = sanitizeDiagnostic(init.diagnostic);
+    this.missing = missing;
+    this.suggestion = suggestion;
   }
 
   agentMessage(): string {
@@ -156,9 +194,102 @@ export class VideoError extends Error {
   }
 }
 
+export interface AgentErrorStructured {
+  ok: false;
+  code: AgentErrorCode;
+  stage: ErrorStage;
+  retryable: boolean;
+  http_status?: number;
+  missing?: string[];
+  suggestion?: string;
+  error?: {
+    code: AgentErrorCode;
+    message: string;
+    missing: string[];
+    suggestion: string;
+  };
+}
+
+export function agentErrorStructured(err: unknown): AgentErrorStructured {
+  if (err instanceof VideoError) {
+    const body: AgentErrorStructured = {
+      ok: false,
+      code: err.code,
+      stage: err.stage,
+      retryable: err.retryable,
+    };
+    if (err.httpStatus !== undefined) {
+      body.http_status = err.httpStatus;
+    }
+    if (err.code === "CONFIG_MISSING") {
+      if (err.missing.length > 0) {
+        body.missing = err.missing;
+      }
+      if (err.suggestion !== undefined) {
+        body.suggestion = err.suggestion;
+      }
+      const names = err.missing;
+      body.error = {
+        code: "CONFIG_MISSING",
+        message: names.length > 0 ? `缺少 ${names.join("、")}` : AGENT_TEXT.CONFIG_MISSING,
+        missing: names,
+        suggestion: err.suggestion ?? CONFIG_MISSING_SUGGESTION,
+      };
+    }
+    return body;
+  }
+  return {
+    ok: false,
+    code: "VIDEO_ANALYSIS_FAILED",
+    stage: "failed",
+    retryable: false,
+  };
+}
+
+export function agentErrorStructuredContent(err: unknown): Record<string, unknown> {
+  const body = agentErrorStructured(err);
+  const out: Record<string, unknown> = {
+    ok: body.ok,
+    code: body.code,
+    stage: body.stage,
+    retryable: body.retryable,
+  };
+  if (body.http_status !== undefined) {
+    out.http_status = body.http_status;
+  }
+  if (body.missing !== undefined) {
+    out.missing = body.missing;
+  }
+  if (body.suggestion !== undefined) {
+    out.suggestion = body.suggestion;
+  }
+  if (body.error !== undefined) {
+    out.error = body.error;
+  }
+  return out;
+}
+
+export function configToVideoError(err: unknown): VideoError {
+  if (err instanceof VideoError) {
+    return err;
+  }
+  if (err instanceof ConfigError) {
+    return new VideoError({
+      code: "CONFIG_MISSING",
+      stage: "received",
+      missing: err.missing,
+      suggestion: err.suggestion ?? CONFIG_MISSING_SUGGESTION,
+    });
+  }
+  return new VideoError({ code: "VIDEO_ANALYSIS_FAILED", stage: "failed" });
+}
+
 export function agentErrorText(err: unknown): string {
   if (err instanceof VideoError) {
     return err.agentMessage();
+  }
+  if (err instanceof ConfigError) {
+    return configToVideoError(err).agentMessage();
   }
   return `VIDEO_ANALYSIS_FAILED: ${AGENT_TEXT.VIDEO_ANALYSIS_FAILED}`;
 }

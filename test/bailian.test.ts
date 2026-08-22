@@ -3,6 +3,7 @@ import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { type AppConfig, DEFAULT_BASE_URL } from "../src/config.js";
 import { analyzeVideo, buildVideoPayload } from "../src/bailian.js";
+import { EVIDENCE_POLICY } from "../src/evidence.js";
 import { VideoError } from "../src/errors.js";
 
 const cfg: AppConfig = {
@@ -16,6 +17,8 @@ const cfg: AppConfig = {
   uploadTimeoutMs: 5_000,
   analysisTimeoutMs: 5_000,
   analysisRetries: 1,
+  uploadCache: true,
+  uploadCachePath: undefined,
 };
 
 const endpoint = "https://dashscope.test/v1/chat/completions";
@@ -63,10 +66,14 @@ describe("buildVideoPayload", () => {
       model: "qwen3.5-omni-flash",
       messages: [
         {
+          role: "system",
+          content: [{ type: "text", text: EVIDENCE_POLICY }],
+        },
+        {
           role: "user",
           content: [
-            { type: "text", text: videoReq.question },
             { type: "video_url", video_url: { url: httpsVideo.url } },
+            { type: "text", text: videoReq.question },
           ],
         },
       ],

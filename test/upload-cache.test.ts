@@ -1,4 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { existsSync } from "node:fs";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 import type { AuthorizedLocalVideo } from "../src/media.js";
 import { VideoError } from "../src/errors.js";
 import {
@@ -14,6 +18,7 @@ function video(identityKey: string): AuthorizedLocalVideo {
     handle: {} as AuthorizedLocalVideo["handle"],
     sizeBytes: 8,
     identityKey,
+    durationSeconds: undefined,
     safeUploadName: "video.mp4",
   };
 }
@@ -44,8 +49,11 @@ describe("local upload cache", () => {
 
   it("builds a key from identity and model", () => {
     expect(localUploadCacheKey(video("C:\\a.mp4|8|1"), "qwen3.5-omni-flash")).toBe(
-      "C:\\a.mp4|8|1\0qwen3.5-omni-flash",
+      "C:\\a.mp4|8|1\0qwen3.5-omni-flash\0",
     );
+    expect(
+      localUploadCacheKey(video("C:\\a.mp4|8|1"), "qwen3.5-omni-flash", "https://up.example"),
+    ).toBe("C:\\a.mp4|8|1\0qwen3.5-omni-flash\0https://up.example");
     expect(localUploadCacheKey(video(""), "qwen3.5-omni-flash")).toBeUndefined();
   });
 
@@ -108,5 +116,67 @@ describe("local upload cache", () => {
     await cached.upload(video(""), signal);
     await cached.upload(video(""), signal);
     expect(inner.calls).toBe(2);
+  });
+
+  it("misses when the upload endpoint changes", async () => {
+    const inner = countingUploader();
+    const cfg = { model: "qwen3.5-omni-plus", uploadUrl: "https://up.a.example" };
+    const cached = createCachedUploader(cfg, inner.uploader);
+    await cached.upload(video("p|8|1"), signal);
+    cfg.uploadUrl = "https://up.b.example";
+    await cached.upload(video("p|8|1"), signal);
+    expect(inner.calls).toBe(2);
+  });
+});
+
+describe("persistent upload cache", () => {
+  const signal = new AbortController().signal;
+  const tempDirs: string[] = [];
+
+  afterEach(async () => {
+    await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+  });
+
+  async function cacheFile(): Promise<string> {
+    const dir = await mkdtemp(join(tmpdir(), "qwen-oss-cache-"));
+    tempDirs.push(dir);
+    return join(dir, "upload-cache.json");
+  }
+
+  it("reuses a disk entry across uploader instances", async () => {
+    const path = await cacheFile();
+    const inner = countingUploader();
+    const cfg = {
+      model: "qwen3.5-omni-plus",
+      uploadUrl: "https://up.example",
+      uploadCache: true as const,
+      uploadCachePath: path,
+    };
+    const first = createCachedUploader(cfg, inner.uploader);
+    const uploaded = await first.upload(video("p|8|1"), signal);
+    const second = createCachedUploader(cfg, inner.uploader);
+    const reused = await second.upload(video("p|8|1"), signal);
+    expect(inner.calls).toBe(1);
+    expect(reused.url).toBe(uploaded.url);
+    const raw = await readFile(path, "utf8");
+    expect(raw).toContain("oss://");
+    expect(raw).not.toContain("sk-");
+  });
+
+  it("does not write the cache file when caching is off", async () => {
+    const path = await cacheFile();
+    const inner = countingUploader();
+    const cached = createCachedUploader(
+      {
+        model: "qwen3.5-omni-plus",
+        uploadCache: false,
+        uploadCachePath: path,
+      },
+      inner.uploader,
+    );
+    await cached.upload(video("p|8|1"), signal);
+    await cached.upload(video("p|8|1"), signal);
+    expect(inner.calls).toBe(2);
+    expect(existsSync(path)).toBe(false);
   });
 });

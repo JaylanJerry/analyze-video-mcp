@@ -2,7 +2,7 @@
 
 ## 目标
 
-Agent 可以主动调用 MCP。恶意提示或错误推理可能诱导它读取本机文件，因此“扩展名是 MP4”不等于用户授权。未设置允许根时，服务器只读这次传入的绝对路径，不扫描磁盘；设置 `QWEN_ALLOWED_ROOTS` 后仍按根目录 containment 拒绝根外文件。
+Agent 可以主动调用 MCP。恶意提示或错误推理可能诱导它读取本机文件，因此“扩展名是 MP4”不等于用户授权。未设置 `QWEN_ALLOWED_ROOTS` 时拒绝所有本地路径，只允许公开 HTTPS；设置后仍按根目录 containment 拒绝根外文件。
 
 ## 威胁模型
 
@@ -33,7 +33,7 @@ QWEN_ALLOWED_ROOTS=C:\Users\user\Videos;D:\Project\Media
 
 使用 Node `path.delimiter` 分隔。规则：
 
-- 未配置时，允许这次传入的本地绝对 MP4；HTTPS URL 不受影响。
+- 未配置时，拒绝所有本地路径；HTTPS URL 不受影响。
 - 已配置时，根外本地路径拒绝。
 - 每个 root 必须为绝对路径、启动时存在且是目录。
 - 启动时对 root 做 `realpath()` 并保存规范结果。

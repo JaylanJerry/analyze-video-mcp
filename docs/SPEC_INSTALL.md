@@ -1,6 +1,6 @@
 # Video MCP 安装规格
 
-状态：已批准并实施。公开仓库：`JaylanJerry/analyze-video-mcp`。已发 npm `analyze-video-mcp`。
+状态：已批准并实施。公开仓库：`JaylanJerry/analyze-video-mcp`。已发 npm `analyze-video-mcp`。**v0.6 的模板、默认模型与允许根以 [`SPEC_V06.md`](SPEC_V06.md) 为准。**
 
 本规格在 V2 之上，只改「别人怎么装」和「本地路径默许这次传入的文件」。不改 `analyze_video` 名称与字段。图片、独立音频后做。
 
@@ -31,7 +31,7 @@ Host 配置只要求：
 | `QWEN_ALLOWED_ROOTS`                                                 | 否   | 要收紧本地可读范围时再填                                                               |
 | Base / Upload URL                                                    | 否   | 默认北京区                                                                             |
 
-模板：[`../examples/mcp.cursor.json`](../examples/mcp.cursor.json)、[`../examples/mcp.claude-code.json`](../examples/mcp.claude-code.json)、[`../examples/mcp.codex.toml`](../examples/mcp.codex.toml)。示例 Host 键是 `mcp_analyze_video`，用户可改；Tool 仍是 `analyze_video`。
+模板：[`../examples/mcp.cursor.json`](../examples/mcp.cursor.json)、[`../examples/mcp.claude-code.json`](../examples/mcp.claude-code.json)、[`../examples/mcp.codex.toml`](../examples/mcp.codex.toml)。示例 Host 键是 `analyze_video_mcp`，用户可改；Tool 仍是 `analyze_video`。仓库 / npm / CLI / `initialize.name` 默认都是 `analyze-video-mcp`。
 
 本机开发仍可用 `node dist/index.js`。`text/*.key` 脚本不是产品安装方式。
 
