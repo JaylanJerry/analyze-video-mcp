@@ -1,6 +1,6 @@
 # Video MCP 开发交接
 
-状态：v0.5.2 已在 npm。当前开发版本 **0.6.1**，见 [`docs/SPEC_V061.md`](docs/SPEC_V061.md) 与 [ADR 0016](docs/decisions/0016-config-sources-and-evidence-audit.md)。v0.6.0 基线见 [`docs/SPEC_V06.md`](docs/SPEC_V06.md)。推已授权的 `v*` tag 时，`release.yml` 用 Trusted Publishing 发 npm 并建 GitHub Release（[ADR 0014](docs/decisions/0014-npm-trusted-publishing.md)）。人须在 npm 包设置里点一次 Trusted Publisher。不要添加 `NPM_TOKEN`。打 tag 仍须另授权。不要补打已发 npm 的 `v0.5.1` / `v0.5.2`，也不要未授权补打 `v0.6.0`。
+状态：v0.6.1 已在 npm（[`docs/SPEC_V061.md`](docs/SPEC_V061.md)、[ADR 0016](docs/decisions/0016-config-sources-and-evidence-audit.md)）。v0.6.0 基线见 [`docs/SPEC_V06.md`](docs/SPEC_V06.md)，未单独打 tag。推已授权的 `v*` tag 时，`release.yml` 用 Trusted Publishing 发 npm 并建 GitHub Release（[ADR 0014](docs/decisions/0014-npm-trusted-publishing.md)）。人须在 npm 包设置里点一次 Trusted Publisher。不要添加 `NPM_TOKEN`。不要补打已发 npm 的 `v0.5.1` / `v0.5.2`，也不要补打 `v0.6.0`。
 
 基线快照：`sommio/qwen-omni-mcp@8a07182554a985456153644e0006a22bd1c769f7`。
 
@@ -16,7 +16,7 @@ v1 已本机收尾。V2 已实施。安装：钉版本 `npx` + 显式 MCP `env` 
 
 ## 下一阶段
 
-P0（0.6.1）已落地，见 [`docs/SPEC_V061.md`](docs/SPEC_V061.md)。纯音频 / FFmpeg / `audit_media` 推迟到 [`docs/SPEC_V07.md`](docs/SPEC_V07.md)，须另批 ADR。
+P0（0.6.1）已发布。纯音频 / FFmpeg / `audit_media` 推迟到 [`docs/SPEC_V07.md`](docs/SPEC_V07.md)，须另批 ADR。
 
 绑定文档：
 
@@ -45,7 +45,7 @@ v1 背景仍按原顺序：`AGENTS.md`、`docs/SPEC.md`、`docs/API_CONTRACT.md`
 ## 给下一模型的启动提示词
 
 ```text
-你在 analyze-video-mcp 仓库根工作。v1 / V2 / 安装 / v0.5.x / v0.6.0 已完成，当前是 v0.6.1，见 docs/SPEC_V061.md。
+你在 analyze-video-mcp 仓库根工作。v1 / V2 / 安装 / v0.5.x / v0.6.1 已发布。下一阶段是 v0.7，见 docs/SPEC_V07.md。
 默认安装钉 analyze-video-mcp@0.6.1。不要改 analyze_video
 字段，不要加依赖，不要读密钥。不要本机 npm publish。已授权的 v* tag 由 release.yml 发 npm。
 不要在本轮实现 analyze_audio、FFmpeg 或 audit_media。
