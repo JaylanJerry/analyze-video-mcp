@@ -112,7 +112,7 @@ export async function runDoctor(
     warnings.push("DASHSCOPE_UPLOAD_URL must be HTTPS");
   }
 
-  let registered = false;
+  let registered: boolean;
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const mcp = createServer();
   const client = new Client({ name: "analyze-video-doctor", version: PACKAGE_VERSION });

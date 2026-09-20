@@ -588,7 +588,7 @@ async function measureStreamAndFetchRss(size: number): Promise<{ stream: number;
   });
 
   const streamVideo = await sparseVideo(size);
-  let streamDelta = 0;
+  let streamDelta: number;
   try {
     const beforeStream = process.memoryUsage().rss;
     let streamed = 0;
