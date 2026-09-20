@@ -8,6 +8,12 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      # typescript-eslint (latest 8.70.0) supports typescript >=4.8.4 <6.1.0;
+      # a typescript 7 bump cannot resolve until it ships TS 7 support.
+      - dependency-name: typescript
+        update-types:
+          - "version-update:semver:major"
     groups:
       eslint:
         patterns:
