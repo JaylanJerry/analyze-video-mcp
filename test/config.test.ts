@@ -27,7 +27,14 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 afterEach(async () => {
   process.env = { ...ORIG_ENV };
   setCliConfigPath(undefined);
-  await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+  // A spawned entry with cwd inside a temp dir can outlive the test's exit
+  // wait; on Windows the live child locks its working directory, so rm needs
+  // EBUSY retries to survive child teardown.
+  await Promise.all(
+    tempDirs
+      .splice(0)
+      .map((dir) => rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })),
+  );
 });
 
 async function makeTempDir(): Promise<string> {
