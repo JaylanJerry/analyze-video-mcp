@@ -17,7 +17,7 @@ import {
   DEFAULT_UPLOAD_URL,
   loadConfig,
 } from "../src/config.js";
-import { ConfigError } from "../src/errors.js";
+import { ConfigError, agentErrorText } from "../src/errors.js";
 import { setCliConfigPath } from "../src/config-lookup.js";
 
 const ORIG_ENV = { ...process.env };
@@ -50,7 +50,7 @@ function expectNoEnvValues(message: string, ...values: string[]): void {
 }
 
 describe("loadConfig", () => {
-  it("defaults the model to qwen3.5-omni-plus when only the API key is set", () => {
+  it("defaults the model to qwen3.8-omni-flash when only the API key is set", () => {
     delete process.env.QWEN_MODEL;
     delete process.env.DASHSCOPE_BASE_URL;
     delete process.env.DASHSCOPE_UPLOAD_URL;
@@ -65,8 +65,9 @@ describe("loadConfig", () => {
 
     const cfg = loadConfig();
     expect(cfg.apiKey).toBe("sk-test");
-    expect(cfg.model).toBe("qwen3.5-omni-plus");
+    expect(cfg.model).toBe("qwen3.8-omni-flash");
     expect(cfg.model).toBe(DEFAULT_MODEL);
+    expect(DEFAULT_MODEL).toBe("qwen3.8-omni-flash");
     expect(cfg.serverName).toBe(DEFAULT_SERVER_NAME);
     expect(cfg.baseUrl).toBe(DEFAULT_BASE_URL);
     expect(cfg.uploadUrl).toBe(DEFAULT_UPLOAD_URL);
@@ -129,6 +130,30 @@ describe("loadConfig", () => {
     const cfg = loadConfig();
     expect(cfg.uploadCache).toBe(false);
     expect(cfg.uploadCachePath).toBeUndefined();
+  });
+
+  it("defaults QWEN_ALLOW_ANY_LOCAL_VIDEO to off", () => {
+    process.env.DASHSCOPE_API_KEY = "k";
+    delete process.env.QWEN_ALLOW_ANY_LOCAL_VIDEO;
+    expect(loadConfig().allowAnyLocalVideo).toBe(false);
+  });
+
+  it("accepts the documented on/off spellings for QWEN_ALLOW_ANY_LOCAL_VIDEO", () => {
+    process.env.DASHSCOPE_API_KEY = "k";
+    for (const raw of ["on", "ON", "1", "true", "True"]) {
+      process.env.QWEN_ALLOW_ANY_LOCAL_VIDEO = raw;
+      expect(loadConfig().allowAnyLocalVideo).toBe(true);
+    }
+    for (const raw of ["off", "OFF", "0", "false", "False"]) {
+      process.env.QWEN_ALLOW_ANY_LOCAL_VIDEO = raw;
+      expect(loadConfig().allowAnyLocalVideo).toBe(false);
+    }
+  });
+
+  it("rejects an unrecognized QWEN_ALLOW_ANY_LOCAL_VIDEO value", () => {
+    process.env.DASHSCOPE_API_KEY = "k";
+    process.env.QWEN_ALLOW_ANY_LOCAL_VIDEO = "maybe";
+    expect(() => loadConfig()).toThrow(/QWEN_ALLOW_ANY_LOCAL_VIDEO must be on or off/);
   });
 
   it("rejects an invalid QWEN_MCP_SERVER_NAME without echoing other env values", () => {
@@ -234,6 +259,42 @@ describe("loadConfig", () => {
     } catch (err) {
       expectNoEnvValues(err instanceof Error ? err.message : String(err), filePath);
     }
+  });
+
+  it("names QWEN_ALLOWED_ROOTS in the agent error for an unusable entry", () => {
+    process.env.DASHSCOPE_API_KEY = "k";
+    process.env.QWEN_ALLOWED_ROOTS = join(tmpdir(), "qwen-definitely-missing-root");
+    const err = ((): unknown => {
+      try {
+        loadConfig();
+        return undefined;
+      } catch (e: unknown) {
+        return e;
+      }
+    })();
+    expect(err).toBeInstanceOf(ConfigError);
+    expect(agentErrorText(err)).toContain("QWEN_ALLOWED_ROOTS");
+  });
+
+  it("ignores unusable allowed-root entries while the any-path switch is on", async () => {
+    const root = await makeTempDir();
+    const nested = await realpath(
+      await mkdir(join(root, "media"), { recursive: true }).then(() => join(root, "media")),
+    );
+    process.env.DASHSCOPE_API_KEY = "k";
+    process.env.QWEN_ALLOW_ANY_LOCAL_VIDEO = "on";
+    process.env.QWEN_ALLOWED_ROOTS = [
+      join(root, "renamed-away"),
+      nested,
+      join(root, "also-gone"),
+    ].join(delimiter);
+
+    const cfg = loadConfig();
+    expect(cfg.allowAnyLocalVideo).toBe(true);
+    expect(cfg.allowedRoots).toEqual([nested]);
+
+    process.env.QWEN_ALLOW_ANY_LOCAL_VIDEO = "off";
+    expect(() => loadConfig()).toThrow(/QWEN_ALLOWED_ROOTS/);
   });
 });
 

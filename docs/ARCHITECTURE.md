@@ -21,7 +21,7 @@ Media resolver / authorizer
      oss:// URL + requiresOssResolve=true     │
                                               ▼
                                   Qwen provider adapter
-                                    │ qwen3.5-omni-plus（默认）
+                                    │ qwen3.8-omni-flash（默认）
                                     │ stream:true, modalities:["text"]
                                     ▼
                                   SSE aggregator

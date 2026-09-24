@@ -1,6 +1,6 @@
 # ADR 0015：宿主稳定挂载、证据门禁与安全默认
 
-- Status: Accepted
+- Status: Accepted（“允许根外一律拒绝”的本地路径结论已被 [ADR 0021](0021-allow-any-local-video-opt-in.md) 在安装者显式开启 `QWEN_ALLOW_ANY_LOCAL_VIDEO` 时局部取代；默认仍拒绝）
 - Date: 2026-08-22
 
 ## Context

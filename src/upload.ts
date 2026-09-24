@@ -17,6 +17,20 @@ export interface MediaUploader {
   upload(video: AuthorizedLocalVideo, signal: AbortSignal): Promise<UploadedVideo>;
 }
 
+/**
+ * Bailian's field table documents these two as strings while its example response
+ * uses numbers, so accept either spelling instead of failing the whole upload.
+ */
+const positiveNumber = z.preprocess((raw) => {
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (trimmed !== "" && Number.isFinite(Number(trimmed))) {
+      return Number(trimmed);
+    }
+  }
+  return raw;
+}, z.number().positive());
+
 const policySchema = z.looseObject({
   request_id: z.string().min(1),
   data: z.looseObject({
@@ -24,8 +38,8 @@ const policySchema = z.looseObject({
     signature: z.string().min(1),
     upload_dir: z.string().min(1),
     upload_host: z.string().min(1),
-    expire_in_seconds: z.number().positive(),
-    max_file_size_mb: z.number().positive(),
+    expire_in_seconds: positiveNumber,
+    max_file_size_mb: positiveNumber,
     oss_access_key_id: z.string().min(1),
     x_oss_object_acl: z.string().min(1),
     x_oss_forbid_overwrite: z.string().min(1),
@@ -33,6 +47,49 @@ const policySchema = z.looseObject({
 });
 
 export type UploadPolicy = z.infer<typeof policySchema>;
+
+/**
+ * Stable reason codes for the upload-policy step. They exist so a failure can be
+ * told apart without ever logging the key, the credential, or a local path.
+ */
+export type UploadPolicyReason =
+  | "request_failed"
+  | "http_error"
+  | "invalid_json"
+  | "shape_mismatch"
+  | "field_type_mismatch"
+  | "upload_host_invalid";
+
+const NUMERIC_POLICY_FIELDS = new Set(["expire_in_seconds", "max_file_size_mb"]);
+
+function policyFailure(
+  reason: UploadPolicyReason,
+  extra?: { httpStatus?: number; field?: string },
+): VideoError {
+  const diagnostic: Record<string, unknown> = { parse_reason: reason };
+  if (extra?.field !== undefined) {
+    diagnostic.field = extra.field;
+  }
+  return new VideoError({
+    code: "UPLOAD_POLICY_FAILED",
+    stage: "policy_acquired",
+    ...(extra?.httpStatus !== undefined ? { httpStatus: extra.httpStatus } : {}),
+    diagnostic,
+  });
+}
+
+function policyReasonFromIssues(
+  issues: readonly { code?: string; path?: readonly PropertyKey[] }[],
+): { reason: UploadPolicyReason; field?: string } {
+  const first = issues[0];
+  const path = (first?.path ?? []).map(String).filter((part) => part !== "data");
+  const leaf = path[path.length - 1];
+  const field = path.length > 0 ? `data.${path.join(".")}` : undefined;
+  const numericField = leaf !== undefined && NUMERIC_POLICY_FIELDS.has(leaf);
+  const reason: UploadPolicyReason =
+    first?.code === "invalid_type" && !numericField ? "shape_mismatch" : "field_type_mismatch";
+  return field === undefined ? { reason } : { reason, field };
+}
 
 const ERROR_BODY_LIMIT = 2048;
 
@@ -51,22 +108,24 @@ function httpsHost(raw: string): string {
   try {
     parsed = new URL(raw);
   } catch {
-    throw new VideoError({ code: "UPLOAD_POLICY_FAILED", stage: "policy_acquired" });
+    throw policyFailure("upload_host_invalid", { field: "data.upload_host" });
   }
   if (parsed.protocol !== "https:" || parsed.username !== "" || parsed.password !== "") {
-    throw new VideoError({ code: "UPLOAD_POLICY_FAILED", stage: "policy_acquired" });
+    throw policyFailure("upload_host_invalid", { field: "data.upload_host" });
   }
   return parsed.toString();
 }
 
-export function objectKey(uploadDir: string, objectName?: string): string {
-  return `${uploadDir.replace(/\/+$/, "")}/${objectName ?? `${randomUUID()}.mp4`}`;
+export function objectKey(uploadDir: string, objectName?: string, extension = "mp4"): string {
+  return `${uploadDir.replace(/\/+$/, "")}/${objectName ?? `${randomUUID()}.${extension}`}`;
 }
 
 export function encodeMultipart(params: {
   boundary: string;
   fields: readonly (readonly [string, string])[];
   fileSize: number;
+  fileName?: string;
+  contentType?: string;
 }): { preamble: Buffer; epilogue: Buffer; contentLength: number } {
   const chunks: string[] = [];
   for (const [name, value] of params.fields) {
@@ -76,8 +135,12 @@ export function encodeMultipart(params: {
       `--${params.boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`,
     );
   }
+  const fileName = params.fileName ?? "video.mp4";
+  const contentType = params.contentType ?? "video/mp4";
+  assertSafePartValue(fileName);
+  assertSafePartValue(contentType);
   chunks.push(
-    `--${params.boundary}\r\nContent-Disposition: form-data; name="file"; filename="video.mp4"\r\nContent-Type: video/mp4\r\n\r\n`,
+    `--${params.boundary}\r\nContent-Disposition: form-data; name="file"; filename="${fileName}"\r\nContent-Type: ${contentType}\r\n\r\n`,
   );
   const preamble = Buffer.from(chunks.join(""), "utf8");
   const epilogue = Buffer.from(`\r\n--${params.boundary}--\r\n`, "utf8");
@@ -240,25 +303,22 @@ export async function fetchUploadPolicy(
       signal: mergeSignals(signal, cfg.uploadTimeoutMs),
     });
   } catch {
-    throw new VideoError({ code: "UPLOAD_POLICY_FAILED", stage: "policy_acquired" });
+    throw policyFailure("request_failed");
   }
   if (!res.ok) {
     await readLimitedText(res);
-    throw new VideoError({
-      code: "UPLOAD_POLICY_FAILED",
-      stage: "policy_acquired",
-      httpStatus: res.status,
-    });
+    throw policyFailure("http_error", { httpStatus: res.status });
   }
   let json: unknown;
   try {
     json = await res.json();
   } catch {
-    throw new VideoError({ code: "UPLOAD_POLICY_FAILED", stage: "policy_acquired" });
+    throw policyFailure("invalid_json");
   }
   const parsed = policySchema.safeParse(json);
   if (!parsed.success) {
-    throw new VideoError({ code: "UPLOAD_POLICY_FAILED", stage: "policy_acquired" });
+    const { reason, field } = policyReasonFromIssues(parsed.error.issues);
+    throw policyFailure(reason, field === undefined ? {} : { field });
   }
   httpsHost(parsed.data.data.upload_host);
   return parsed.data;
@@ -291,7 +351,7 @@ export async function uploadLocalVideo(
     });
   }
 
-  const key = objectKey(policy.data.upload_dir);
+  const key = objectKey(policy.data.upload_dir, undefined, video.objectExtension);
   const boundary = `----QwenVideo${randomBytes(16).toString("hex")}`;
   const fields: (readonly [string, string])[] = [
     ["OSSAccessKeyId", policy.data.oss_access_key_id],
@@ -302,7 +362,13 @@ export async function uploadLocalVideo(
     ["key", key],
     ["success_action_status", "200"],
   ];
-  const encoded = encodeMultipart({ boundary, fields, fileSize: video.sizeBytes });
+  const encoded = encodeMultipart({
+    boundary,
+    fields,
+    fileSize: video.sizeBytes,
+    fileName: video.uploadName,
+    contentType: video.contentType,
+  });
   const body = fileMultipartStream(video, encoded.preamble, encoded.epilogue);
   const uploadHost = httpsHost(policy.data.upload_host);
   const headers = {

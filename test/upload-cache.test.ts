@@ -19,7 +19,12 @@ function video(identityKey: string): AuthorizedLocalVideo {
     sizeBytes: 8,
     identityKey,
     durationSeconds: undefined,
-    safeUploadName: "video.mp4",
+    container: "mp4",
+    videoCodecs: ["avc1"],
+    audioCodecs: ["mp4a"],
+    uploadName: "video.mp4",
+    contentType: "video/mp4",
+    objectExtension: "mp4",
   };
 }
 
@@ -161,6 +166,27 @@ describe("persistent upload cache", () => {
     const raw = await readFile(path, "utf8");
     expect(raw).toContain("oss://");
     expect(raw).not.toContain("sk-");
+  });
+
+  it("does not reuse a disk entry after the default model changes", async () => {
+    const path = await cacheFile();
+    const inner = countingUploader();
+    const base = {
+      uploadUrl: "https://up.example",
+      uploadCache: true as const,
+      uploadCachePath: path,
+    };
+    const before = createCachedUploader({ ...base, model: "qwen3.5-omni-plus" }, inner.uploader);
+    await before.upload(video("p|8|1"), signal);
+    expect(inner.calls).toBe(1);
+
+    const after = createCachedUploader({ ...base, model: "qwen3.8-omni-flash" }, inner.uploader);
+    await after.upload(video("p|8|1"), signal);
+    expect(inner.calls).toBe(2);
+
+    const again = createCachedUploader({ ...base, model: "qwen3.8-omni-flash" }, inner.uploader);
+    await again.upload(video("p|8|1"), signal);
+    expect(inner.calls).toBe(2);
   });
 
   it("does not write the cache file when caching is off", async () => {

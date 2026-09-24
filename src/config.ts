@@ -15,6 +15,7 @@ export interface AppConfig {
   baseUrl: string;
   uploadUrl: string;
   allowedRoots: string[];
+  allowAnyLocalVideo: boolean;
   maxLocalVideoBytes: number;
   uploadTimeoutMs: number;
   analysisTimeoutMs: number;
@@ -23,8 +24,9 @@ export interface AppConfig {
   uploadCachePath: string | undefined;
 }
 
-export const DEFAULT_MODEL = "qwen3.5-omni-plus";
-export const FAST_MODEL = "qwen3.5-omni-flash";
+export const DEFAULT_MODEL = "qwen3.8-omni-flash";
+/** The current default already is the cheap/fast omni tier. */
+export const FAST_MODEL = "qwen3.8-omni-flash";
 export const DEFAULT_SERVER_NAME = "analyze-video-mcp";
 const SERVER_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 export const DEFAULT_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1";
@@ -112,11 +114,8 @@ export function defaultUploadCachePath(): string {
   return join(base, "analyze-video-mcp", "upload-cache.json");
 }
 
-function parseUploadCache(options?: ConfigLookupOptions): boolean {
-  const raw = readRaw("QWEN_UPLOAD_CACHE", options);
-  if (raw === undefined) {
-    return true;
-  }
+/** Recognizes the on/off spellings used by QWEN_* toggles; undefined when unrecognized. */
+export function parseOnOffToken(raw: string): boolean | undefined {
   const value = raw.toLowerCase();
   if (value === "off" || value === "0" || value === "false") {
     return false;
@@ -124,14 +123,59 @@ function parseUploadCache(options?: ConfigLookupOptions): boolean {
   if (value === "on" || value === "1" || value === "true") {
     return true;
   }
-  throw new ConfigError("QWEN_UPLOAD_CACHE must be on or off");
+  return undefined;
 }
 
-export function readAllowedRoots(options?: ConfigLookupOptions): string[] {
-  return parseAllowedRoots(options);
+function parseToggle(name: string, fallback: boolean, options?: ConfigLookupOptions): boolean {
+  const raw = readRaw(name, options);
+  if (raw === undefined) {
+    return fallback;
+  }
+  const parsed = parseOnOffToken(raw);
+  if (parsed === undefined) {
+    throw new ConfigError(`${name} must be on or off`);
+  }
+  return parsed;
 }
 
-function parseAllowedRoots(options?: ConfigLookupOptions): string[] {
+function parseUploadCache(options?: ConfigLookupOptions): boolean {
+  return parseToggle("QWEN_UPLOAD_CACHE", true, options);
+}
+
+/**
+ * Opt-in for uploading any local MP4 the Agent names, without requiring the file
+ * to sit under QWEN_ALLOWED_ROOTS. Off by default: the path alone is not proof
+ * that the user chose the file, so installers must turn this on deliberately.
+ */
+function parseAllowAnyLocalVideo(options?: ConfigLookupOptions): boolean {
+  return parseToggle("QWEN_ALLOW_ANY_LOCAL_VIDEO", false, options);
+}
+
+export function readAllowedRoots(options?: ConfigLookupOptions, lenient = false): string[] {
+  return parseAllowedRoots(options, lenient);
+}
+
+function resolveAllowedRoot(part: string): string | undefined {
+  if (!isAbsolute(part)) {
+    return undefined;
+  }
+  try {
+    if (!statSync(part).isDirectory()) {
+      return undefined;
+    }
+    return realpathSync(part);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Strict by default: an unusable entry is a configuration error, so a broken
+ * allowlist fails closed. With QWEN_ALLOW_ANY_LOCAL_VIDEO on the allowlist is not
+ * consulted at all, so unusable entries are dropped instead of failing every call
+ * (a renamed or deleted media folder used to break the whole tool).
+ */
+function parseAllowedRoots(options?: ConfigLookupOptions, lenient = false): string[] {
   const raw = readRaw("QWEN_ALLOWED_ROOTS", options) ?? "";
   const parts = raw
     .split(delimiter)
@@ -141,27 +185,21 @@ function parseAllowedRoots(options?: ConfigLookupOptions): string[] {
   const seen = new Set<string>();
 
   for (const part of parts) {
-    if (!isAbsolute(part)) {
-      throw new ConfigError("QWEN_ALLOWED_ROOTS entries must be absolute directories");
-    }
-    try {
-      const info = statSync(part);
-      if (!info.isDirectory()) {
-        throw new ConfigError("QWEN_ALLOWED_ROOTS entries must be existing directories");
-      }
-      const real = realpathSync(part);
-      const key = process.platform === "win32" ? real.toLowerCase() : real;
-      if (seen.has(key)) {
+    const real = resolveAllowedRoot(part);
+    if (real === undefined) {
+      if (lenient) {
         continue;
       }
-      seen.add(key);
-      resolved.push(real);
-    } catch (err) {
-      if (err instanceof Error && err.message.startsWith("QWEN_ALLOWED_ROOTS")) {
-        throw err;
-      }
-      throw new ConfigError("QWEN_ALLOWED_ROOTS entries must be existing directories");
+      throw new ConfigError("QWEN_ALLOWED_ROOTS entries must be absolute existing directories", {
+        missing: ["QWEN_ALLOWED_ROOTS"],
+      });
     }
+    const key = process.platform === "win32" ? real.toLowerCase() : real;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    resolved.push(real);
   }
 
   return resolved;
@@ -176,13 +214,15 @@ export function loadConfig(options?: ConfigLookupOptions): AppConfig {
     options,
   );
   const uploadCache = parseUploadCache(options);
+  const allowAnyLocalVideo = parseAllowAnyLocalVideo(options);
   return {
     apiKey: requireConfigValue("DASHSCOPE_API_KEY", options),
     model: readRaw("QWEN_MODEL", options) ?? DEFAULT_MODEL,
     serverName: parseServerName(options),
     baseUrl: httpsUrl("DASHSCOPE_BASE_URL", DEFAULT_BASE_URL, options),
     uploadUrl: httpsUrl("DASHSCOPE_UPLOAD_URL", DEFAULT_UPLOAD_URL, options),
-    allowedRoots: parseAllowedRoots(options),
+    allowedRoots: parseAllowedRoots(options, allowAnyLocalVideo),
+    allowAnyLocalVideo,
     maxLocalVideoBytes: maxLocalVideoMb * BYTES_PER_MIB,
     uploadTimeoutMs:
       boundedInt(

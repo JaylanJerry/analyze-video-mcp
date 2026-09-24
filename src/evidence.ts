@@ -21,6 +21,7 @@ export const EVIDENCE_POLICY = `你是视听证据审核器，不是故事补写
 7. 精确数值只能来自 measurements；本工具没有提供测量值时禁止标 measured。
 8. 字幕审核必须区分抽样检查和完整逐条验证。没有覆盖数据时不得写「全部正确」「完全同步」。
 9. 发现证据冲突时保留冲突，不要自行编造解释。
+cross_validated 只能用于你同时直接看到画面并直接听到声音、且两者确实对应的条目；对应模态必须有 seen 或 heard 类条目支撑，否则改用 inferred 或 uncertain。
 10. 发布判断必须区分内容质量、技术规格和版权授权。
 
 把「音轨里实际听到的」和「只根据画面推断可能有的声音」分开。时间戳必须正序且不超出视频时长；吃不准就写大约，禁止倒序。即使问题没有提到声音，也要说明听到了什么。同一句同时包含观察和推断时必须拆成两条。
@@ -74,10 +75,30 @@ export interface EvidenceReport {
   answer: string;
 }
 
+export interface LocalMediaFacts {
+  container: "mp4" | "mov";
+  videoTrackPresent: boolean;
+  audioTrackPresent: boolean;
+  videoCodecs: string[];
+  audioCodecs: string[];
+}
+
 export interface Coverage {
   media_duration_seconds: number | undefined;
+  /** Local container fact; undefined for HTTPS, which is never probed. */
+  container: "mp4" | "mov" | undefined;
+  video_track_present: boolean | undefined;
+  audio_track_present: boolean | undefined;
+  video_codecs: string[] | undefined;
+  audio_codecs: string[] | undefined;
+  /** Request-level: the modality was sent to the model. */
   video_analyzed: boolean;
   audio_analyzed: boolean;
+  /** Report-level: the model listed observations for that modality. */
+  video_observed: boolean;
+  audio_observed: boolean;
+  /** Model claims that contradict the local container probe (never "confirmed"). */
+  evidence_conflicts: string[];
   video_strategy: "sampled_multimodal";
   audio_strategy: "sampled_multimodal";
   ocr_performed: false;
@@ -281,10 +302,47 @@ function itemHasMixedInference(item: EvidenceItem): boolean {
   return MIXED_INFERENCE.test(item.description);
 }
 
+/**
+ * True when the item needs no cleanup of its own: no hedging inside seen/heard, no
+ * identity/measured/mixed claims, no missing time code and not the wrong modality.
+ * Pairing must ignore items that cleanup will remove — otherwise a `seen` entry that
+ * is about to be dropped would still vouch for a `cross_validated` counterpart.
+ */
+function itemIsSelfConsistent(item: EvidenceItem, wrongKind: boolean): boolean {
+  return !(
+    wrongKind ||
+    itemHasHedgingViolation(item) ||
+    itemHasIdentityViolation(item) ||
+    itemHasMeasuredViolation(item) ||
+    itemHasMixedInference(item) ||
+    itemMissingTime(item)
+  );
+}
+
+/**
+ * A `cross_validated` item claims picture and sound agreed, so the *other*
+ * modality must contain a directly confirmed observation (seen / heard) that
+ * itself survives cleanup. A non-empty array is not enough: an `uncertain`
+ * counterpart cannot validate it, an entry destined for removal cannot vouch for
+ * it, and two mutually cross-validated items with nothing confirmed are circular.
+ */
+function hasConfirmedVisual(report: EvidenceReport): boolean {
+  return report.visual_observations.some(
+    (item) => item.evidence === "seen" && itemIsSelfConsistent(item, false),
+  );
+}
+
+function hasConfirmedAudio(report: EvidenceReport): boolean {
+  return report.audio_observations.some(
+    (item) => item.evidence === "heard" && itemIsSelfConsistent(item, false),
+  );
+}
+
 export function collectViolations(report: EvidenceReport): string[] {
   const violations: string[] = [];
-  const hasVisual = report.visual_observations.length > 0;
-  const hasAudio = report.audio_observations.length > 0;
+  const confirmedVisual = hasConfirmedVisual(report);
+  const confirmedAudio = hasConfirmedAudio(report);
+
   for (const item of report.visual_observations) {
     if (
       item.evidence === "heard" ||
@@ -297,7 +355,7 @@ export function collectViolations(report: EvidenceReport): string[] {
     if (itemHasMeasuredViolation(item) || itemMissingTime(item)) {
       violations.push("visual");
     }
-    if (item.evidence === "cross_validated" && !hasAudio) {
+    if (item.evidence === "cross_validated" && !confirmedAudio) {
       violations.push("visual");
     }
   }
@@ -313,7 +371,7 @@ export function collectViolations(report: EvidenceReport): string[] {
     if (itemHasMeasuredViolation(item) || itemMissingTime(item)) {
       violations.push("audio");
     }
-    if (item.evidence === "cross_validated" && !hasVisual) {
+    if (item.evidence === "cross_validated" && !confirmedVisual) {
       violations.push("audio");
     }
   }
@@ -331,14 +389,9 @@ export function sanitizeEvidenceReport(report: EvidenceReport): EvidenceReport {
   const inferences = [...report.inferences];
   const visual: EvidenceItem[] = [];
   const audio: EvidenceItem[] = [];
-  const hasVisual = report.visual_observations.length > 0;
-  const hasAudio = report.audio_observations.length > 0;
 
-  const demote = (
-    item: EvidenceItem,
-    wrongKind: boolean,
-    allowCross: boolean,
-  ): EvidenceItem | undefined => {
+  /** Phase 1: self-consistency only; cross pairing is decided in phase 2. */
+  const demote = (item: EvidenceItem, wrongKind: boolean): EvidenceItem | undefined => {
     if (wrongKind || itemHasHedgingViolation(item)) {
       uncertainties.push({ description: item.description });
       return undefined;
@@ -358,22 +411,61 @@ export function sanitizeEvidenceReport(report: EvidenceReport): EvidenceReport {
       uncertainties.push({ description: `缺少时间码：${item.description}` });
       return undefined;
     }
-    if (item.evidence === "cross_validated" && !allowCross) {
-      return { ...item, evidence: "inferred", confidence: Math.min(item.confidence, 0.5) };
-    }
     return item;
   };
 
+  const pendingVisualCross: EvidenceItem[] = [];
+  const pendingAudioCross: EvidenceItem[] = [];
   for (const item of report.visual_observations) {
-    const kept = demote(item, item.evidence === "heard", hasAudio);
+    if (item.evidence === "cross_validated") {
+      pendingVisualCross.push(item);
+      continue;
+    }
+    const kept = demote(item, item.evidence === "heard");
     if (kept !== undefined) {
       visual.push(kept);
     }
   }
   for (const item of report.audio_observations) {
-    const kept = demote(item, item.evidence === "seen", hasVisual);
+    if (item.evidence === "cross_validated") {
+      pendingAudioCross.push(item);
+      continue;
+    }
+    const kept = demote(item, item.evidence === "seen");
     if (kept !== undefined) {
       audio.push(kept);
+    }
+  }
+
+  // Phase 2: a pairing claim survives only against a confirmed survivor, so the
+  // output stays consistent when re-collected (no claim without its counterpart).
+  const confirmedVisual = visual.some((item) => item.evidence === "seen");
+  const confirmedAudio = audio.some((item) => item.evidence === "heard");
+  const asInferred = (item: EvidenceItem): EvidenceItem => ({
+    ...item,
+    evidence: "inferred",
+    confidence: Math.min(item.confidence, 0.5),
+  });
+  for (const item of pendingVisualCross) {
+    const kept = demote(item, item.evidence === "heard");
+    if (kept === undefined) {
+      continue;
+    }
+    if (confirmedAudio) {
+      visual.push(kept);
+    } else {
+      visual.push(asInferred(kept));
+    }
+  }
+  for (const item of pendingAudioCross) {
+    const kept = demote(item, item.evidence === "seen");
+    if (kept === undefined) {
+      continue;
+    }
+    if (confirmedVisual) {
+      audio.push(kept);
+    } else {
+      audio.push(asInferred(kept));
     }
   }
 
@@ -426,6 +518,52 @@ export function parseEvidence(raw: string): EvidenceParse {
   return { kind: "report", report, violations: collectViolations(report) };
 }
 
+/**
+ * Last-resort reader for a response that starts like JSON but does not form a
+ * complete report: keep the `answer` string and whatever observation arrays parse,
+ * so the Agent never receives raw JSON as the user-facing answer.
+ */
+export function salvageJsonAnswer(
+  raw: string,
+): { answer: string; report: EvidenceReport | undefined } | undefined {
+  const json = extractJsonObject(raw);
+  let answer: string | undefined;
+  if (isRecord(json)) {
+    answer = readDescription(json.answer);
+  }
+  if (answer === undefined) {
+    // Truncated or slightly malformed JSON: pull the answer string out directly.
+    const match = /"answer"\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(raw);
+    if (match?.[1] !== undefined) {
+      try {
+        answer = readDescription(JSON.parse(`"${match[1]}"`) as unknown);
+      } catch {
+        answer = readDescription(match[1]);
+      }
+    }
+  }
+  if (answer === undefined) {
+    return undefined;
+  }
+  if (!isRecord(json)) {
+    return { answer: sanitizeProseAnswer(answer), report: undefined };
+  }
+  const visual = parseItems(json.visual_observations) ?? [];
+  const audio = parseItems(json.audio_observations) ?? [];
+  const inferences = parseNotes(json.inferences) ?? [];
+  const uncertainties = parseNotes(json.uncertainties) ?? [];
+  const candidate: EvidenceReport = {
+    visual_observations: visual,
+    audio_observations: audio,
+    inferences,
+    uncertainties,
+    answer,
+  };
+  const report =
+    collectViolations(candidate).length > 0 ? sanitizeEvidenceReport(candidate) : candidate;
+  return { answer: report.answer, report };
+}
+
 export function sampledSubtitleAudit(): SubtitleAudit {
   return {
     mode: "sampled",
@@ -437,24 +575,90 @@ export function sampledSubtitleAudit(): SubtitleAudit {
   };
 }
 
-export function buildCoverage(durationSeconds: number | undefined): Coverage {
+/** 列出条目里出现的证据类型（中文标签，用于限制说明）。 */
+function presentKinds(items: readonly EvidenceItem[]): string {
+  const labels = new Set(items.map((item) => KIND_LABEL[item.evidence]));
+  return [...labels].join("、");
+}
+
+export function buildCoverage(
+  durationSeconds: number | undefined,
+  facts?: LocalMediaFacts,
+  report?: EvidenceReport,
+): Coverage {
+  const visualItems = report?.visual_observations ?? [];
+  const audioItems = report?.audio_observations ?? [];
+  // An entry being present is not an observation, and `cross_validated` is a paired
+  // claim rather than a direct one (it stays out of the flag until its pairing check
+  // is proven reliable): only seen / heard count — and only when the local probe does
+  // not contradict them (a claim of hearing in a file with no audio track is a
+  // conflict, not a confirmation).
+  const claimsVideo = visualItems.some((item) => item.evidence === "seen");
+  const claimsAudio = audioItems.some((item) => item.evidence === "heard");
+  const noVideoTrack = facts !== undefined && !facts.videoTrackPresent;
+  const noAudioTrack = facts !== undefined && !facts.audioTrackPresent;
+  const videoObserved = claimsVideo && !noVideoTrack;
+  const audioObserved = claimsAudio && !noAudioTrack;
+
+  const conflicts: string[] = [];
+  if (claimsAudio && noAudioTrack) {
+    conflicts.push(
+      "模型给出了「听到」类音频条目，但本地探测在该文件中未发现音轨：这是证据冲突（可能文件确实没有音轨，也可能本地探测未能读取音轨结构），不得当作已确认听到",
+    );
+  }
+  if (claimsVideo && noVideoTrack) {
+    conflicts.push(
+      "模型给出了「看到」类画面条目，但本地探测在该文件中未发现视频轨：这是证据冲突（可能文件确实没有视频轨，也可能本地探测未能读取轨道结构），不得当作已确认看到",
+    );
+  }
+  const limitations = [
+    "未执行逐帧OCR",
+    "未执行独立字幕轨解析",
+    "未执行确定性响度或真峰值测量",
+    "人物身份仅依据画面无法完全确认",
+    "多模态模型对视频为抽样理解，不是完整逐帧观看",
+  ];
+  if (conflicts.length > 0) {
+    limitations.push(
+      `存在证据冲突（${String(conflicts.length)} 项）：模型报告了本地探测未发现的模态内容，详见 evidence_conflicts`,
+    );
+  }
+  if (report !== undefined) {
+    if (facts?.audioTrackPresent === true && !audioObserved) {
+      limitations.push(
+        audioItems.length > 0
+          ? `文件含可解码音轨（本地已确认），但本次回答没有直接确认听到的内容（现有音频条目为：${presentKinds(audioItems)}）：需要更短片段复核，或确认音轨是否近似静音`
+          : "文件含可解码音轨（本地已确认），但本次回答没有给出任何「听到」的观察：可能是模型未利用音轨、音轨近似静音，或抽样忽略了声音，需要更短片段复核",
+      );
+    }
+    if (facts?.videoTrackPresent === true && !videoObserved) {
+      limitations.push(
+        visualItems.length > 0
+          ? `文件含视频轨（本地已确认），但本次回答没有直接确认看到的内容（现有画面条目为：${presentKinds(visualItems)}），需要更短片段复核`
+          : "文件含视频轨（本地已确认），但本次回答没有给出任何「看到」的观察，需要更短片段复核",
+      );
+    }
+  }
   return {
     media_duration_seconds: durationSeconds,
-    video_analyzed: true,
-    audio_analyzed: true,
+    container: facts?.container,
+    video_track_present: facts?.videoTrackPresent,
+    audio_track_present: facts?.audioTrackPresent,
+    video_codecs: facts?.videoCodecs,
+    audio_codecs: facts?.audioCodecs,
+    // Request-level: without a local probe (HTTPS) we sent both modalities as-is.
+    video_analyzed: facts === undefined ? true : facts.videoTrackPresent,
+    audio_analyzed: facts === undefined ? true : facts.audioTrackPresent,
+    video_observed: videoObserved,
+    audio_observed: audioObserved,
+    evidence_conflicts: conflicts,
     video_strategy: "sampled_multimodal",
     audio_strategy: "sampled_multimodal",
     ocr_performed: false,
     transcript_generated: false,
     subtitle_events_detected: undefined,
     subtitle_events_verified: 0,
-    coverage_limitations: [
-      "未执行逐帧OCR",
-      "未执行独立字幕轨解析",
-      "未执行确定性响度或真峰值测量",
-      "人物身份仅依据画面无法完全确认",
-      "多模态模型对视频为抽样理解，不是完整逐帧观看",
-    ],
+    coverage_limitations: limitations,
   };
 }
 
@@ -462,6 +666,8 @@ function coverageJson(coverage: Coverage): Record<string, unknown> {
   const out: Record<string, unknown> = {
     video_analyzed: coverage.video_analyzed,
     audio_analyzed: coverage.audio_analyzed,
+    video_observed: coverage.video_observed,
+    audio_observed: coverage.audio_observed,
     video_strategy: coverage.video_strategy,
     audio_strategy: coverage.audio_strategy,
     ocr_performed: coverage.ocr_performed,
@@ -471,6 +677,24 @@ function coverageJson(coverage: Coverage): Record<string, unknown> {
   };
   if (coverage.media_duration_seconds !== undefined) {
     out.media_duration_seconds = coverage.media_duration_seconds;
+  }
+  if (coverage.container !== undefined) {
+    out.container = coverage.container;
+  }
+  if (coverage.video_track_present !== undefined) {
+    out.video_track_present = coverage.video_track_present;
+  }
+  if (coverage.audio_track_present !== undefined) {
+    out.audio_track_present = coverage.audio_track_present;
+  }
+  if (coverage.video_codecs !== undefined) {
+    out.video_codecs = coverage.video_codecs;
+  }
+  if (coverage.audio_codecs !== undefined) {
+    out.audio_codecs = coverage.audio_codecs;
+  }
+  if (coverage.evidence_conflicts.length > 0) {
+    out.evidence_conflicts = coverage.evidence_conflicts;
   }
   if (coverage.subtitle_events_detected !== undefined) {
     out.subtitle_events_detected = coverage.subtitle_events_detected;
@@ -532,4 +756,92 @@ function itemToJson(item: EvidenceItem): Record<string, string | number> {
 
 export function proseNeedsCorrection(answer: string): boolean {
   return hasAbsoluteClaim(answer) || hasIdentityClaim(answer);
+}
+
+const KIND_LABEL: Record<EvidenceKind, string> = {
+  seen: "看到",
+  heard: "听到",
+  measured: "测量",
+  inferred: "推断",
+  uncertain: "待确认",
+  cross_validated: "声画一致",
+};
+
+export interface TextComposeLimits {
+  /** Display caps only: they bound the payload, they never ask the model for a count. */
+  maxItemsPerSection: number;
+  maxItemChars: number;
+}
+
+export const DEFAULT_TEXT_LIMITS: TextComposeLimits = {
+  maxItemsPerSection: 12,
+  maxItemChars: 220,
+};
+
+function trimItem(description: string, maxChars: number): string {
+  const text = description.replace(/\s+/g, " ").trim();
+  if (text.length <= maxChars) {
+    return text;
+  }
+  return `${text.slice(0, maxChars)}…`;
+}
+
+function formatItem(item: EvidenceItem, limits: TextComposeLimits): string {
+  const time = item.time !== undefined ? `${item.time} ` : "";
+  const weak = item.confidence < 0.6 ? `，置信度 ${item.confidence.toFixed(2)}` : "";
+  return `- ${time}（${KIND_LABEL[item.evidence]}${weak}）${trimItem(item.description, limits.maxItemChars)}`;
+}
+
+function formatSection(
+  title: string,
+  items: readonly string[],
+  limits: TextComposeLimits,
+): { lines: string[]; omitted: number } {
+  if (items.length === 0) {
+    return { lines: [], omitted: 0 };
+  }
+  const shown = items.slice(0, limits.maxItemsPerSection);
+  const omitted = items.length - shown.length;
+  return { lines: [title, ...shown], omitted };
+}
+
+/**
+ * The text content is what most hosts hand to the model, while the timestamped
+ * observations otherwise live only in structuredContent. Compose both into the
+ * text so a text-only host still sees the per-segment evidence, without asking
+ * the model for a fixed number of items.
+ */
+export function composeAnswerText(
+  answer: string,
+  report: EvidenceReport | undefined,
+  limits: TextComposeLimits = DEFAULT_TEXT_LIMITS,
+): string {
+  if (report === undefined) {
+    return answer;
+  }
+  const visual = report.visual_observations.map((item) => formatItem(item, limits));
+  const audio = report.audio_observations.map((item) => formatItem(item, limits));
+  const inferences = report.inferences.map(
+    (note) => `- ${trimItem(note.description, limits.maxItemChars)}`,
+  );
+  const uncertainties = report.uncertainties.map(
+    (note) => `- ${trimItem(note.description, limits.maxItemChars)}`,
+  );
+  const sections = [
+    formatSection("画面：", visual, limits),
+    formatSection("声音：", audio, limits),
+    formatSection("推断：", inferences, limits),
+    formatSection("不确定：", uncertainties, limits),
+  ];
+  const omitted = sections.reduce((sum, section) => sum + section.omitted, 0);
+  const body = sections.flatMap((section) => section.lines);
+  const notice =
+    omitted > 0 ? `（另有 ${String(omitted)} 项未在此展开；结构化结果里有完整列表。）` : undefined;
+  if (body.length === 0) {
+    return `${answer}\n\n分项观察（抽样，不是逐帧或逐字核验）：本次没有可列出的分项观察，只有上面的说明。`;
+  }
+  const footer = "（以上为抽样观察，不是逐帧、逐字或全量核验。）";
+  return [answer, "", "分项观察（抽样）：", ...body, notice, footer]
+    .filter((line): line is string => line !== undefined)
+    .join("\n");
 }

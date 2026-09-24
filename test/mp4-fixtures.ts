@@ -75,3 +75,51 @@ export async function writeMp4WithSparseMdat(
   }
   return fileSize;
 }
+
+export function movFtypBox(): Buffer {
+  const payload = Buffer.alloc(8);
+  payload.write("qt  ", 0, 4, "ascii");
+  payload.write("qt  ", 4, 4, "ascii");
+  return box32("ftyp", payload);
+}
+
+/** hdlr with the given handler type ("vide" / "soun"). */
+export function hdlrBox(handler: "vide" | "soun"): Buffer {
+  const payload = Buffer.alloc(12);
+  payload.write(handler, 8, 4, "ascii");
+  return box32("hdlr", payload);
+}
+
+/** stsd with one sample entry per codec fourcc. */
+export function stsdBox(codecs: string[]): Buffer {
+  const head = Buffer.alloc(8);
+  head.writeUInt32BE(codecs.length, 4);
+  const entries = codecs.map((codec) => {
+    const entry = Buffer.alloc(8);
+    entry.writeUInt32BE(8, 0);
+    entry.write(codec, 4, 4, "ascii");
+    return entry;
+  });
+  return box32("stsd", Buffer.concat([head, ...entries]));
+}
+
+export function trakBox(handler: "vide" | "soun", codecs: string[]): Buffer {
+  const stsd = stsdBox(codecs);
+  const stbl = box32("stbl", stsd);
+  const minf = box32("minf", stbl);
+  const mdia = box32("mdia", Buffer.concat([hdlrBox(handler), minf]));
+  return box32("trak", mdia);
+}
+
+/** MOV-shaped file: `qt  ` brand, given tracks, optional duration. */
+export function movWithTracks(
+  tracks: { handler: "vide" | "soun"; codecs: string[] }[],
+  duration?: { timescale: number; seconds: number },
+): Buffer {
+  const mvhd = duration === undefined ? undefined : mvhdV0(duration.timescale, duration.seconds);
+  const children = [
+    ...(mvhd === undefined ? [] : [mvhd]),
+    ...tracks.map((track) => trakBox(track.handler, track.codecs)),
+  ];
+  return Buffer.concat([movFtypBox(), moovBox(children)]);
+}

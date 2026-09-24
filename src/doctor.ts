@@ -3,15 +3,25 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { DEFAULT_BASE_URL, DEFAULT_UPLOAD_URL, loadConfig, readAllowedRoots } from "./config.js";
+import {
+  DEFAULT_BASE_URL,
+  DEFAULT_MODEL,
+  DEFAULT_UPLOAD_URL,
+  loadConfig,
+  parseOnOffToken,
+  readAllowedRoots,
+} from "./config.js";
 import {
   type ConfigLookupOptions,
   type ConfigSource,
   inspectConfig,
   lookupConfigValue,
 } from "./config-lookup.js";
+import { looksSensitive } from "./errors.js";
 import { createServer } from "./server.js";
 import { formatPackageBanner, PACKAGE_VERSION } from "./version.js";
+
+export type LocalVideoPolicy = "allowed_roots" | "any_local_path";
 
 export interface DoctorReport {
   ok: boolean;
@@ -20,13 +30,31 @@ export interface DoctorReport {
   banner: string;
   node: { version: string; supported: boolean };
   api_key: { configured: boolean; source: ConfigSource };
+  model: { id: string; source: ConfigSource };
   allowed_roots: { configured: boolean; source: ConfigSource; count: number; valid: boolean };
+  local_video_policy: { mode: LocalVideoPolicy; source: ConfigSource };
   endpoints: { base_url_ok: boolean; upload_url_ok: boolean };
   handshake: { tool: string; registered: boolean };
   warnings: string[];
 }
 
 const MIN_NODE_MAJOR = 22;
+const PRINTABLE_MODEL_ID = /^qwen[0-9a-z._-]{0,63}$/i;
+
+/**
+ * The doctor echoes the model id only when it looks like a Qwen model id and is not
+ * sensitive: a stray secret pasted into QWEN_MODEL must not come back in the report.
+ */
+function printableModelId(raw: string | undefined): string {
+  if (raw === undefined) {
+    return DEFAULT_MODEL;
+  }
+  const trimmed = raw.trim();
+  if (trimmed.length === 0 || !PRINTABLE_MODEL_ID.test(trimmed) || looksSensitive(trimmed)) {
+    return "<redacted>";
+  }
+  return trimmed;
+}
 
 function httpsEndpointOk(raw: string | undefined, fallback: string): boolean {
   const value = raw === undefined || raw.trim() === "" ? fallback : raw.trim();
@@ -82,18 +110,51 @@ export async function runDoctor(
     warnings.push("DASHSCOPE_API_KEY is not set");
   }
 
+  const modelResolved = lookupConfigValue("QWEN_MODEL", lookup);
+
+  const anyLocalVideoResolved = lookupConfigValue("QWEN_ALLOW_ANY_LOCAL_VIDEO", lookup);
+  const anyLocalVideoRaw = anyLocalVideoResolved.value;
+  const anyLocalVideoToggle =
+    anyLocalVideoRaw === undefined ? undefined : parseOnOffToken(anyLocalVideoRaw);
+  const anyLocalVideoOn = anyLocalVideoToggle === true;
+
   let rootsCount = 0;
   let rootsValid = true;
   const rootsConfigured = inspection.allowed_roots.configured;
   if (rootsConfigured) {
-    try {
-      rootsCount = readAllowedRoots(lookup).length;
-      rootsValid = rootsCount > 0;
-    } catch {
-      rootsValid = false;
-      warnings.push("QWEN_ALLOWED_ROOTS could not be parsed");
+    if (anyLocalVideoOn) {
+      // With the any-path switch on the allowlist is unused, so unusable entries are
+      // dropped instead of failing the install; report them rather than hiding them.
+      rootsCount = readAllowedRoots(lookup, true).length;
+      let ignored: boolean;
+      try {
+        ignored = readAllowedRoots(lookup).length !== rootsCount;
+      } catch {
+        ignored = true;
+      }
+      if (ignored) {
+        warnings.push(
+          "QWEN_ALLOWED_ROOTS has entries that are not usable directories; they are ignored while QWEN_ALLOW_ANY_LOCAL_VIDEO is on",
+        );
+      }
+    } else {
+      try {
+        rootsCount = readAllowedRoots(lookup).length;
+        rootsValid = rootsCount > 0;
+      } catch {
+        rootsValid = false;
+        warnings.push("QWEN_ALLOWED_ROOTS could not be parsed");
+      }
     }
-  } else {
+  }
+
+  if (anyLocalVideoRaw !== undefined && anyLocalVideoToggle === undefined) {
+    warnings.push("QWEN_ALLOW_ANY_LOCAL_VIDEO must be on or off");
+  } else if (anyLocalVideoOn) {
+    warnings.push(
+      "QWEN_ALLOW_ANY_LOCAL_VIDEO is on: any local MP4 path an Agent names is uploaded, including files the user never picked",
+    );
+  } else if (!rootsConfigured) {
     warnings.push("QWEN_ALLOWED_ROOTS is unset; local MP4s will be refused");
   }
 
@@ -151,11 +212,16 @@ export async function runDoctor(
     banner: formatPackageBanner(git),
     node: { version: nodeVersion, supported },
     api_key: { configured: keyConfigured, source: inspection.api_key.source },
+    model: { id: printableModelId(modelResolved.value), source: modelResolved.source },
     allowed_roots: {
       configured: rootsConfigured,
       source: inspection.allowed_roots.source,
       count: rootsCount,
       valid: rootsValid,
+    },
+    local_video_policy: {
+      mode: anyLocalVideoOn ? "any_local_path" : "allowed_roots",
+      source: anyLocalVideoResolved.source,
     },
     endpoints: { base_url_ok: baseOk, upload_url_ok: uploadOk },
     handshake: { tool: "analyze_video", registered },
@@ -169,7 +235,9 @@ export function formatDoctorText(report: DoctorReport): string {
     `ok=${report.ok ? "true" : "false"}`,
     `node=${report.node.version} supported=${String(report.node.supported)}`,
     `api_key.configured=${String(report.api_key.configured)} source=${report.api_key.source}`,
+    `model.id=${report.model.id} source=${report.model.source}`,
     `allowed_roots.configured=${String(report.allowed_roots.configured)} source=${report.allowed_roots.source} count=${String(report.allowed_roots.count)} valid=${String(report.allowed_roots.valid)}`,
+    `local_video_policy.mode=${report.local_video_policy.mode} source=${report.local_video_policy.source}`,
     `endpoints.base_url_ok=${String(report.endpoints.base_url_ok)} upload_url_ok=${String(report.endpoints.upload_url_ok)}`,
     `handshake.registered=${String(report.handshake.registered)}`,
   ];

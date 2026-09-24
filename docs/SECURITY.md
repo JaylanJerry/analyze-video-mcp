@@ -2,20 +2,30 @@
 
 ## 目标
 
-Agent 可以主动调用 MCP。恶意提示或错误推理可能诱导它读取本机文件，因此“扩展名是 MP4”不等于用户授权。未设置 `QWEN_ALLOWED_ROOTS` 时拒绝所有本地路径，只允许公开 HTTPS；设置后仍按根目录 containment 拒绝根外文件。
+Agent 可以主动调用 MCP。恶意提示或错误推理可能诱导它读取本机文件，因此“扩展名是 MP4”不等于用户授权。默认（未设置 `QWEN_ALLOWED_ROOTS`）拒绝所有本地路径，只允许公开 HTTPS；设置后仍按根目录 containment 拒绝根外文件。
+
+例外：安装者可以在自己的 MCP `env` 或配置文件中设置 `QWEN_ALLOW_ANY_LOCAL_VIDEO=on`（[ADR 0021](decisions/0021-allow-any-local-video-opt-in.md)）。打开后**不再要求位于允许根内**，Agent 写出的任意绝对 MP4 路径都会被上传；该模式把“路径文本”当作授权，因此上面这条威胁模型对它不成立，只在用户主动接受该代价的安装上使用。默认保持关闭，且该变量不参与 Windows 用户环境变量的静默回退。
 
 ## 威胁模型
 
 需要防御：
 
-- Agent 请求上传允许根目录之外的私人视频；
+- Agent 请求上传允许根目录之外的私人视频（默认模式下）；
 - `..`、大小写、Unicode、短路径等路径绕过；
-- symlink 或 Windows junction 从允许根跳到外部；
+- symlink 或 Windows junction 从允许根跳到外部（默认模式下）；
 - 先检查 A、上传时路径已被换成 B 的 TOCTOU；
 - 伪装扩展名、目录、设备、管道或空文件；
 - 错误和日志泄露密钥、临时凭证、OSS URL 或绝对路径；
 - 大文件触发内存耗尽；
 - HTTP URL 降级或非预期 scheme。
+
+不防御（`QWEN_ALLOW_ANY_LOCAL_VIDEO=on` 时明确放弃）：
+
+- 提示注入或错误推理让 Agent 写出用户没有选择过的本地路径：该模式下路径即授权。
+
+## 调用条件不属于安全机制
+
+Server instructions 与 Tool 描述要求 Agent“只在用户明确要求用 MCP 分析视频时才调用”。这是**提示词层面的引导**：宿主可以忽略 instructions，模型也可以不遵守，因此它不构成任何保证，不能在安全说明里写成“不会被自动调用”。可用的实际手段只有服务端校验、`QWEN_ALLOW_ANY_LOCAL_VIDEO` 默认关闭、允许根限制，以及宿主自己的工具可见性与审批模式。
 
 不承诺完全防御：
 
@@ -63,11 +73,13 @@ validate absolute path and .mp4 extension
 
 - pre-stat 与 fstat 可用时比较 `dev`、`ino`、size 和文件类型。
 - 打开后再次解析路径并比较，发现变化立即拒绝。
-- symlink/junction 最终目标位于 allowed root 内可以接受；最终目标越界必须拒绝。
-- MP4 验证至少检查 ISO BMFF `ftyp` box；只读取固定小块，不推进上传流的起始位置或在上传前重置到 0。
+- symlink/junction 最终目标位于 allowed root 内可以接受；最终目标越界必须拒绝。`QWEN_ALLOW_ANY_LOCAL_VIDEO=on` 时不做根判定，但仍以 `realpath` 后的目标文件做身份键与上传，改指仍会被打开前后复核发现。
+- 容器验证至少检查 ISO BMFF `ftyp` box；只读取固定小块，不推进上传流的起始位置或在上传前重置到 0。本地可接受 `.mp4` 与 `.mov`，上传时按容器给出固定文件名（`video.mp4` / `video.mov`）与 Content-Type（`video/mp4` / `video/quicktime`）；对象 key 始终是随机 UUID，不含原文件名。
+- 编码校验：解析 `moov/trak/mdia/hdlr` 与 `stbl/stsd` 只读 fourcc，视频仅接受 `avc1`/`avc3`/`hvc1`/`hev1`，音频仅接受 `mp4a`；其它组合在**上传前**以 `UNSUPPORTED_VIDEO_CODEC` 拒绝并在诊断里给出 fourcc。理由是：无法解码的音轨会变成误导性的“没听到声音”结论。
 - 本地时长探测必须用同一 FileHandle 的定位读：解析 32-bit size 与 64-bit largesize，以及 `mvhd` version 0/1。大于 3600 秒拒绝（`VIDEO_TOO_LONG`）；正好 3600 允许。不得为找 `mvhd` 顺序读完整文件，也不得引入 ffprobe。
 - 大小同时满足：大于 0、≤用户配置上限（默认且硬顶 1024 MiB）、≤动态 policy 上限。
 - 上传必须使用这个句柄；不得通过字符串路径重新 `createReadStream(path)`。
+- 上面的顺序里只有 `containment against real allowed roots` 这一步会因 `QWEN_ALLOW_ANY_LOCAL_VIDEO=on` 跳过；其余步骤在两种模式下都执行。
 
 Node/Windows 无法提供完全可移植的 `openat + O_NOFOLLOW` 等价保证，因此同账户主动竞态仍是残余风险。v1 通过重复 realpath、身份比较和同句柄上传降低风险；Gate 3 必须在审计报告中明确这一点，不能宣称“完全无 TOCTOU”。
 
@@ -104,6 +116,7 @@ Node/Windows 无法提供完全可移植的 `openat + O_NOFOLLOW` 等价保证�
 - 诊断写 stderr 或 MCP logging。
 - 日志对象必须由白名单字段构造，不能直接序列化 error detail、Request、Response、config 或 policy。
 - 测试必须用 canary 值断言 Agent 结果与 stderr formatter 均不泄露敏感字段。
+- 结构化错误的 `diagnostics` 只允许白名单键：`http_status`、`request_id`、`elapsed_ms`、`input_kind`、`size_bytes`、`retry_count`、`received_sse_events`、`parse_reason`、`error_code`、`event_shape`、`field`。字符串值默认过 `looksSensitive`；`field` 例外，只允许 `data.<小写下划线字段名>` 形状。`event_shape` 只回显符合 `^[A-Za-z0-9_]{1,32}$` 的键名并限制数量，避免异常端点用键名把长文本送进 Agent 上下文。
 
 ## 大文件拒绝服务
 
@@ -132,6 +145,8 @@ Node/Windows 无法提供完全可移植的 `openat + O_NOFOLLOW` 等价保证�
 - symlink/junction 指向允许根内部；
 - 检查后替换路径的可控竞态测试；
 - `.mp4` 文本文件、目录、空文件、超大文件；
+- `.mov`（`qt  ` brand）接受；ProRes/`mp4v`/PCM/ALAC 拒绝并点名 fourcc；`.mkv`/`.avi`/无扩展名拒绝；
 - `file://`、`data:`、`http://`、带凭据 HTTPS；
 - provider 错误含 canary secret、policy、OSS URL、绝对路径时的脱敏；
-- 500 MiB 流式上传内存上限。
+- 500 MiB 流式上传内存上限；
+- `QWEN_ALLOW_ANY_LOCAL_VIDEO=on`：根外路径可上传，同时坏 MP4、超大小、超时长、junction 改指、非 `.mp4` 扩展名仍被拒绝；同一路径在开关关闭时仍返回 `VIDEO_PATH_NOT_ALLOWED`；`--doctor` 报告生效模式。

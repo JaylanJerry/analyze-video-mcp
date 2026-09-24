@@ -1,10 +1,11 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { spawn } from "node:child_process";
-import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { LATEST_PROTOCOL_VERSION } from "@modelcontextprotocol/sdk/types.js";
+import { ftypBox, moovBox, movWithTracks, trakBox } from "./mp4-fixtures.js";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -22,6 +23,7 @@ import {
   buildUserQuestion,
   createServer,
   DEFAULT_QUESTION,
+  needsStructuredAnalysis,
   notifyProgress,
   PROGRESS_ANALYZE_DONE,
   PROGRESS_ANALYZE_START,
@@ -45,6 +47,7 @@ const baseCfg: AppConfig = {
   baseUrl: "https://dashscope.test/v1",
   uploadUrl: "https://dashscope.test/api/v1/uploads",
   allowedRoots: [],
+  allowAnyLocalVideo: false,
   maxLocalVideoBytes: 500 * 1024 * 1024,
   uploadTimeoutMs: 5_000,
   analysisTimeoutMs: 5_000,
@@ -236,9 +239,26 @@ describe("MCP analyze_video contract", () => {
       expect(instructions).toContain("抽样理解");
       expect(instructions).toContain("全量上传");
       expect(instructions).toContain("QWEN_ALLOWED_ROOTS");
+      expect(instructions).toContain("QWEN_ALLOW_ANY_LOCAL_VIDEO");
       expect(tools[0]?.description).toContain("抽样理解");
       expect(tools[0]?.description).toContain("5–30");
       expect(tools[0]?.description).toContain("QWEN_ALLOWED_ROOTS");
+      expect(tools[0]?.description).toContain("QWEN_ALLOW_ANY_LOCAL_VIDEO");
+    });
+  });
+
+  it("only invites a call on an explicit MCP request in both guidance layers", async () => {
+    await withClient(baseCfg, {}, async (client) => {
+      const instructions = client.getInstructions() ?? "";
+      const { tools } = await client.listTools();
+      const description = tools[0]?.description ?? "";
+      for (const text of [instructions, description]) {
+        expect(text).toContain("只在用户明确要求用 MCP");
+        expect(text).toContain("不要自动调用");
+      }
+      // Hosts truncate initialize instructions around 2KB; keep the guidance inside that.
+      expect(Buffer.byteLength(instructions, "utf8")).toBeLessThanOrEqual(2048);
+      expect(Buffer.byteLength(description, "utf8")).toBeLessThanOrEqual(2048);
     });
   });
 
@@ -253,13 +273,36 @@ describe("MCP analyze_video contract", () => {
     });
   });
 
-  it("keeps the user question intact and adds a duration hint for long local files", () => {
-    expect(buildUserQuestion(DEFAULT_QUESTION, undefined)).toBe(DEFAULT_QUESTION);
-    expect(buildUserQuestion("q", 30)).toBe("q");
-    expect(buildUserQuestion("q", 121)).toContain("121");
-    expect(buildUserQuestion("q", 121)).toContain("5–30");
+  it("keeps a narrow question intact and adds a duration hint for long local files", () => {
+    const narrow = "请只核对 01:26 处老者台词是否与字幕一致";
+    expect(buildUserQuestion(narrow, undefined)).toBe(narrow);
+    expect(buildUserQuestion(narrow, 30)).toBe(narrow);
+    expect(buildUserQuestion(narrow, 121)).toContain("121");
+    expect(buildUserQuestion(narrow, 121)).toContain("5–30");
+    expect(buildUserQuestion(narrow, 121)).not.toContain("结构化");
     expect(DEFAULT_QUESTION).toContain("画面");
     expect(DEFAULT_QUESTION).toContain("音频");
+  });
+
+  it("adds the structured default analysis requirement for broad requests", () => {
+    for (const broad of [DEFAULT_QUESTION, "分析一下这个视频", "看看这个视频讲了什么"]) {
+      const question = buildUserQuestion(broad, 30);
+      expect(question).toContain(broad);
+      expect(question).toContain("时间线");
+      expect(question).toContain("构图与画面元素");
+      expect(question).toContain("动态与特效");
+      expect(question).toContain("色彩与光影");
+      expect(question).toContain("实际听到的");
+      expect(question).toContain("用途建议");
+      expect(question).toContain("无法确认");
+      expect(question).toContain("抽样理解");
+      expect(question).toContain("不猜制作软件");
+      expect(question).not.toContain("至少");
+    }
+    expect(needsStructuredAnalysis("分析此视频")).toBe(true);
+    expect(needsStructuredAnalysis("")).toBe(true);
+    expect(needsStructuredAnalysis("请只核对 01:26 处老者台词")).toBe(false);
+    expect(needsStructuredAnalysis("只分析 00:30 之后的三个镜头")).toBe(false);
   });
 
   it("returns a single text content for HTTPS input", async () => {
@@ -277,7 +320,7 @@ describe("MCP analyze_video contract", () => {
       url: "https://cdn.example/v.mp4",
       requiresOssResolve: false,
     });
-    expect(rec.calls[0]?.request.question).toBe("what");
+    expect(rec.calls[0]?.request.question).toContain("what");
     expect(rec.calls[0]?.request).not.toHaveProperty("maxTokens");
   });
 
@@ -411,7 +454,7 @@ describe("MCP analyze_video contract", () => {
       const desc = tools.tools[0]?.description ?? "";
       expect(desc).toContain("question");
       expect(desc).toContain("原样转发");
-      expect(desc).toContain("整理");
+      expect(desc).toContain("服务端会补上");
     });
   });
 });
@@ -526,8 +569,137 @@ describe("local authorized video", () => {
     expect(up.uploads).toBe(1);
     expect(rec.calls).toHaveLength(2);
     expect(rec.calls[0]?.input).toEqual(rec.calls[1]?.input);
-    expect(rec.calls[0]?.request.question).toBe("first");
-    expect(rec.calls[1]?.request.question).toBe("second");
+    expect(rec.calls[0]?.request.question).toContain("first");
+    expect(rec.calls[1]?.request.question).toContain("second");
+  });
+
+  it("asks for the structured default analysis when the question is omitted", async () => {
+    const rec = recordingAnalyzer("ok");
+    await withClient(baseCfg, { analyzer: rec.analyzer }, async (client) => {
+      await client.callTool({
+        name: "analyze_video",
+        arguments: { video: "https://cdn.example/v.mp4" },
+      });
+    });
+    const question = rec.calls[0]?.request.question ?? "";
+    expect(question).toContain(DEFAULT_QUESTION);
+    expect(question).toContain("时间线");
+    expect(question).toContain("构图与画面元素");
+    expect(question).toContain("动态与特效");
+    expect(question).toContain("实际听到的");
+    expect(question).toContain("依据");
+  });
+
+  it("leaves a narrow time-coded question without the default template", async () => {
+    const rec = recordingAnalyzer("ok");
+    const narrow = "请只核对 01:26 处老者台词与字幕是否一致";
+    await withClient(baseCfg, { analyzer: rec.analyzer }, async (client) => {
+      await client.callTool({
+        name: "analyze_video",
+        arguments: { video: "https://cdn.example/v.mp4", question: narrow },
+      });
+    });
+    expect(rec.calls[0]?.request.question).toBe(narrow);
+  });
+
+  it("puts the itemized observations into the text so a text-only host sees them", async () => {
+    const report = JSON.stringify({
+      visual_observations: [
+        { time: "00:05", evidence: "seen", confidence: 0.9, description: "黑底白字的标题卡" },
+        { time: "01:20", evidence: "seen", confidence: 0.8, description: "两人在巷口对话" },
+      ],
+      audio_observations: [
+        { time: "00:06", evidence: "heard", confidence: 0.9, description: "女声朗读开场白" },
+      ],
+      inferences: [{ description: "场景像是旧城改造后的街区" }],
+      uncertainties: [{ description: "01:20 处说话人身份无法确认" }],
+      answer: "一段抒情散文式的短片。",
+    });
+    await withClient(baseCfg, { analyzer: recordingAnalyzer(report).analyzer }, async (client) => {
+      const r = await client.callTool({
+        name: "analyze_video",
+        arguments: { video: "https://cdn.example/v.mp4", question: "分析此视频" },
+      });
+      const text = textOf(r);
+      expect(text.split("\n")[0]).toBe("一段抒情散文式的短片。");
+      expect(text).toContain("00:05");
+      expect(text).toContain("黑底白字的标题卡");
+      expect(text).toContain("01:20");
+      expect(text).toContain("女声朗读开场白");
+      expect(text).toContain("旧城改造");
+      expect(text).toContain("说话人身份无法确认");
+      expect(text).toContain("不是逐帧");
+      // The structured layer keeps every item too.
+      const structured = structuredOf(r);
+      expect(structured?.visual_observations).toHaveLength(2);
+      expect(structured?.audio_observations).toHaveLength(1);
+      expect(structured?.coverage).toBeDefined();
+    });
+  });
+
+  it("caps the listed observations and says how many were omitted", async () => {
+    const many = Array.from({ length: 20 }, (_, index) => ({
+      time: `00:${String(index).padStart(2, "0")}`,
+      evidence: "seen",
+      confidence: 0.9,
+      description: `画面事件 ${String(index)}`,
+    }));
+    const report = JSON.stringify({
+      visual_observations: many,
+      audio_observations: [],
+      inferences: [],
+      uncertainties: [],
+      answer: "概要。",
+    });
+    await withClient(baseCfg, { analyzer: recordingAnalyzer(report).analyzer }, async (client) => {
+      const text = textOf(
+        await client.callTool({
+          name: "analyze_video",
+          arguments: { video: "https://cdn.example/v.mp4" },
+        }),
+      );
+      expect(text).toContain("画面事件 0");
+      expect(text).not.toContain("画面事件 19");
+      expect(text).toContain("另有 8 项未在此展开");
+    });
+  });
+
+  it("says what is missing instead of inventing sections when the report is empty", async () => {
+    const report = JSON.stringify({
+      visual_observations: [],
+      audio_observations: [],
+      inferences: [],
+      uncertainties: [{ description: "模型未给出可列出的分项观察" }],
+      answer: "这次未能确认具体内容。",
+    });
+    await withClient(baseCfg, { analyzer: recordingAnalyzer(report).analyzer }, async (client) => {
+      const text = textOf(
+        await client.callTool({
+          name: "analyze_video",
+          arguments: { video: "https://cdn.example/v.mp4" },
+        }),
+      );
+      expect(text).toContain("这次未能确认具体内容。");
+      expect(text).toContain("模型未给出可列出的分项观察");
+      expect(text).not.toContain("画面事件");
+    });
+
+    const empty = JSON.stringify({
+      visual_observations: [],
+      audio_observations: [],
+      inferences: [],
+      uncertainties: [],
+      answer: "没有可确认的观察。",
+    });
+    await withClient(baseCfg, { analyzer: recordingAnalyzer(empty).analyzer }, async (client) => {
+      const text = textOf(
+        await client.callTool({
+          name: "analyze_video",
+          arguments: { video: "https://cdn.example/v.mp4" },
+        }),
+      );
+      expect(text).toContain("本次没有可列出的分项观察");
+    });
   });
 
   it("retries hedging heard evidence once and returns the answer field", async () => {
@@ -560,7 +732,10 @@ describe("local authorized video", () => {
         name: "analyze_video",
         arguments: { video: "https://cdn.example/v.mp4", question: "听什么" },
       });
-      expect(textOf(r)).toBe("脚步清晰");
+      const text = textOf(r);
+      expect(text.split("\n")[0]).toBe("脚步清晰");
+      expect(text).toContain("00:01");
+      expect(text).toContain("短促脚步");
       expect(structuredOf(r)?.ok).toBe(true);
       expect(structuredOf(r)?.coverage).toMatchObject({
         video_strategy: "sampled_multimodal",
@@ -625,6 +800,44 @@ describe("local authorized video", () => {
     expect(rec.calls[0]?.input.requiresOssResolve).toBe(true);
     expect(rec.calls[0]?.input.url.startsWith("oss://")).toBe(true);
     expect(textOf({ content: [{ text: rec.calls[0]?.input.url }] })).not.toContain(p);
+  });
+
+  it("uploads a local MP4 outside every root when QWEN_ALLOW_ANY_LOCAL_VIDEO is on", async () => {
+    const rec = recordingAnalyzer("ok");
+    const up = recordingUploader();
+    const p = join(dir, "dragged-in.mp4");
+    await writeFile(p, MP4_HEADER);
+    const cfg = { ...baseCfg, allowedRoots: [], allowAnyLocalVideo: true };
+    await withClient(cfg, { analyzer: rec.analyzer, uploader: up.uploader }, async (client) => {
+      const r = await client.callTool({
+        name: "analyze_video",
+        arguments: { video: p, question: "q" },
+      });
+      expect(textOf(r)).toBe("ok");
+      expect(r.isError ?? false).toBe(false);
+    });
+    expect(up.uploads).toBe(1);
+  });
+
+  it("still refuses the same outside-root path while the opt-in is off", async () => {
+    const rec = recordingAnalyzer("ok");
+    const up = recordingUploader();
+    const allowedDir = await realpath(
+      await mkdir(join(dir, "allowed"), { recursive: true }).then(() => join(dir, "allowed")),
+    );
+    const p = join(dir, "dragged-in.mp4");
+    await writeFile(p, MP4_HEADER);
+    const cfg = { ...baseCfg, allowedRoots: [allowedDir] };
+    await withClient(cfg, { analyzer: rec.analyzer, uploader: up.uploader }, async (client) => {
+      const r = await client.callTool({
+        name: "analyze_video",
+        arguments: { video: p, question: "q" },
+      });
+      expect(r.isError).toBe(true);
+      expect(textOf(r)).toContain("VIDEO_PATH_NOT_ALLOWED");
+      expect(textOf(r)).not.toContain(p);
+    });
+    expect(up.uploads).toBe(0);
   });
 
   it("emits upload and analysis progress when the client asks for it", async () => {
@@ -709,6 +922,189 @@ describe("local authorized video", () => {
       const done = await first;
       expect(textOf(done)).toBe("first");
     });
+  });
+  it("uploads a MOV through the same path with quicktime metadata", async () => {
+    const rec = recordingAnalyzer("ok");
+    const uploads: AuthorizedLocalVideo[] = [];
+    const uploader: MediaUploader = {
+      upload(video) {
+        uploads.push(video);
+        return Promise.resolve({ url: "oss://tmp/mov.mp4", requiresOssResolve: true });
+      },
+    };
+    const p = join(dir, "clip.mov");
+    await writeFile(
+      p,
+      movWithTracks([
+        { handler: "vide", codecs: ["avc1"] },
+        { handler: "soun", codecs: ["mp4a"] },
+      ]),
+    );
+    await withClient(
+      { ...baseCfg, allowedRoots: [await realpath(dir)] },
+      { analyzer: rec.analyzer, uploader },
+      async (client) => {
+        const r = await client.callTool({
+          name: "analyze_video",
+          arguments: { video: p, question: "分析此视频" },
+        });
+        expect(r.isError ?? false).toBe(false);
+        expect(textOf(r)).toBe("ok");
+      },
+    );
+    expect(uploads).toHaveLength(1);
+    expect(uploads[0]?.container).toBe("mov");
+    expect(uploads[0]?.uploadName).toBe("video.mov");
+    expect(uploads[0]?.contentType).toBe("video/quicktime");
+  });
+
+  it("surfaces an unsupported MOV codec as UNSUPPORTED_VIDEO_CODEC without uploading", async () => {
+    const rec = recordingAnalyzer("ok");
+    const up = recordingUploader();
+    const p = join(dir, "prores.mov");
+    await writeFile(p, movWithTracks([{ handler: "vide", codecs: ["ap4h"] }]));
+    await withClient(
+      { ...baseCfg, allowedRoots: [await realpath(dir)] },
+      { analyzer: rec.analyzer, uploader: up.uploader },
+      async (client) => {
+        const r = await client.callTool({ name: "analyze_video", arguments: { video: p } });
+        expect(r.isError).toBe(true);
+        const text = textOf(r);
+        expect(text).toContain("UNSUPPORTED_VIDEO_CODEC");
+        expect(text).toContain("ap4h");
+        expect(text).not.toContain(p);
+        expect(structuredOf(r)?.diagnostics).toMatchObject({ codec: "ap4h" });
+      },
+    );
+    expect(up.uploads).toBe(0);
+    expect(rec.calls).toHaveLength(0);
+  });
+
+  it("still uploads MP4 without quicktime metadata", async () => {
+    const rec = recordingAnalyzer("ok");
+    const up = recordingUploader();
+    const p = join(dir, "clip.mp4");
+    await writeFile(p, MP4_HEADER);
+    await withClient(
+      { ...baseCfg, allowedRoots: [await realpath(dir)] },
+      { analyzer: rec.analyzer, uploader: up.uploader },
+      async (client) => {
+        expect(
+          textOf(await client.callTool({ name: "analyze_video", arguments: { video: p } })),
+        ).toBe("ok");
+      },
+    );
+    expect(up.uploads).toBe(1);
+  });
+  it("reports local track facts to the model and to coverage", async () => {
+    const rec = recordingAnalyzer(
+      JSON.stringify({
+        visual_observations: [
+          { time: "00:01", evidence: "seen", description: "夜景", confidence: 0.9 },
+        ],
+        audio_observations: [],
+        inferences: [],
+        uncertainties: [],
+        answer: "只写了画面。",
+      }),
+    );
+    const p = join(dir, "av.mp4");
+    await writeFile(
+      p,
+      Buffer.concat([ftypBox(), moovBox([trakBox("vide", ["avc1"]), trakBox("soun", ["mp4a"])])]),
+    );
+    const up = recordingUploader();
+    await withClient(
+      { ...baseCfg, allowedRoots: [await realpath(dir)] },
+      { analyzer: rec.analyzer, uploader: up.uploader },
+      async (client) => {
+        const r = await client.callTool({ name: "analyze_video", arguments: { video: p } });
+        expect(r.isError ?? false).toBe(false);
+        const coverage = structuredOf(r)?.coverage as Record<string, unknown> | undefined;
+        expect(coverage?.container).toBe("mp4");
+        expect(coverage?.video_track_present).toBe(true);
+        expect(coverage?.audio_track_present).toBe(true);
+        expect(coverage?.audio_analyzed).toBe(true);
+        expect(coverage?.audio_observed).toBe(false);
+        expect((coverage?.coverage_limitations as string[]).join(" ")).toContain("含可解码音轨");
+        expect(structuredOf(r)?.model).toBeDefined();
+      },
+    );
+    const question = rec.calls[0]?.request.question ?? "";
+    expect(question).toContain("本地已确认的文件事实");
+    expect(question).toContain("音轨 mp4a");
+    expect(question).not.toContain(p);
+  });
+});
+
+it("never returns raw JSON when the model's report is incomplete", async () => {
+  const answers = [
+    JSON.stringify({
+      visual_observations: [
+        { time: "00:01", evidence: "seen", description: "夜景", confidence: 0.9 },
+      ],
+      audio_observations: "broken-on-purpose",
+      inferences: [],
+      uncertainties: [],
+      answer: "夜景与配乐。",
+    }),
+    JSON.stringify({
+      visual_observations: [
+        { time: "00:02", evidence: "seen", description: "月亮", confidence: 0.9 },
+      ],
+      audio_observations: "still-broken",
+      inferences: [],
+      uncertainties: [],
+      answer: "夜景与配乐。",
+    }),
+  ];
+  let calls = 0;
+  const analyzer = {
+    analyze() {
+      const answer = answers[calls] ?? "x";
+      calls += 1;
+      return Promise.resolve({ answer, requestId: "x", receivedEvents: 1 });
+    },
+  };
+  await withClient(baseCfg, { analyzer }, async (client) => {
+    const r = await client.callTool({
+      name: "analyze_video",
+      arguments: { video: "https://cdn.example/v.mp4", question: "分析此视频" },
+    });
+    const text = textOf(r);
+    expect(text.startsWith("{")).toBe(false);
+    expect(text).not.toContain("visual_observations");
+    expect(text).toContain("夜景与配乐。");
+    expect(text).toContain("月亮");
+    expect(r.isError ?? false).toBe(false);
+  });
+  expect(calls).toBe(2);
+});
+
+it("fails with json_without_answer instead of echoing JSON with no answer field", async () => {
+  const answer = JSON.stringify({
+    visual_observations: [
+      { time: "00:01", evidence: "seen", description: "夜景", confidence: 0.9 },
+    ],
+    audio_observations: [],
+    inferences: [],
+    uncertainties: [],
+  });
+  const analyzer = {
+    analyze() {
+      return Promise.resolve({ answer, requestId: "x", receivedEvents: 1 });
+    },
+  };
+  await withClient(baseCfg, { analyzer }, async (client) => {
+    const r = await client.callTool({
+      name: "analyze_video",
+      arguments: { video: "https://cdn.example/v.mp4", question: "分析此视频" },
+    });
+    expect(r.isError).toBe(true);
+    const text = textOf(r);
+    expect(text).toContain("PROVIDER_RESPONSE_INVALID");
+    expect(text).not.toContain("visual_observations");
+    expect(structuredOf(r)?.diagnostics).toMatchObject({ parse_reason: "json_without_answer" });
   });
 });
 

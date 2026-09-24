@@ -3,6 +3,7 @@ export const AGENT_ERROR_CODES = [
   "VIDEO_PATH_NOT_ALLOWED",
   "VIDEO_NOT_FOUND",
   "UNSUPPORTED_VIDEO",
+  "UNSUPPORTED_VIDEO_CODEC",
   "VIDEO_FILE_TOO_LARGE",
   "VIDEO_TOO_LONG",
   "UPLOAD_POLICY_FAILED",
@@ -27,9 +28,11 @@ export type DiagnosticValue = string | number | boolean;
 const AGENT_TEXT: Record<AgentErrorCode, string> = {
   INVALID_VIDEO_INPUT: "视频输入无效。",
   VIDEO_PATH_NOT_ALLOWED:
-    "本地路径不在允许的目录内。请把目录写入 QWEN_ALLOWED_ROOTS，或改用公开 HTTPS。",
+    "本地路径不在允许的目录内。请把目录写入 QWEN_ALLOWED_ROOTS、由安装者开启 QWEN_ALLOW_ANY_LOCAL_VIDEO，或改用公开 HTTPS。",
   VIDEO_NOT_FOUND: "找不到或无法读取该视频。",
-  UNSUPPORTED_VIDEO: "只支持普通 MP4 视频文件。",
+  UNSUPPORTED_VIDEO: "只支持 MP4 或 MOV 视频文件。",
+  UNSUPPORTED_VIDEO_CODEC:
+    "这个文件的编码组合不受支持。请导出视频轨为 H.264 或 H.265、音频轨为 AAC 的 MP4 或 MOV 后再试。",
   VIDEO_FILE_TOO_LARGE: "视频超过本地允许上限。请压缩、切段，或改用公开 HTTPS。",
   VIDEO_TOO_LONG: "视频时长超过 1 小时上限。请切成不超过 1 小时的片段后再试。",
   UPLOAD_POLICY_FAILED: "无法取得上传凭证。",
@@ -56,6 +59,7 @@ const RETRYABLE: Record<AgentErrorCode, boolean> = {
   UNSUPPORTED_VIDEO: false,
   VIDEO_FILE_TOO_LARGE: false,
   VIDEO_TOO_LONG: false,
+  UNSUPPORTED_VIDEO_CODEC: false,
   UPLOAD_POLICY_FAILED: true,
   VIDEO_UPLOAD_FAILED: false,
   VIDEO_ANALYSIS_BUSY: true,
@@ -79,7 +83,19 @@ const DIAGNOSTIC_KEYS = new Set([
   "parse_reason",
   "error_code",
   "event_shape",
+  "field",
+  "codec",
 ]);
+
+/**
+ * Values checked by shape instead of looksSensitive: `field` carries our own
+ * policy-schema field names, and names like `data.signature` are not secrets;
+ * `codec` is a four-character sample-format code such as `ap4h`.
+ */
+const DIAGNOSTIC_VALUE_PATTERNS: Record<string, RegExp> = {
+  field: /^[a-z][a-z0-9_]*(\.[a-z0-9_]+){0,2}$/,
+  codec: /^[A-Za-z0-9.]{1,8}$/,
+};
 
 export interface VideoErrorInit {
   code: AgentErrorCode;
@@ -113,6 +129,13 @@ function sanitizeDiagnostic(
       continue;
     }
     if (typeof value === "string") {
+      const pattern = DIAGNOSTIC_VALUE_PATTERNS[key];
+      if (pattern !== undefined) {
+        if (pattern.test(value)) {
+          out[key] = value;
+        }
+        continue;
+      }
       if (!looksSensitive(value)) {
         out[key] = value;
       }
@@ -145,6 +168,53 @@ function configMissingMessage(missing: string[], suggestion: string | undefined)
   return `CONFIG_MISSING: 缺少 ${missing.join("、")}。${hint}`;
 }
 
+const UPLOAD_POLICY_REASONS = new Set([
+  "request_failed",
+  "http_error",
+  "invalid_json",
+  "shape_mismatch",
+  "field_type_mismatch",
+  "upload_host_invalid",
+]);
+
+const DIAGNOSTIC_FIELD_PATTERN = /^[a-z][a-z0-9_]*(\.[a-z0-9_]+){0,2}$/;
+
+/**
+ * Upload-policy failures are otherwise indistinguishable, and hosts do not always
+ * relay structured content, so the stable reason (never credential material) also
+ * goes into the Agent-visible text.
+ */
+function uploadPolicyMessage(
+  diagnostic: Record<string, unknown> | undefined,
+  httpStatus: number | undefined,
+): string {
+  const base = `UPLOAD_POLICY_FAILED: ${AGENT_TEXT.UPLOAD_POLICY_FAILED}`;
+  const rawReason = diagnostic?.parse_reason;
+  if (typeof rawReason !== "string" || !UPLOAD_POLICY_REASONS.has(rawReason)) {
+    return base;
+  }
+  const parts = [rawReason];
+  if (httpStatus !== undefined) {
+    parts.push(`http_status=${String(httpStatus)}`);
+  }
+  const rawField = diagnostic?.field;
+  if (typeof rawField === "string" && DIAGNOSTIC_FIELD_PATTERN.test(rawField)) {
+    parts.push(`field=${rawField}`);
+  }
+  return `${base}（原因：${parts.join(", ")}）`;
+}
+
+/** Names the refused sample-format code so the user knows what to re-export. */
+function codecMessage(diagnostic: Record<string, unknown> | undefined): string {
+  const base = `UNSUPPORTED_VIDEO_CODEC: ${AGENT_TEXT.UNSUPPORTED_VIDEO_CODEC}`;
+  const rawCodec = diagnostic?.codec;
+  const codecPattern = DIAGNOSTIC_VALUE_PATTERNS.codec;
+  if (typeof rawCodec !== "string" || codecPattern === undefined || !codecPattern.test(rawCodec)) {
+    return base;
+  }
+  return `${base}（检测到的编码：${rawCodec}）`;
+}
+
 export class VideoError extends Error {
   readonly code: AgentErrorCode;
   readonly stage: ErrorStage;
@@ -164,7 +234,11 @@ export class VideoError extends Error {
     super(
       init.code === "CONFIG_MISSING"
         ? configMissingMessage(missing, suggestion)
-        : `${init.code}: ${AGENT_TEXT[init.code]}`,
+        : init.code === "UPLOAD_POLICY_FAILED"
+          ? uploadPolicyMessage(init.diagnostic, init.httpStatus)
+          : init.code === "UNSUPPORTED_VIDEO_CODEC"
+            ? codecMessage(init.diagnostic)
+            : `${init.code}: ${AGENT_TEXT[init.code]}`,
     );
     this.name = "VideoError";
     this.code = init.code;
@@ -202,6 +276,8 @@ export interface AgentErrorStructured {
   http_status?: number;
   missing?: string[];
   suggestion?: string;
+  /** Sanitized reason codes (never credential material or local paths). */
+  diagnostics?: Record<string, DiagnosticValue>;
   error?: {
     code: AgentErrorCode;
     message: string;
@@ -220,6 +296,9 @@ export function agentErrorStructured(err: unknown): AgentErrorStructured {
     };
     if (err.httpStatus !== undefined) {
       body.http_status = err.httpStatus;
+    }
+    if (Object.keys(err.diagnostic).length > 0) {
+      body.diagnostics = err.diagnostic;
     }
     if (err.code === "CONFIG_MISSING") {
       if (err.missing.length > 0) {
@@ -256,6 +335,9 @@ export function agentErrorStructuredContent(err: unknown): Record<string, unknow
   };
   if (body.http_status !== undefined) {
     out.http_status = body.http_status;
+  }
+  if (body.diagnostics !== undefined) {
+    out.diagnostics = body.diagnostics;
   }
   if (body.missing !== undefined) {
     out.missing = body.missing;

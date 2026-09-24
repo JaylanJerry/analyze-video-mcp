@@ -3,6 +3,7 @@ import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { type AppConfig, DEFAULT_BASE_URL } from "../src/config.js";
 import { analyzeVideo, buildVideoPayload } from "../src/bailian.js";
+import { DEFAULT_MODEL } from "../src/config.js";
 import { EVIDENCE_POLICY } from "../src/evidence.js";
 import { VideoError } from "../src/errors.js";
 
@@ -13,6 +14,7 @@ const cfg: AppConfig = {
   baseUrl: "https://dashscope.test/v1",
   uploadUrl: "https://dashscope.test/api/v1/uploads",
   allowedRoots: [],
+  allowAnyLocalVideo: false,
   maxLocalVideoBytes: 500 * 1024 * 1024,
   uploadTimeoutMs: 5_000,
   analysisTimeoutMs: 5_000,
@@ -37,7 +39,7 @@ afterAll(() => {
 
 const videoCfg: AppConfig = {
   ...cfg,
-  model: "qwen3.5-omni-flash",
+  model: DEFAULT_MODEL,
 };
 
 const httpsVideo = { url: "https://cdn.example/v.mp4", requiresOssResolve: false };
@@ -63,7 +65,7 @@ describe("buildVideoPayload", () => {
   it("fixes stream, usage, text modality, and a single video block", () => {
     const payload = buildVideoPayload(videoCfg, httpsVideo, videoReq);
     expect(payload).toEqual({
-      model: "qwen3.5-omni-flash",
+      model: "qwen3.8-omni-flash",
       messages: [
         {
           role: "system",

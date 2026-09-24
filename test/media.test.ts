@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, open, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, open, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -10,18 +10,36 @@ import {
   MAX_LOCAL_VIDEO_DURATION_SECONDS,
   MAX_MP4_PROBE_BYTES,
   probeMp4Duration,
+  probeTrackCodecs,
   resolveVideo,
+  unsupportedCodec,
 } from "../src/media.js";
 import {
   box64,
   ftypBox,
   moovBox,
+  movWithTracks,
   mp4WithDuration,
   mp4WithoutMvhd,
   mvhdV0,
   mvhdV1,
+  trakBox,
   writeMp4WithSparseMdat,
 } from "./mp4-fixtures.js";
+
+/** Positioned reader over a file path, for direct probe assertions. */
+function readerOf(path: string) {
+  return {
+    async read(buffer: Buffer, offset: number, length: number, position: number) {
+      const handle = await open(path, "r");
+      try {
+        return await handle.read(buffer, offset, length, position);
+      } finally {
+        await handle.close();
+      }
+    },
+  };
+}
 
 let dir: string;
 
@@ -35,7 +53,11 @@ afterEach(async () => {
 
 const FTYP = Buffer.from([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x6d, 0x70, 0x34, 0x32]);
 
-function videoCfg(roots: string[], maxLocalVideoBytes = 1024 * 1024 * 1024): AppConfig {
+function videoCfg(
+  roots: string[],
+  maxLocalVideoBytes = 1024 * 1024 * 1024,
+  allowAnyLocalVideo = false,
+): AppConfig {
   return {
     apiKey: "sk-test",
     model: "qwen3.5-omni-flash",
@@ -43,6 +65,7 @@ function videoCfg(roots: string[], maxLocalVideoBytes = 1024 * 1024 * 1024): App
     baseUrl: "https://dashscope.test/v1",
     uploadUrl: "https://dashscope.test/api/v1/uploads",
     allowedRoots: roots,
+    allowAnyLocalVideo,
     maxLocalVideoBytes,
     uploadTimeoutMs: 5_000,
     analysisTimeoutMs: 5_000,
@@ -88,7 +111,9 @@ describe("resolveVideo", () => {
     try {
       expect(resolved.kind).toBe("local");
       if (resolved.kind !== "local") return;
-      expect(resolved.safeUploadName).toBe("video.mp4");
+      expect(resolved.uploadName).toBe("video.mp4");
+      expect(resolved.container).toBe("mp4");
+      expect(resolved.contentType).toBe("video/mp4");
       expect(resolved.sizeBytes).toBe(FTYP.length);
       expect(resolved.identityKey).toContain(`|${String(FTYP.length)}|`);
       const header = Buffer.alloc(8);
@@ -117,15 +142,17 @@ describe("resolveVideo", () => {
     expect(isContainedInRoot(`${dir}-private`, p)).toBe(false);
   });
 
-  it("rejects a relative path and a non-mp4 extension", async () => {
+  it("rejects a relative path and an unsupported extension", async () => {
     await expect(resolveVideo("clip.mp4", videoCfg([dir]))).rejects.toMatchObject({
       code: "INVALID_VIDEO_INPUT",
     });
-    const p = join(dir, "clip.mov");
-    await writeFile(p, FTYP);
-    await expect(resolveVideo(p, videoCfg([dir]))).rejects.toMatchObject({
-      code: "INVALID_VIDEO_INPUT",
-    });
+    for (const name of ["clip.mkv", "clip.avi", "clip.webm", "clip"]) {
+      const p = join(dir, name);
+      await writeFile(p, FTYP);
+      await expect(resolveVideo(p, videoCfg([dir]))).rejects.toMatchObject({
+        code: "INVALID_VIDEO_INPUT",
+      });
+    }
   });
 
   it("rejects empty files, directories, and non-ftyp bytes", async () => {
@@ -217,6 +244,247 @@ describe("resolveVideo", () => {
     } finally {
       await rm(outside, { recursive: true, force: true });
     }
+  });
+});
+
+describe("QWEN_ALLOW_ANY_LOCAL_VIDEO opt-in", () => {
+  it("authorizes an MP4 outside every allowed root", async () => {
+    const p = join(dir, "elsewhere.mp4");
+    await writeFile(p, FTYP);
+    const resolved = await resolveVideo(p, videoCfg([], 1024 * 1024 * 1024, true));
+    try {
+      expect(resolved.kind).toBe("local");
+      if (resolved.kind === "local") {
+        expect(resolved.sizeBytes).toBe(FTYP.length);
+        const header = Buffer.alloc(8);
+        const read = await resolved.handle.read(header, 0, 8, 0);
+        expect(read.bytesRead).toBe(8);
+        expect(header.toString("ascii", 4, 8)).toBe("ftyp");
+      }
+    } finally {
+      await closeResolvedVideo(resolved);
+    }
+  });
+
+  it("authorizes a path outside a configured root when the opt-in is on", async () => {
+    const otherRoot = await realpath(await mkdtemp(join(tmpdir(), "qwen-media-root-")));
+    try {
+      const p = join(dir, "outside.mp4");
+      await writeFile(p, FTYP);
+      const resolved = await resolveVideo(p, videoCfg([otherRoot], 1024 * 1024 * 1024, true));
+      await closeResolvedVideo(resolved);
+      expect(resolved.kind).toBe("local");
+    } finally {
+      await rm(otherRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("validates the junction target rather than the link path", async () => {
+    const outside = await mkdtemp(join(tmpdir(), "qwen-media-linked-"));
+    try {
+      const target = join(outside, "target.mp4");
+      await writeFile(target, FTYP);
+      const linkDir = join(dir, "linked");
+      await symlink(outside, linkDir, process.platform === "win32" ? "junction" : "dir");
+      const resolved = await resolveVideo(
+        join(linkDir, "target.mp4"),
+        videoCfg([], 1024 * 1024 * 1024, true),
+      );
+      try {
+        expect(resolved.kind).toBe("local");
+        if (resolved.kind === "local") {
+          expect(resolved.identityKey.toLowerCase()).toContain(
+            (await realpath(target)).toLowerCase(),
+          );
+        }
+      } finally {
+        await closeResolvedVideo(resolved);
+      }
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps extension, existence, size, header, and duration checks", async () => {
+    const cfg = videoCfg([], 1024 * 1024 * 1024, true);
+    const avi = join(dir, "clip.avi");
+    await writeFile(avi, FTYP);
+    await expect(resolveVideo(avi, cfg)).rejects.toMatchObject({ code: "INVALID_VIDEO_INPUT" });
+    await expect(resolveVideo(join(dir, "missing.mp4"), cfg)).rejects.toMatchObject({
+      code: "VIDEO_NOT_FOUND",
+    });
+
+    const junk = join(dir, "junk.mp4");
+    await writeFile(junk, "not an mp4");
+    await expect(resolveVideo(junk, cfg)).rejects.toMatchObject({ code: "UNSUPPORTED_VIDEO" });
+
+    const big = join(dir, "big.mp4");
+    await writeFile(big, FTYP);
+    await expect(resolveVideo(big, videoCfg([], 8, true))).rejects.toMatchObject({
+      code: "VIDEO_FILE_TOO_LARGE",
+    });
+
+    const long = join(dir, "long.mp4");
+    await writeFile(long, mp4WithDuration(1, MAX_LOCAL_VIDEO_DURATION_SECONDS + 1));
+    await expect(resolveVideo(long, cfg)).rejects.toMatchObject({ code: "VIDEO_TOO_LONG" });
+  });
+
+  it("still keeps the absolute path out of the agent error text", async () => {
+    const p = join(dir, "secret-outside.mp4");
+    await writeFile(p, "nope");
+    const err = await resolveVideo(p, videoCfg([], 1024 * 1024 * 1024, true)).catch(
+      (e: unknown) => e,
+    );
+    expect(err).toBeInstanceOf(VideoError);
+    expect(String(err)).not.toContain(p);
+  });
+});
+
+describe("MOV support", () => {
+  it("authorizes a Qt-branded MOV with H.264 video and AAC audio", async () => {
+    const p = join(dir, "clip.mov");
+    await writeFile(
+      p,
+      movWithTracks(
+        [
+          { handler: "vide", codecs: ["avc1"] },
+          { handler: "soun", codecs: ["mp4a"] },
+        ],
+        { timescale: 600, seconds: 9648 },
+      ),
+    );
+    const resolved = await resolveVideo(p, videoCfg([dir]));
+    try {
+      expect(resolved.kind).toBe("local");
+      if (resolved.kind === "local") {
+        expect(resolved.container).toBe("mov");
+        expect(resolved.uploadName).toBe("video.mov");
+        expect(resolved.contentType).toBe("video/quicktime");
+        expect(resolved.objectExtension).toBe("mov");
+        // mvhd 9648/600 = 16.08s; the probe reports whole seconds (known truncation).
+        expect(resolved.durationSeconds).toBe(16);
+      }
+    } finally {
+      await closeResolvedVideo(resolved);
+    }
+    const codecs = await probeTrackCodecs(readerOf(p), (await stat(p)).size);
+    expect(codecs).toEqual({ video: ["avc1"], audio: ["mp4a"] });
+  });
+
+  it("keeps the documented MP4 metadata for the same track layout", async () => {
+    const p = join(dir, "clip-tracks.mp4");
+    await writeFile(
+      p,
+      Buffer.concat([ftypBox(), moovBox([trakBox("vide", ["avc1"]), trakBox("soun", ["mp4a"])])]),
+    );
+    const resolved = await resolveVideo(p, videoCfg([dir]));
+    try {
+      if (resolved.kind === "local") {
+        expect(resolved.container).toBe("mp4");
+        expect(resolved.uploadName).toBe("video.mp4");
+        expect(resolved.contentType).toBe("video/mp4");
+        expect(resolved.objectExtension).toBe("mp4");
+      }
+    } finally {
+      await closeResolvedVideo(resolved);
+    }
+  });
+
+  it("refuses codecs the provider cannot decode, naming the codec", async () => {
+    const cases: { name: string; file: Buffer; codec: string }[] = [
+      {
+        name: "prores.mov",
+        file: movWithTracks([{ handler: "vide", codecs: ["ap4h"] }]),
+        codec: "ap4h",
+      },
+      {
+        name: "pcm.mov",
+        file: movWithTracks([
+          { handler: "vide", codecs: ["avc1"] },
+          { handler: "soun", codecs: ["lpcm"] },
+        ]),
+        codec: "lpcm",
+      },
+      {
+        name: "alac.mov",
+        file: movWithTracks([
+          { handler: "vide", codecs: ["avc1"] },
+          { handler: "soun", codecs: ["alac"] },
+        ]),
+        codec: "alac",
+      },
+      {
+        name: "mp4v.mov",
+        file: movWithTracks([{ handler: "vide", codecs: ["mp4v"] }]),
+        codec: "mp4v",
+      },
+    ];
+    for (const { name, file, codec } of cases) {
+      const p = join(dir, name);
+      await writeFile(p, file);
+      const err = await resolveVideo(p, videoCfg([dir])).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(VideoError);
+      if (err instanceof VideoError) {
+        expect(err.code).toBe("UNSUPPORTED_VIDEO_CODEC");
+        expect(err.diagnostic.codec).toBe(codec);
+        expect(err.agentMessage()).toContain(codec);
+        expect(err.agentMessage()).toContain("H.264");
+        expect(err.retryable).toBe(false);
+      }
+    }
+  });
+
+  it("accepts HEVC video and omits duplicated codecs", async () => {
+    const hevc = join(dir, "hevc.mov");
+    await writeFile(hevc, movWithTracks([{ handler: "vide", codecs: ["hvc1"] }]));
+    const resolved = await resolveVideo(hevc, videoCfg([dir]));
+    await closeResolvedVideo(resolved);
+    expect(resolved.kind).toBe("local");
+
+    const multi = join(dir, "multi.mov");
+    await writeFile(
+      multi,
+      movWithTracks([
+        { handler: "vide", codecs: ["avc1", "avc1"] },
+        { handler: "soun", codecs: ["mp4a"] },
+      ]),
+    );
+    expect((await probeTrackCodecs(readerOf(multi), (await stat(multi)).size)).video).toEqual([
+      "avc1",
+    ]);
+    const deduped = await resolveVideo(multi, videoCfg([dir]));
+    await closeResolvedVideo(deduped);
+    expect(deduped.kind).toBe("local");
+  });
+
+  it("still rejects a MOV-named file that is not ISO BMFF", async () => {
+    const p = join(dir, "fake.mov");
+    await writeFile(p, "not an iso bmff file");
+    await expect(resolveVideo(p, videoCfg([dir]))).rejects.toMatchObject({
+      code: "UNSUPPORTED_VIDEO",
+    });
+  });
+
+  it("rejects a MOV whose duration exceeds the local cap", async () => {
+    const p = join(dir, "long.mov");
+    await writeFile(
+      p,
+      movWithTracks([{ handler: "vide", codecs: ["avc1"] }], {
+        timescale: 1,
+        seconds: MAX_LOCAL_VIDEO_DURATION_SECONDS + 1,
+      }),
+    );
+    await expect(resolveVideo(p, videoCfg([dir]))).rejects.toMatchObject({
+      code: "VIDEO_TOO_LONG",
+    });
+  });
+
+  it("reports an empty codec result when no track is readable", async () => {
+    const p = join(dir, "no-tracks.mov");
+    await writeFile(p, movWithTracks([], { timescale: 600, seconds: 600 }));
+    const codecs = await probeTrackCodecs(readerOf(p), (await stat(p)).size);
+    expect(codecs).toEqual({ video: [], audio: [] });
+    expect(unsupportedCodec(codecs)).toBeUndefined();
   });
 });
 
