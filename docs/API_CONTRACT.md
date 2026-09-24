@@ -57,7 +57,7 @@ MCP `CallToolResult`：
   "content": [
     {
       "type": "text",
-      "text": "模型回答\n\n分项观察（抽样）：\n画面：\n- 00:05 （看到）标题卡\n声音：\n- 00:06 （听到）女声朗读…\n（以上为抽样观察，不是逐帧、逐字或全量核验。）"
+      "text": "模型回答\n\n分项观察（抽样）：\n画面：\n- 00:05 （看到）标题卡\n声音：\n- 00:06 （模型报告听到）女声朗读…\n（以上为抽样观察，不是逐帧、逐字或全量核验。）"
     }
   ],
   "structuredContent": {
@@ -83,7 +83,7 @@ MCP `CallToolResult`：
 
 - 文本必须是完整中文回答（模型 JSON 的 `answer`，或模型未返回 JSON 时的原文），且 `answer` 是文本的第一段。
 - 模型返回合格证据 JSON 时，文本还要带上分项观察：按 `画面` / `声音` / `推断` / `不确定` 分节，每项写成 `- 时间（证据类型[, 置信度]）描述`，置信度低于 0.6 时才显示。这样只读文本、不读 `structuredContent` 的宿主也能看到分段证据，而不是只剩一段摘要。
-- 观测数量与单条长度只受**展示上限**约束（`src/evidence.ts` 的 `DEFAULT_TEXT_LIMITS`：每节 12 条、单条 220 字）。被截断时附一行「另有 N 项未在此展开」，不向模型要求固定条数或固定字数。
+- 观测数量与单条长度只受**展示上限**约束（`src/evidence.ts` 的 `DEFAULT_TEXT_LIMITS`：每节 12 条、单条 220 字）。超出条数时，文本按输入列表的原顺序分成连续索引组，每组选择一条代表项；首组和末组分别保留该组首尾，内部组优先选择 `seen` / `heard` / `measured` 直接观察，否则选择靠近组中点的条目。此策略不解析或重排时间戳，不保证按真实时间等距覆盖；输入若乱序，输出也保持原列表顺序。结构化结果保留完整列表。被截断时附一行「另有 N 项未在此展开」，不向模型要求固定条数或固定字数。
 - 报告里没有任何分项观察时，文本写明「本次没有可列出的分项观察」，不补造小节。
 - 不加固定标题、模型名、request id 或耗时。不得把原始 JSON 当作唯一可见结果。
 - 若模型返回了合格的证据 JSON，可附加安全的 `structuredContent`（无路径、无 Key、无 OSS）。成功结果还带 `coverage` 与 `subtitle_audit`；本版 `complete_verification` 恒为 `false`。旧 Host 忽略未知字段。
@@ -114,7 +114,7 @@ MCP `CallToolResult`：
 | `VIDEO_PATH_NOT_ALLOWED`    | 本地路径未被授权：不在允许根内，且安装未开启 `QWEN_ALLOW_ANY_LOCAL_VIDEO`                                                                                                                                                | 否                  |
 | `VIDEO_NOT_FOUND`           | 文件不存在或不可读                                                                                                                                                                                                       | 否                  |
 | `UNSUPPORTED_VIDEO`         | 非 MP4/MOV、magic 不符或不是普通文件                                                                                                                                                                                     | 否                  |
-| `UNSUPPORTED_VIDEO_CODEC`   | 编码不在支持集（视频 H.264/H.265，音频 AAC）；`diagnostics.codec` 给出检测到的 fourcc                                                                                                                                    | 否                  |
+| `UNSUPPORTED_VIDEO_CODEC`   | 编码不在支持集（视频 H.264/H.265，音频 AAC）；`diagnostics.codec` 给出检测到的 fourcc。若点名 PCM 且视频轨已受支持，可只将音频转为 AAC 并复制视频轨；`-c copy` 不会转换 PCM                                              | 否                  |
 | `VIDEO_FILE_TOO_LARGE`      | 超过本地或动态 policy 上限                                                                                                                                                                                               | 否                  |
 | `VIDEO_TOO_LONG`            | 本地 MP4 时长大于 3600 秒；正好 3600 允许                                                                                                                                                                                | 否                  |
 | `UPLOAD_POLICY_FAILED`      | 取上传凭证失败或凭证不可用；`diagnostics.parse_reason` 区分 `request_failed` / `http_error`（带 `http_status`）/ `invalid_json` / `shape_mismatch` / `field_type_mismatch` / `upload_host_invalid`，`field` 指向具体字段 | 可稍后重试          |
@@ -133,10 +133,12 @@ MCP `CallToolResult`：
 | 组                                           | 字段                                                                                      | 含义                                                                                                                                                                                                                                                                                                                                              |
 | -------------------------------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 本地事实（仅本地文件；HTTPS 为 `undefined`） | `container`、`video_track_present`、`audio_track_present`、`video_codecs`、`audio_codecs` | 由容器抽样探测得出，可复核                                                                                                                                                                                                                                                                                                                        |
-| 请求层                                       | `video_analyzed`、`audio_analyzed`                                                        | 该模态已随请求交给模型联合分析。本地文件按轨道存在性取值：**没有音轨时 `audio_analyzed=false`**；HTTPS 未探测，恒为 `true`                                                                                                                                                                                                                        |
+| 请求层                                       | `video_analyzed`、`audio_analyzed`                                                        | 该模态随视频请求提交。本地文件按轨道存在性取值：**没有音轨时 `audio_analyzed=false`**；HTTPS 未探测，恒为 `true`。对本地文件，`audio_analyzed=true` 只说明音轨存在并随视频提交，不证明模型听清或完整核听                                                                                                                                          |
 | 报告层                                       | `video_observed`、`audio_observed`、`evidence_conflicts`                                  | `observed` 表示模型**直接确认**该类内容：画面需 `seen`、声音需 `heard`（`inferred`/`uncertain`/`cross_validated` 都不算），且本地探测未与之矛盾；散文路径无分项，均为 `false`。`evidence_conflicts` 列出**模型声明与本地探测冲突**的情形（例如声称听到、但本地未发现音轨），这类声明**不计入** `observed`，必须显式呈现给用户，不得当作已确认观察 |
 
-当 `audio_track_present=true` 而 `audio_observed=false`（或视频同理）时，`coverage_limitations` 会显式写出原因，并区分两种情形：完全没有该类条目（“没有给出任何「听到」的观察”），或只有其它类型条目（“没有直接确认听到的内容（现有音频条目为：声画一致、待确认）”）。不得把这两种情况读成“文件没有声音”。结构化结果另含 `model`（本次实际使用的模型 id），便于核对是哪次调用产生的结论。
+`audio_observed=true` 只表示模型返回了至少一条通过规则检查的 `heard` 报告，且本地轨道探测未与其冲突；它是模型报告层信号，不是独立听音、转录或与用户确认真值比对后的准确性结论。文本结果会将声音分项里的 `heard` 标为“模型报告听到”，画面、推断和待确认条目仍使用各自的证据标签。此措辞不改变结构化证据字段或公共 schema。
+
+当 `audio_track_present=true` 而 `audio_observed=false`（或视频同理）时，`coverage_limitations` 会显式写出原因，并区分两种情形：完全没有该类条目（“没有给出任何「听到」的观察”），或只有其它类型条目（“没有直接确认听到的内容（现有音频条目为：声画一致、待确认）”）。文本结果也提醒这不表示静音，并建议截取目标处 5–30 秒针对声音复核。画面字幕、标题卡和其它屏幕文字只算 `seen`，不能证明听到对白或旁白。不得把 `audio_observed=false` 读成“文件没有声音”。结构化结果另含 `model`（本次实际使用的模型 id），便于核对是哪次调用产生的结论。
 
 `PROVIDER_RESPONSE_INVALID` 的 `diagnostics.parse_reason` 可能是 `json_without_answer`：模型返回了 JSON 但没有可用的 `answer` 字段，工具不会把原始 JSON 当回答返回。
 

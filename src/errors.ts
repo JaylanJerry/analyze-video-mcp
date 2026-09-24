@@ -212,6 +212,9 @@ function codecMessage(diagnostic: Record<string, unknown> | undefined): string {
   if (typeof rawCodec !== "string" || codecPattern === undefined || !codecPattern.test(rawCodec)) {
     return base;
   }
+  if (/^(?:ipcm|lpcm|sowt|twos)$/i.test(rawCodec)) {
+    return `${base}（检测到的编码：${rawCodec}；若视频轨已是 H.264/H.265，可只把 PCM 音频转为 AAC：ffmpeg -i input.mov -map 0:v:0 -map 0:a:0? -c:v copy -c:a aac -b:a 192k -movflags +faststart output.mp4）`;
+  }
   return `${base}（检测到的编码：${rawCodec}）`;
 }
 

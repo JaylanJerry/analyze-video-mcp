@@ -15,6 +15,26 @@ const CANARY_PATH = "C:\\Users\\secret\\Videos\\private.mp4";
 const CANARY_OSS = "oss://dashscope-tmp/abcdef/video.mp4";
 
 describe("VideoError", () => {
+  it("gives a PCM-specific AAC conversion hint without changing supported codecs", () => {
+    const err = new VideoError({
+      code: "UNSUPPORTED_VIDEO_CODEC",
+      stage: "authorized",
+      diagnostic: { codec: "ipcm" },
+    });
+    expect(err.agentMessage()).toContain("ipcm");
+    expect(err.agentMessage()).toContain("-c:v copy");
+    expect(err.agentMessage()).toContain("-c:a aac");
+    expect(err.agentMessage()).not.toContain("C:\\\\");
+
+    const videoCodec = new VideoError({
+      code: "UNSUPPORTED_VIDEO_CODEC",
+      stage: "authorized",
+      diagnostic: { codec: "ap4h" },
+    });
+    expect(videoCodec.agentMessage()).toContain("ap4h");
+    expect(videoCodec.agentMessage()).not.toContain("-c:v copy");
+  });
+
   it("builds a stable agent message for every public code", () => {
     for (const code of AGENT_ERROR_CODES) {
       const err = new VideoError({ code, stage: "failed" });

@@ -187,13 +187,14 @@ function ok(
   facts: LocalMediaFacts | undefined,
   model: string,
 ): CallToolResult {
-  const structured = evidenceStructuredContent(
-    report,
-    buildCoverage(durationSeconds, facts, report),
-    sampledSubtitleAudit(),
-  );
+  const coverage = buildCoverage(durationSeconds, facts, report);
+  const structured = evidenceStructuredContent(report, coverage, sampledSubtitleAudit());
+  const audioNote =
+    facts?.audioTrackPresent === true && !coverage.audio_observed
+      ? "\n\n音轨提示：本地检测到音轨并随请求提交，但本次回答没有直接确认听到的内容；这不表示静音。画面字幕不能证明听到对白。请截取目标位置 5–30 秒并针对声音复核。"
+      : "";
   return {
-    content: [{ type: "text", text: composeAnswerText(text, report) }],
+    content: [{ type: "text", text: `${composeAnswerText(text, report)}${audioNote}` }],
     isError: false,
     structuredContent: { ...structured, model },
   };

@@ -86,6 +86,8 @@ describe("buildVideoPayload", () => {
     expect(payload).not.toHaveProperty("thinking_budget");
     expect(payload).not.toHaveProperty("enable_thinking");
     expect(payload).not.toHaveProperty("max_tokens");
+    expect(EVIDENCE_POLICY).toContain("画面字幕、标题卡和其它屏幕文字只能作为 seen");
+    expect(EVIDENCE_POLICY).toContain("不能证明听到了对应对白或旁白");
   });
 
   it("defaults the published base url constant", () => {

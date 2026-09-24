@@ -13,7 +13,7 @@ export const EVIDENCE_POLICY = `你是视听证据审核器，不是故事补写
 若用户明确纠正了场景语义（例如「这不是军队」），必须遵守，不得用视觉刻板印象覆盖。
 
 1. 只把画面直接可见内容标为 seen。身份、职业、人物关系、地点专名不得仅凭服装或队形写入 seen；用「多人」「人群」「穿相似服饰的人」。
-2. 只把音轨实际可听内容标为 heard。没听到就说没听到，不要把画面里该有的声音写成实测。
+2. 只把音轨实际可听内容标为 heard。没听到就说没听到，不要把画面里该有的声音写成实测。画面字幕、标题卡和其它屏幕文字只能作为 seen，不能证明听到了对应对白或旁白。
 3. 身份、职业、关系、主题和原因必须标为 inferred。士兵、军队、官员、师父、徒弟、父子、夫妻、反派、守卫、祭司等词默认是推断。
 4. 无法确认时使用中性描述并降低 confidence，写入 uncertainties。
 5. 不得声称逐帧、逐段、完整或全部核对。本工具是抽样理解，没有逐条 OCR。
@@ -626,9 +626,12 @@ export function buildCoverage(
   if (report !== undefined) {
     if (facts?.audioTrackPresent === true && !audioObserved) {
       limitations.push(
+        "audio_analyzed 仅表示本地探测到音轨并将视频随请求提交，不证明模型实际听清或完整核听；audio_observed=false 表示回答没有直接确认听到的内容，也不能据此判断静音",
+      );
+      limitations.push(
         audioItems.length > 0
-          ? `文件含可解码音轨（本地已确认），但本次回答没有直接确认听到的内容（现有音频条目为：${presentKinds(audioItems)}）：需要更短片段复核，或确认音轨是否近似静音`
-          : "文件含可解码音轨（本地已确认），但本次回答没有给出任何「听到」的观察：可能是模型未利用音轨、音轨近似静音，或抽样忽略了声音，需要更短片段复核",
+          ? `文件含可解码音轨（本地已确认），但本次回答没有直接确认听到的内容（现有音频条目为：${presentKinds(audioItems)}）：建议截取目标位置 5–30 秒并针对声音复核`
+          : "文件含可解码音轨（本地已确认），但本次回答没有给出任何「听到」的观察：可能是模型未利用音轨、音轨近似静音，或抽样忽略了声音；建议截取目标位置 5–30 秒并针对声音复核",
       );
     }
     if (facts?.videoTrackPresent === true && !videoObserved) {
@@ -786,21 +789,53 @@ function trimItem(description: string, maxChars: number): string {
   return `${text.slice(0, maxChars)}…`;
 }
 
-function formatItem(item: EvidenceItem, limits: TextComposeLimits): string {
+function formatItem(
+  item: EvidenceItem,
+  limits: TextComposeLimits,
+  audioObservation = false,
+): string {
   const time = item.time !== undefined ? `${item.time} ` : "";
   const weak = item.confidence < 0.6 ? `，置信度 ${item.confidence.toFixed(2)}` : "";
-  return `- ${time}（${KIND_LABEL[item.evidence]}${weak}）${trimItem(item.description, limits.maxItemChars)}`;
+  const label =
+    audioObservation && item.evidence === "heard" ? "模型报告听到" : KIND_LABEL[item.evidence];
+  return `- ${time}（${label}${weak}）${trimItem(item.description, limits.maxItemChars)}`;
 }
 
 function formatSection(
   title: string,
   items: readonly string[],
   limits: TextComposeLimits,
+  evidenceKinds: readonly EvidenceKind[] = [],
 ): { lines: string[]; omitted: number } {
   if (items.length === 0) {
     return { lines: [], omitted: 0 };
   }
-  const shown = items.slice(0, limits.maxItemsPerSection);
+  const count = Math.min(items.length, Math.max(0, Math.floor(limits.maxItemsPerSection)));
+  const selected: number[] = [];
+  // Divide the input list into contiguous index buckets. This preserves model order,
+  // not timestamp order or equal-duration coverage. Prefer direct observations
+  // within each interior bucket so a nearby inference cannot displace them.
+  for (let slot = 0; slot < count; slot += 1) {
+    const start = Math.floor((slot * items.length) / count);
+    const end = Math.floor(((slot + 1) * items.length) / count);
+    const midpoint = (start + end - 1) / 2;
+    let best = count > 1 && slot === count - 1 ? end - 1 : count > 1 && slot === 0 ? start : -1;
+    if (best < 0) {
+      best = start;
+      for (let index = start; index < end; index += 1) {
+        const bestDirect = ["seen", "heard", "measured"].includes(evidenceKinds[best] ?? "");
+        const candidateDirect = ["seen", "heard", "measured"].includes(evidenceKinds[index] ?? "");
+        if (
+          (candidateDirect && !bestDirect) ||
+          (candidateDirect === bestDirect && Math.abs(index - midpoint) < Math.abs(best - midpoint))
+        ) {
+          best = index;
+        }
+      }
+    }
+    selected.push(best);
+  }
+  const shown = selected.map((index) => items[index]).filter((item) => item !== undefined);
   const omitted = items.length - shown.length;
   return { lines: [title, ...shown], omitted };
 }
@@ -820,7 +855,7 @@ export function composeAnswerText(
     return answer;
   }
   const visual = report.visual_observations.map((item) => formatItem(item, limits));
-  const audio = report.audio_observations.map((item) => formatItem(item, limits));
+  const audio = report.audio_observations.map((item) => formatItem(item, limits, true));
   const inferences = report.inferences.map(
     (note) => `- ${trimItem(note.description, limits.maxItemChars)}`,
   );
@@ -828,8 +863,18 @@ export function composeAnswerText(
     (note) => `- ${trimItem(note.description, limits.maxItemChars)}`,
   );
   const sections = [
-    formatSection("画面：", visual, limits),
-    formatSection("声音：", audio, limits),
+    formatSection(
+      "画面：",
+      visual,
+      limits,
+      report.visual_observations.map((item) => item.evidence),
+    ),
+    formatSection(
+      "声音：",
+      audio,
+      limits,
+      report.audio_observations.map((item) => item.evidence),
+    ),
     formatSection("推断：", inferences, limits),
     formatSection("不确定：", uncertainties, limits),
   ];

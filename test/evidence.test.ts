@@ -173,7 +173,7 @@ describe("composeAnswerText", () => {
     expect(text).toContain("画面：");
     expect(text).toContain("声音：");
     expect(text).toContain("- 00:05 （看到）标题卡");
-    expect(text).toContain("- 00:06 （听到）女声朗读");
+    expect(text).toContain("- 00:06 （模型报告听到）女声朗读");
     expect(text).toContain("置信度 0.40");
     expect(text).not.toContain("置信度 0.90");
     expect(text).toContain("推断：");
@@ -181,7 +181,7 @@ describe("composeAnswerText", () => {
     expect(text).toContain("不是逐帧");
   });
 
-  it("caps items and item length, and reports how many were omitted", () => {
+  it("spreads capped items across the timeline and reports how many were omitted", () => {
     const many = Array.from({ length: 30 }, (_, index) => ({
       time: `00:${String(index).padStart(2, "0")}`,
       evidence: "seen" as const,
@@ -190,11 +190,49 @@ describe("composeAnswerText", () => {
     }));
     const text = composeAnswerText("概览。", { ...report, visual_observations: many });
     expect(text).toContain("事件 0");
+    expect(text).toContain("事件 29");
+    expect(text).toContain("00:29");
     expect(text).not.toContain("事件 12");
     expect(text).toContain("另有 18 项未在此展开");
+    const listed = text.split("\n").filter((line) => line.includes("事件 "));
+    expect(listed).toHaveLength(12);
+    expect(listed[1]).toContain("事件 3");
+    expect(listed.at(-1)).toContain("事件 29");
     expect(text.length).toBeLessThan(6000);
     const itemLine = text.split("\n").find((line) => line.startsWith("- 00:00 ")) ?? "";
     expect(itemLine.endsWith("…")).toBe(true);
+  });
+
+  it("keeps direct observations when a timeline bucket also contains uncertain entries", () => {
+    const mixed = Array.from({ length: 24 }, (_, index) => ({
+      time: `00:${String(index).padStart(2, "0")}`,
+      evidence: index % 2 === 0 ? ("uncertain" as const) : ("seen" as const),
+      description: `事件 ${String(index)}`,
+      confidence: index % 2 === 0 ? 0.3 : 0.9,
+    }));
+    const text = composeAnswerText("概览。", { ...report, visual_observations: mixed });
+    expect(text).toContain("事件 3");
+    expect(text).toContain("事件 23");
+    expect(text).not.toMatch(/事件 2(?:\r?\n)/);
+  });
+
+  it("preserves input order for irregular and out-of-order timestamps", () => {
+    const irregular = [
+      { time: "05:00", evidence: "seen" as const, description: "较晚事件", confidence: 0.9 },
+      { time: "00:01", evidence: "seen" as const, description: "乱序早期事件", confidence: 0.9 },
+      { time: "00:02", evidence: "seen" as const, description: "密集事件", confidence: 0.9 },
+      { time: "08:00", evidence: "seen" as const, description: "末尾事件", confidence: 0.9 },
+    ];
+    const text = composeAnswerText(
+      "概览。",
+      { ...report, visual_observations: irregular },
+      { maxItemsPerSection: 2, maxItemChars: 220 },
+    );
+    const shown = text.split("\n").filter((line) => line.includes("事件"));
+    expect(shown[0]).toContain("05:00");
+    expect(shown[1]).toContain("08:00");
+    expect(text).not.toContain("乱序早期事件");
+    expect(text).not.toContain("密集事件");
   });
 
   it("says when a report has no listable observations", () => {
@@ -413,7 +451,10 @@ describe("buildCoverage", () => {
     expect(coverage.audio_analyzed).toBe(true);
     expect(coverage.video_observed).toBe(true);
     expect(coverage.audio_observed).toBe(false);
-    expect(coverage.coverage_limitations.join(" ")).toContain("含可解码音轨");
+    const limits = coverage.coverage_limitations.join(" ");
+    expect(limits).toContain("含可解码音轨");
+    expect(limits).toContain("audio_analyzed 仅表示");
+    expect(limits).toContain("不能据此判断静音");
   });
 
   it("does not warn about video when the report does confirm seen items", () => {

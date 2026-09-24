@@ -626,6 +626,7 @@ describe("local authorized video", () => {
       expect(text).toContain("黑底白字的标题卡");
       expect(text).toContain("01:20");
       expect(text).toContain("女声朗读开场白");
+      expect(text).toContain("模型报告听到");
       expect(text).toContain("旧城改造");
       expect(text).toContain("说话人身份无法确认");
       expect(text).toContain("不是逐帧");
@@ -633,6 +634,9 @@ describe("local authorized video", () => {
       const structured = structuredOf(r);
       expect(structured?.visual_observations).toHaveLength(2);
       expect(structured?.audio_observations).toHaveLength(1);
+      expect((structured?.audio_observations as { evidence?: string }[])[0]?.evidence).toBe(
+        "heard",
+      );
       expect(structured?.coverage).toBeDefined();
     });
   });
@@ -659,7 +663,7 @@ describe("local authorized video", () => {
         }),
       );
       expect(text).toContain("画面事件 0");
-      expect(text).not.toContain("画面事件 19");
+      expect(text).toContain("画面事件 19");
       expect(text).toContain("另有 8 项未在此展开");
     });
   });
@@ -949,7 +953,8 @@ describe("local authorized video", () => {
           arguments: { video: p, question: "分析此视频" },
         });
         expect(r.isError ?? false).toBe(false);
-        expect(textOf(r)).toBe("ok");
+        expect(textOf(r)).toContain("ok");
+        expect(textOf(r)).toContain("这不表示静音");
       },
     );
     expect(uploads).toHaveLength(1);
@@ -1027,6 +1032,10 @@ describe("local authorized video", () => {
         expect(coverage?.audio_analyzed).toBe(true);
         expect(coverage?.audio_observed).toBe(false);
         expect((coverage?.coverage_limitations as string[]).join(" ")).toContain("含可解码音轨");
+        const text = textOf(r);
+        expect(text).toContain("本地检测到音轨并随请求提交");
+        expect(text).toContain("这不表示静音");
+        expect(text).toContain("画面字幕不能证明听到对白");
         expect(structuredOf(r)?.model).toBeDefined();
       },
     );
