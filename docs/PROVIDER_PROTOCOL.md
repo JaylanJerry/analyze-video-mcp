@@ -191,6 +191,9 @@ X-DashScope-OssResourceResolve: enable   # 仅 oss:// 输入需要
 9. 支持一个读取块包含多个 event，也支持一个 event 跨多个读取块。
 10. clean EOF 只有在看到 `[DONE]` 或明确 terminal `finish_reason` 后才成功；否则视为截断。
 11. 完成文本 trim 后为空，返回 `PROVIDER_RESPONSE_INVALID`。
+12. `finish_reason=length` 表示回答被截断，必须丢弃部分正文并返回安全的 `PROVIDER_RESPONSE_INVALID`；诊断可保留 `parse_reason=truncated`、事件数和可用 token usage，不得把片段作为成功结果。
+
+服务端成功出口会累计首轮与一次证据纠错调用的 token usage（若 provider 未提供则记 unknown），并只在本地诊断中记录请求数、纠错次数、耗时、request id、结束原因和用量。不要记录原始 SSE 或媒体内容。
 
 若未来 provider 将 `delta.content` 改为数组，必须先增加 schema 和 fixture，再兼容；不能用不受控 cast。
 
@@ -226,3 +229,30 @@ received_sse_events
 ```
 
 禁止记录：API Key、Authorization header、policy、signature、AccessKey、完整 `oss://`、原始绝对路径和 provider 完整错误体。
+
+## 7. 2026-09-24 修复与短片对照记录
+
+- 实现：成功结果统一移除模型复述的内部 `oss://` 地址、凭证形态和本机绝对路径；结构化观察、推断、不确定项与正文共用出口脱敏。正常 HTTPS 地址不做整体删除。
+- mock：正文声音确定性陈述没有相应 `heard` 条目时，纠错/降级并在文本中注明音频未确认；`MM:SS` 无效、秒值越界、已知本地时长越界会使该观察退出直接观察列表。`finish_reason=length` 拒绝返回部分答案，并保留安全截断诊断与可用 usage。
+- 公开夹具 live（qwen3.8，2026-09-24）：14.5 秒，428 SSE events，约 14.5 秒；画面数字与语音数字均命中，结构化音频条目为 `heard` 两项；usage 1349/1171/2520（prompt/completion/total）。request id `chatcmpl-e250bb4c-15f6-9d70-82b8-f98cfb95bb65`。
+- 用户指定来源的 20–30 秒短片（H.264/AAC，实测片段时长 10.10 秒；临时文件只在系统 `%TEMP%`，未进入仓库）：相同问题 qwen3.8 完整结束，13.5 秒、326 events，usage 6692/843/7535，request id `chatcmpl-07ad799b-4f32-9812-b3a6-9bdadb6076cd`；报告只有 `uncertain` 音频项、两条 uncertainty。为补充分项摘要重跑同条件一次，耗时 53.4 秒、1184 events、usage 6692/3098/9790，request id `chatcmpl-95d8343f-a6ca-9350-a80d-24ed862616c3`；此重跑无新增判别价值，之后停止 qwen3.8 重复请求。
+- 同一短片与问题 qwen3.5-omni-plus：9.7 秒、47 events、usage 6656/426/7082，request id `chatcmpl-6deac8cd-6f32-9812-b3a6-9bdadb6076cd`；报告含 `heard` 一项与一条 uncertainty。仅能得出该短片和提示词下两模型报告不同；没有这段音频的独立听核，不能判定 qwen3.5 条目准确，也不据此改变默认模型。
+- 本轮先以 mocked MCP 成功出口验证了含空格 Windows 路径脱敏、普通 HTTPS 保留、声音正文与 `heard` 分项不一致时的本地清理，以及“不确认听到”不触发第二次计费。轻量轨道探测现在区分已发现、完整检查后未发现、未能完成检查三种状态；未知状态不会被写成无音轨。以上仍不是音频语义准确性的证明；修复版 GUI/live MCP 出口待安装后验证。
+- 同轮安装检查发现 `--doctor` 在 Windows 默认配置回退下长时间无输出。原因是每次查找都为五个候选字段分别启动 PowerShell，而诊断会重复查找。现在一次批量读取 Windows 用户环境变量，15 秒内复用结果；仍只返回配置来源与布尔状态，不记录或输出变量值。主仓库构建的默认 `--doctor --json` 已返回并通过单 Tool 内存握手。
+- 安装包端到端验收：已从主仓库构建并打包为独立本地 tarball，替换旧全局安装；全局 `--doctor --json` 返回 `ok=true`，真实 stdio 客户端只列出 `analyze_video`。公开 3 秒声画夹具经全局安装包调用一次（约 22 秒），`qwen3.8-omni-flash` 返回 `video_observed=true`、`audio_observed=true`，文本命中预设画面数字 24 与语音数字 3.1415926。仅输出上述脱敏摘要；该控制样本不能证明用户原片的音乐识别准确。
+- 用户重启 Codex 后，新会话 Tool 列表包含 `mcp__analyze_video_mcp__analyze_video`，并用它对《山姆·奥特曼大战达里奥.mp4》发起完整 MCP 调用。返回 `ok=true`、`model=qwen3.8-omni-flash`、本地 MP4/H.264/AAC 轨道事实、`video_observed=true`；画面时间线给出 19 条 `seen`。声音部分 `audio_analyzed=true` 但 `audio_observed=false`，三个音频分项均为 `uncertain`，主文本明确说不能证实音乐，也不能断言静音。与用户已确认“有一首背景歌”的真值相比，原片音频漏报仍存在；安装、挂载和脱敏说明的改进没有解决默认模型的这项语义失败。输出还附加“回答正文含有未获 heard 分项支持的确定性声音结论”提示，但正文主要是在否定音频可确认性，提示可能由词句规则误触发，需用脱敏样例单独复核，不据此宣称模型曾肯定报告声音。
+- 同日继续对照：用安装包和相同原片设置 `QWEN_MODEL=qwen3.5-omni-plus`，一次完整 MCP 调用约 31 秒，返回 `video_observed=true`、`audio_observed=true`、六条 `heard`，其中持续电子舞曲/歌曲判断与用户确认有背景歌一致。另从 20–30 秒截取原音并复制 AAC 码流、将画面替换为纯黑色，得到 10.08 秒诊断片段；qwen3.5 在这段黑画面原音中仍报告背景音乐与歌唱、无清晰对白，`audio_observed=true`。这增强了“qwen3.5 确实利用音轨判断音乐”的证据，但全片回答对是否有歌声与该片段不一致，完整片中若干动作音效也未独立核听，不能将所有 `heard` 当成真值。诊断片段已移入回收站，未加入仓库。用户确认只对其 Codex 安装设置 `QWEN_MODEL=qwen3.5-omni-plus`；公开默认仍是 `qwen3.8-omni-flash`，不引入自动二次付费调用。此前“不能证实存在背景音乐或歌曲”被声音正文关键词门误判的脱敏样例已加入回归测试并修正；这只是输出一致性修复，不提升模型听音能力。
+
+## 8. 2026-09-25 N1 文案修复与合成声音真值集
+
+- N1 修复：当报告正文含有分项 `heard` 不支持的演唱、歌词、性别、音效等细节时，保留有支持的背景音乐句，只移除未支持的逗号分句，并以「其它声音细节本次无法确认」告知范围。若没有 `heard`，则提示本次未能确认音轨中的具体声音。`uncertainties` 使用同类自然措辞，用户正文不出现证据门规则名或清理动作。回归覆盖了背景音乐 + 女声演唱/中文歌词/音效、纯否定句和只有 `uncertain` 的报告。
+- 合成样本、生成命令和独立真值见 [`../test/fixtures/README.md`](../test/fixtures/README.md)。固定问题只要求模型基于音轨判断音乐性声音、语音/歌声、独立音效；现有 `live-av.mp4` 提供清晰数字朗读控制，新增三条测试为音乐性和弦（不含歌声）、数字静音 AAC、移动图形 + 静音 AAC。未测试“无音轨”文件，也没有歌曲/歌声真值样本。
+- 共 11 次成功付费调用：首轮 2 模型 × 4 样本 8 次；摘要器修正后追加 3 次（qwen3.5 音阶与静音、qwen3.8 朗读）。模型原始回答没有写入仓库；测试日志只输出 request id、模型、样本真值标签、耗时、SSE events、usage、`heard`/`uncertain` 类型和脱敏布尔摘要。布尔摘要只在模型自报 `heard` 的描述中用关键词匹配，不能代替独立真值或人工听核。
+- 结果：qwen3.8 对和弦、两种 AAC 静音控制都只有 `uncertain`，没有直接确认声音；对数字朗读控制给出 `heard`，关键词摘要识别语音。qwen3.5 对两种静音控制均出现 `heard`（数字静音复核也出现），属于独立真值下的模型听音误报；对和弦的 `heard` 描述未被关键词摘要识别为音乐，却识别出人声/音效词。两模型都在数字朗读控制报告 `heard` / 语音词，但此问题未要求数字转写，不能据此宣称转写准确。
+- 结论仅适用于这几条短样本和该问题。qwen3.5 对原片背景歌的一次已知真值符合，但静音误报显示不能说它“整体更准确”；qwen3.8 对静音样本较保守，但和弦样本漏确认。公开默认仍为 `qwen3.8-omni-flash`，本轮不据此更改默认或 Tool schema。
+- 处理静音误报如需独立确认，需要先决定测量/分析能力的产品边界，通过通用规格与 ADR 审议并扩展真值集。当前修复不引入 FFmpeg 生产依赖，不把模型置信度或 `heard` 标签当作独立真值。
+- 安装形态：2026-09-25 本地构建打成独立 npm tarball 后安装，stdio 握手仅列出 `analyze_video`；工作区与安装包 14 个 `dist/*.js` 哈希一致。没有再次调用视频。此包版本仍是本地构建的 `0.6.1`，npm 公共版本未变。桌面 Codex 新会话原片回归未重复，以免为同一现象再次付费。
+
+## 2026-09-25 现有 Tool 的可选数字静音核对
+
+[ADR 0022](decisions/0022-analyze-video-optional-silence-check.md) 已单独批准并接入现有 `analyze_video` 的默认关闭开关 `QWEN_AUDIO_SILENCE_CHECK=off|on`。启用时只对授权本地文件使用现存只读 FileHandle fd 做一次 FFmpeg 全音轨统计；不改变模型、请求数、schema 或大小/时长上限。完整 PCM 全零与模型 `heard` 冲突时降级声音 observation 并保留可读视觉结果。非零信号不是可听内容真值；不判断歌曲或歌声。失败/缺 FFmpeg/不支持参数 fail-soft，用户取消 fail-stop。该实现目前只在 Windows Node 24 + FFmpeg 8.1.1 的本地合成 fixture 上验证，没有跨平台/版本矩阵结论，不包含私人媒体或付费 live。

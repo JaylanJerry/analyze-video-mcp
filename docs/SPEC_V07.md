@@ -7,7 +7,7 @@
 ## 目标（摘要）
 
 1. 新增 `analyze_audio`：WAV/MP3/M4A/AAC/FLAC/OGG 以及从视频抽出音轨（不改源文件）。
-2. 用 FFmpeg 或其它确定性算法测量 LUFS、True Peak、静音、削波等；禁止模型凭听感编造数值。
+2. 用 FFmpeg 或其它确定性算法测量 LUFS、True Peak、静音、削波等；禁止模型凭听感编造数值。数字静音必须与音轨存在、解码完整性、模型 `heard` 和声音语义分开；Proposed ADR 0019 的 Windows 原型支持“继承已授权 FileHandle fd → FFmpeg `fd:`”作为候选安全路径，但跨平台/长媒体验收与外部运行时审阅仍未完成。
 3. 新增 `audit_media`：画面、声音、字幕、技术测量交叉验证后给分项发布结论。
 4. 字幕按可靠性选择：独立字幕轨 > 用户 SRT/ASS/VTT > OCR > 仅多模态。
 5. 统一 finding 结构、`severity`、`release_verdict`（内容质量 ≠ 版权授权）。

@@ -87,6 +87,9 @@ MCP `CallToolResult`：
 - 报告里没有任何分项观察时，文本写明「本次没有可列出的分项观察」，不补造小节。
 - 不加固定标题、模型名、request id 或耗时。不得把原始 JSON 当作唯一可见结果。
 - 若模型返回了合格的证据 JSON，可附加安全的 `structuredContent`（无路径、无 Key、无 OSS）。成功结果还带 `coverage` 与 `subtitle_audit`；本版 `complete_verification` 恒为 `false`。旧 Host 忽略未知字段。
+- 成功回答和所有结构化描述在单一出口统一去除内部 `oss://` 地址、凭证形态和本机绝对路径（包括含空格的 Windows 视频路径）；普通 HTTPS 链接与媒体描述保留。无法解析为结构化报告的散文不产生分项证据或“已核实”语义。正文声音结论由 `heard` 分项校验；无法对应的确定性声音句在本地清理，不为此单独发起第二次付费请求。该词句校验是保守规则，不等同于语义真值验证。
+- 分项时间码须为 `MM:SS`（分钟可超过两位、秒为 `00–59`），本地媒体上不得晚于已知时长；缺失、格式无效或越界的直接观察降为不确定项。时间码仍是模型抽样位置，不代表精确帧定位。
+- 正文里的确定性声音结论必须有 `heard` 观察支持；只有 `uncertain` / `inferred` 音频项时，会移除正文中无支持的确定性声音句，并明确本次未能确认声音内容。`audio_observed` 表示存在符合门槛的模型报告，不等于独立核听或准确率。
 - 空白回答视为错误。
 - Tool 不流式向 Agent 暴露 provider chunk；内部 SSE 只用于满足 provider 协议并聚合结果。
 - 若 Host 在调用时提供 `progressToken`，本地路径会在上传开始、上传结束、推理开始各发一次 `notifications/progress`；HTTPS 只发推理开始。消息为中文通用句，不含路径或密钥。无 token 的旧 Host 仍只收到最终纯文本。
@@ -132,11 +135,13 @@ MCP `CallToolResult`：
 
 | 组                                           | 字段                                                                                      | 含义                                                                                                                                                                                                                                                                                                                                              |
 | -------------------------------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 本地事实（仅本地文件；HTTPS 为 `undefined`） | `container`、`video_track_present`、`audio_track_present`、`video_codecs`、`audio_codecs` | 由容器抽样探测得出，可复核                                                                                                                                                                                                                                                                                                                        |
+| 本地事实（仅本地文件；HTTPS 为 `undefined`） | `container`、`video_track_present`、`audio_track_present`、`video_codecs`、`audio_codecs` | 由容器轻量探测得出；轨道存在性为 `true`（找到受支持编码）、`false`（轨道结构完整但未发现该轨）或缺席（探测不完整、无法判断）。fourcc 不证明整条轨道可解码。                                                                                                                                                                                       |
 | 请求层                                       | `video_analyzed`、`audio_analyzed`                                                        | 该模态随视频请求提交。本地文件按轨道存在性取值：**没有音轨时 `audio_analyzed=false`**；HTTPS 未探测，恒为 `true`。对本地文件，`audio_analyzed=true` 只说明音轨存在并随视频提交，不证明模型听清或完整核听                                                                                                                                          |
 | 报告层                                       | `video_observed`、`audio_observed`、`evidence_conflicts`                                  | `observed` 表示模型**直接确认**该类内容：画面需 `seen`、声音需 `heard`（`inferred`/`uncertain`/`cross_validated` 都不算），且本地探测未与之矛盾；散文路径无分项，均为 `false`。`evidence_conflicts` 列出**模型声明与本地探测冲突**的情形（例如声称听到、但本地未发现音轨），这类声明**不计入** `observed`，必须显式呈现给用户，不得当作已确认观察 |
 
 `audio_observed=true` 只表示模型返回了至少一条通过规则检查的 `heard` 报告，且本地轨道探测未与其冲突；它是模型报告层信号，不是独立听音、转录或与用户确认真值比对后的准确性结论。文本结果会将声音分项里的 `heard` 标为“模型报告听到”，画面、推断和待确认条目仍使用各自的证据标签。此措辞不改变结构化证据字段或公共 schema。
+
+安装可选设置 `QWEN_AUDIO_SILENCE_CHECK=on` 时，工具会在上传前尝试对已授权本地文件的全部音轨作完整解码。只有每轨都产生样本且 peak 为 `-inf` 才确认 PCM 数字全零；此时模型 `heard` 声音条目被标为 `uncertain`，并在 `evidence_conflicts` 说明模型原报与本地数字静音冲突。若本地已确认存在音轨且 PCM 全零，工具会对少数明确声称“轨道不存在/空白”或“因无信号无法确定轨道存在”的措辞优先呈现本地事实，同时保留无法确认声音语义及视频原本是否应有可听声音的限制；没有完成此测量时不作此类改写。可明确分开的视觉前缀及结构化视觉 observations 会保留；自由文本里以声音开头、又把视觉动作连在同一分句中的句子（例如“听到枪声时男子倒地”）可能为避免保留未确认声音而整句删除。此检查默认关闭；HTTPS、FFmpeg 不存在/不兼容、解码失败或其它不完整情况都不会据此判断静音/非静音，而在 `coverage_limitations` 披露未执行或未完成。它不增加 Tool 参数或 structuredContent 键，也不增加 provider 请求。非零 PCM 不能证明声音可听、属于音乐/歌曲或含有歌声；数字全零也不证明整部媒体在人类感知上绝对无声。细节与威胁边界见 [ADR 0022](decisions/0022-analyze-video-optional-silence-check.md)。
 
 当 `audio_track_present=true` 而 `audio_observed=false`（或视频同理）时，`coverage_limitations` 会显式写出原因，并区分两种情形：完全没有该类条目（“没有给出任何「听到」的观察”），或只有其它类型条目（“没有直接确认听到的内容（现有音频条目为：声画一致、待确认）”）。文本结果也提醒这不表示静音，并建议截取目标处 5–30 秒针对声音复核。画面字幕、标题卡和其它屏幕文字只算 `seen`，不能证明听到对白或旁白。不得把 `audio_observed=false` 读成“文件没有声音”。结构化结果另含 `model`（本次实际使用的模型 id），便于核对是哪次调用产生的结论。
 
@@ -144,7 +149,7 @@ MCP `CallToolResult`：
 
 声画配对校验（`collectViolations` / `sanitizeEvidenceReport`）：`cross_validated` 条目要求对面模态存在**直接确认且自身能通过清理**的条目（画面需有可用的 `seen`，声音需有可用的 `heard`）。只有另一侧为非空数组不够——`uncertain` 不能作担保，**将被清理删除的条目也不能作担保**（例如一条因含“似乎”而被降级的 `seen`），两侧互相 `cross_validated` 而没有任何确认条目属于循环论证。不满足时该条目就地降级为 `inferred`（保留信息，不再是观察依据）。
 
-证据冲突（`coverage.evidence_conflicts`）：当模型报告了本地探测未发现的模态内容（如声称听到、但容器没有音轨）时，该项声明**不计入** `audio_observed` / `video_observed`，并写入 `evidence_conflicts` 与一条 `coverage_limitations` 提示。**结构化输出在冲突列表为空时省略 `evidence_conflicts` 字段**；字段缺席表示本次没有检测到这类冲突，不表示做过完整验证，也不能据此证明某个版本是否部署。冲突措辞同时保留两种可能（文件确实没有该轨道，或本地探测未能读取轨道结构），因此不能反过来据此断定模型在编造。HTTPS 输入未做本地探测（`*_track_present` 为 `undefined`），不产生冲突判定。
+证据冲突（`coverage.evidence_conflicts`）：当模型报告了本地完整轨道探测未发现的模态内容（如声称听到、但未发现音轨）时，该项声明**不计入** `audio_observed` / `video_observed`，并写入 `evidence_conflicts` 与一条 `coverage_limitations` 提示。用户可见文本和结构化分项会把冲突条目标为 `uncertain`，正文改为冲突说明；`evidence_conflicts` 记录清理前的模型声明。**结构化输出在冲突列表为空时省略 `evidence_conflicts` 字段**；字段缺席表示本次没有检测到这类冲突，不表示做过完整验证，也不能据此证明某个版本是否部署。轨道探测不完整和 HTTPS 输入的 `*_track_present` 缺席，不产生冲突判定，也不能解释为无音轨。
 
 清理与校验使用同一套判定，因此 `sanitizeEvidenceReport` 的输出是**不动点**：对清理后的报告再跑一次 `collectViolations` 必为空、再清理一次结果不变（有回归测试守住这一点）。
 
