@@ -128,8 +128,11 @@ MCP `CallToolResult`：
 | `PROVIDER_TIMEOUT`          | 推理超时                                                                                                                                                                                                                 | 可重试              |
 | `PROVIDER_UNAVAILABLE`      | 502/503 等暂时故障                                                                                                                                                                                                       | 可重试              |
 | `PROVIDER_RESPONSE_INVALID` | SSE/JSON 不符合契约或中途截断                                                                                                                                                                                            | 可重试              |
+| `PROVIDER_CONTENT_REJECTED` | 百炼返回 `DataInspectionFailed` / `data_inspection_failed`，表示内容检查拦截；不能据此判定视频违规。原始服务商消息不透传                                                                                                 | 否                  |
 | `VIDEO_ANALYSIS_FAILED`     | 其他已脱敏错误                                                                                                                                                                                                           | 视情况              |
 | `CONFIG_MISSING`            | 启动后调用时仍缺 Key 等配置；`missing` 列出变量名                                                                                                                                                                        | 否                  |
+
+当服务商在 SSE 错误事件或 HTTP 错误正文中返回内容检查错误时，结果会给出 `PROVIDER_CONTENT_REJECTED`、`retryable:false`，不会把它误报为无效 SSE。`diagnostics.error_code` 保留经过形状校验的服务商错误码，`diagnostics.inspection_side` 仅为 `input` / `output` / `unknown`：只从已知固定错误措辞判断，无法判断时用 `unknown`。如响应正文或 Header 提供符合安全格式的 Request ID，错误 `structuredContent.request_id` 会带上它；原始错误消息、路径、密钥和 OSS URL 不透传。其他明确的 SSE 服务商错误归为不可直接重试的 `VIDEO_ANALYSIS_FAILED`，保留安全错误码；HTTP 429/502/503 的既有重试策略不变。内容检查拒绝不自动触发重复上传或分析调用。参见 [ADR 0023](decisions/0023-provider-inspection-errors.md)。
 
 `coverage` 字段分三组语义，不要混用：
 
@@ -162,7 +165,7 @@ Agent 错误文本禁止包含：
 - 本地绝对路径；
 - provider 原始响应体。
 
-完整诊断只能写 stderr，且同样必须脱敏凭证和本地路径；允许记录错误码、HTTP 状态、阶段、request id、耗时和文件大小。Agent 同时收到安全的 `structuredContent`（`ok`/`code`/`stage`/`retryable`，可选 `http_status`）。`CONFIG_MISSING` 另含 `missing`、`suggestion` 与嵌套 `error`，仍不得含路径、Key、OSS、policy 或 signature。
+完整诊断只能写 stderr，且同样必须脱敏凭证和本地路径；允许记录错误码、HTTP 状态、阶段、request id、耗时和文件大小。Agent 同时收到安全的 `structuredContent`（`ok`/`code`/`stage`/`retryable`，可选 `http_status`、安全格式的 `request_id` 与受限 `diagnostics`）。`CONFIG_MISSING` 另含 `missing`、`suggestion` 与嵌套 `error`，仍不得含路径、Key、OSS、policy 或 signature。
 
 缺 Key 或坏配置不得阻止 MCP `initialize` / `listTools`。工具调用时返回 `CONFIG_MISSING`。`analyze-video-mcp --doctor --json` 与运行时共用同一配置解析器，绝不打印 Key。
 

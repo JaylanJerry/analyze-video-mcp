@@ -208,6 +208,74 @@ describe("analyzeVideo", () => {
     expect(calls).toBe(2);
   });
 
+  it("classifies an SSE inspection refusal and keeps a safe response-header request id", async () => {
+    let calls = 0;
+    server.use(
+      http.post(endpoint, () => {
+        calls += 1;
+        return new HttpResponse(
+          `data: ${JSON.stringify({ error: { code: "data_inspection_failed", message: "Input data may contain inappropriate content." } })}\n\n`,
+          {
+            status: 200,
+            headers: { "Content-Type": "text/event-stream", "X-Request-Id": "req-sse-1" },
+          },
+        );
+      }),
+    );
+    await expect(analyzeVideo(videoCfg, httpsVideo, videoReq)).rejects.toMatchObject({
+      code: "PROVIDER_CONTENT_REJECTED",
+      retryable: false,
+      requestId: "req-sse-1",
+      diagnostic: { inspection_side: "input" },
+    });
+    expect(calls).toBe(1);
+  });
+
+  it("classifies an HTTP 400 inspection refusal without retrying or exposing provider prose", async () => {
+    let calls = 0;
+    server.use(
+      http.post(endpoint, () => {
+        calls += 1;
+        return HttpResponse.json(
+          { code: "DataInspectionFailed", message: "sk-canary-secret oss://tmp/video.mp4" },
+          { status: 400, headers: { "X-Request-Id": "req-http-1" } },
+        );
+      }),
+    );
+    const err = await analyzeVideo(videoCfg, httpsVideo, videoReq).catch(
+      (caught: unknown) => caught,
+    );
+    expect(err).toMatchObject({
+      code: "PROVIDER_CONTENT_REJECTED",
+      retryable: false,
+      httpStatus: 400,
+      requestId: "req-http-1",
+      diagnostic: { inspection_side: "unknown" },
+    });
+    expect(JSON.stringify(err)).not.toContain("sk-canary-secret");
+    expect(JSON.stringify(err)).not.toContain("oss://");
+    expect(calls).toBe(1);
+  });
+
+  it("keeps ordinary 429 retry behavior even when its body has a provider error", async () => {
+    let calls = 0;
+    server.use(
+      http.post(endpoint, () => {
+        calls += 1;
+        if (calls === 1) {
+          return HttpResponse.json({ error: { code: "RateLimitExceeded" } }, { status: 429 });
+        }
+        return sseResponse([
+          deltaEvent("after-429"),
+          `data: ${JSON.stringify({ choices: [{ finish_reason: "stop" }] })}\n\n`,
+        ]);
+      }),
+    );
+    const result = await analyzeVideo(videoCfg, httpsVideo, videoReq);
+    expect(result.answer).toBe("after-429");
+    expect(calls).toBe(2);
+  });
+
   it("does not retry a 500", async () => {
     let calls = 0;
     server.use(

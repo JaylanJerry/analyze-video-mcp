@@ -121,11 +121,57 @@ describe("SseParser", () => {
       err = error;
     }
     expect(err).toMatchObject({
-      code: "PROVIDER_RESPONSE_INVALID",
+      code: "VIDEO_ANALYSIS_FAILED",
+      retryable: false,
       diagnostic: { parse_reason: "provider_error", error_code: "InvalidParameter" },
     });
     expect(String(err)).not.toContain("sk-canary");
     expect(String(err)).not.toContain("oss://");
+  });
+
+  it.each([
+    ["Input data may contain inappropriate content.", "input"],
+    ["Output data may contain inappropriate content.", "output"],
+    ["Input or output data may contain inappropriate content.", "unknown"],
+    ["sk-canary-sse oss://tmp/x.mp4", "unknown"],
+  ])("classifies data inspection without exposing provider prose: %s", async (message, side) => {
+    let err: unknown;
+    try {
+      await aggregateSse(
+        chunksOf(
+          `data: ${JSON.stringify({ request_id: "req-safe-123", error: { code: "data_inspection_failed", message } })}\n\n`,
+        ),
+      );
+    } catch (error: unknown) {
+      err = error;
+    }
+    expect(err).toMatchObject({
+      code: "PROVIDER_CONTENT_REJECTED",
+      retryable: false,
+      requestId: "req-safe-123",
+      diagnostic: {
+        parse_reason: "provider_error",
+        error_code: "data_inspection_failed",
+        inspection_side: side,
+        received_sse_events: 1,
+      },
+    });
+    expect(JSON.stringify(err)).not.toContain(message);
+  });
+
+  it("rejects a hostile request id in a provider error", async () => {
+    let err: unknown;
+    try {
+      await aggregateSse(
+        chunksOf(
+          `data: ${JSON.stringify({ request_id: "sk-secret-key-123", error: { code: "DataInspectionFailed" } })}\n\n`,
+        ),
+      );
+    } catch (error: unknown) {
+      err = error;
+    }
+    expect(err).toMatchObject({ code: "PROVIDER_CONTENT_REJECTED", requestId: undefined });
+    expect(JSON.stringify(err)).not.toContain("sk-secret-key-123");
   });
 
   it("ignores role-only, empty delta, finish-only, and usage-only events", async () => {

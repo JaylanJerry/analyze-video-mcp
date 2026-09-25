@@ -13,6 +13,7 @@ export const AGENT_ERROR_CODES = [
   "PROVIDER_TIMEOUT",
   "PROVIDER_UNAVAILABLE",
   "PROVIDER_RESPONSE_INVALID",
+  "PROVIDER_CONTENT_REJECTED",
   "VIDEO_ANALYSIS_FAILED",
   "PROVIDER_UNAUTHORIZED",
   "CONFIG_MISSING",
@@ -43,6 +44,8 @@ const AGENT_TEXT: Record<AgentErrorCode, string> = {
   PROVIDER_TIMEOUT: "视频分析超时。",
   PROVIDER_UNAVAILABLE: "分析服务暂时不可用。",
   PROVIDER_RESPONSE_INVALID: "分析服务返回了无效结果。",
+  PROVIDER_CONTENT_REJECTED:
+    "服务商内容检查拦截了本次分析；不能据此判定视频违规。若有 Request ID，可向服务商核实；不要直接重复上传同一视频。",
   VIDEO_ANALYSIS_FAILED: "视频分析失败。",
   PROVIDER_UNAUTHORIZED: "请检查 API Key 和接口地址。",
   CONFIG_MISSING:
@@ -67,6 +70,7 @@ const RETRYABLE: Record<AgentErrorCode, boolean> = {
   PROVIDER_TIMEOUT: true,
   PROVIDER_UNAVAILABLE: true,
   PROVIDER_RESPONSE_INVALID: true,
+  PROVIDER_CONTENT_REJECTED: false,
   VIDEO_ANALYSIS_FAILED: false,
   PROVIDER_UNAUTHORIZED: false,
   CONFIG_MISSING: false,
@@ -82,6 +86,7 @@ const DIAGNOSTIC_KEYS = new Set([
   "received_sse_events",
   "parse_reason",
   "error_code",
+  "inspection_side",
   "event_shape",
   "field",
   "codec",
@@ -96,8 +101,10 @@ const DIAGNOSTIC_KEYS = new Set([
  * `codec` is a four-character sample-format code such as `ap4h`.
  */
 const DIAGNOSTIC_VALUE_PATTERNS: Record<string, RegExp> = {
+  request_id: /^[A-Za-z0-9_-]{1,128}$/,
   field: /^[a-z][a-z0-9_]*(\.[a-z0-9_]+){0,2}$/,
   codec: /^[A-Za-z0-9.]{1,8}$/,
+  inspection_side: /^(?:input|output|unknown)$/,
 };
 
 export interface VideoErrorInit {
@@ -134,7 +141,7 @@ function sanitizeDiagnostic(
     if (typeof value === "string") {
       const pattern = DIAGNOSTIC_VALUE_PATTERNS[key];
       if (pattern !== undefined) {
-        if (pattern.test(value)) {
+        if (pattern.test(value) && (key !== "request_id" || !looksSensitive(value))) {
           out[key] = value;
         }
         continue;
@@ -252,7 +259,11 @@ export class VideoError extends Error {
     this.retryable = init.retryable ?? RETRYABLE[init.code];
     this.httpStatus = init.httpStatus;
     this.requestId =
-      init.requestId !== undefined && !looksSensitive(init.requestId) ? init.requestId : undefined;
+      init.requestId !== undefined &&
+      DIAGNOSTIC_VALUE_PATTERNS.request_id?.test(init.requestId) &&
+      !looksSensitive(init.requestId)
+        ? init.requestId
+        : undefined;
     this.diagnostic = sanitizeDiagnostic(init.diagnostic);
     this.missing = missing;
     this.suggestion = suggestion;
@@ -280,6 +291,7 @@ export interface AgentErrorStructured {
   stage: ErrorStage;
   retryable: boolean;
   http_status?: number;
+  request_id?: string;
   missing?: string[];
   suggestion?: string;
   /** Sanitized reason codes (never credential material or local paths). */
@@ -302,6 +314,9 @@ export function agentErrorStructured(err: unknown): AgentErrorStructured {
     };
     if (err.httpStatus !== undefined) {
       body.http_status = err.httpStatus;
+    }
+    if (err.requestId !== undefined) {
+      body.request_id = err.requestId;
     }
     if (Object.keys(err.diagnostic).length > 0) {
       body.diagnostics = err.diagnostic;
@@ -341,6 +356,9 @@ export function agentErrorStructuredContent(err: unknown): Record<string, unknow
   };
   if (body.http_status !== undefined) {
     out.http_status = body.http_status;
+  }
+  if (body.request_id !== undefined) {
+    out.request_id = body.request_id;
   }
   if (body.diagnostics !== undefined) {
     out.diagnostics = body.diagnostics;

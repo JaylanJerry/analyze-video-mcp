@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { VideoError } from "./errors.js";
+import { mapProviderError, safeProviderRequestId } from "./provider-error.js";
 
 const usageSchema = z.looseObject({
   prompt_tokens: z.number().optional(),
@@ -141,17 +142,6 @@ function schemaReason(json: unknown): string {
   return Array.isArray(content) ? "array_content" : "schema";
 }
 
-function safeErrorCode(value: unknown): string | undefined {
-  if (typeof value !== "object" || value === null || !("code" in value)) {
-    return undefined;
-  }
-  const code = value.code;
-  if (typeof code === "string" && /^[A-Za-z0-9_.-]{1,64}$/.test(code)) {
-    return code;
-  }
-  return undefined;
-}
-
 function combinedByte(pending: Buffer, incoming: Uint8Array, index: number): number | undefined {
   if (index < pending.length) {
     return pending[index];
@@ -245,6 +235,10 @@ export class SseParser {
   private usage: SseUsage | undefined;
   private requestId: string | undefined;
 
+  constructor(requestId?: string) {
+    this.requestId = safeProviderRequestId(requestId);
+  }
+
   get sawText(): boolean {
     return this.pieces.length > 0;
   }
@@ -317,10 +311,12 @@ export class SseParser {
       throw invalid("non_json", { received_sse_events: this.receivedEvents });
     }
     if (typeof json === "object" && json !== null && "error" in json) {
-      throw invalid("provider_error", {
-        received_sse_events: this.receivedEvents,
-        error_code: safeErrorCode(json.error),
-      });
+      throw (
+        mapProviderError(json, {
+          receivedEvents: this.receivedEvents,
+          ...(this.requestId === undefined ? {} : { requestId: this.requestId }),
+        }) ?? invalid("provider_error", { received_sse_events: this.receivedEvents })
+      );
     }
     const parsed = eventSchema.safeParse(json);
     if (!parsed.success) {

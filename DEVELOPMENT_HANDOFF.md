@@ -16,6 +16,8 @@ v1 已本机收尾。V2 已实施。安装：钉版本 `npx` + 显式 MCP `env` 
 
 ## 下一阶段
 
+2026-09-25 内容检查错误修复：真实 `1_merged.mp4` 调用两次在首个 SSE 事件返回 `data_inspection_failed`，本地全量解码通过，但无法确定输入/输出触发点。现按 [ADR 0023](docs/decisions/0023-provider-inspection-errors.md) 将 SSE 与 HTTP 正文中的已知内容检查错误明确报告为不可直接重试的 `PROVIDER_CONTENT_REJECTED`；仅归纳固定措辞的侧别并保留安全 Request ID，不透传服务商原文。五项质量门通过（`npm test`: 318 passed / 12 skipped），打包后独立安装与 stdio 握手通过。本机构建已覆盖全局安装，四个关键 `dist` 文件哈希一致；已运行中的 Codex MCP 进程仍需重启才会加载新代码。没有为此重新上传原视频，已发布 npm 包未更新。
+
 2026-09-24《山姆·奥特曼大战达里奥.mp4》实测后的修复与阶段验收见 [`tasks/fix-plan-20260924.md`](tasks/fix-plan-20260924.md)。2026-09-25 N1 已将证据纠错提示改为自然的用户可读限制，并保留有支持的背景音乐；N2 完成 11 次短合成/控制样本 live 对照，发现 qwen3.5 在静音 AAC 上仍会报告 `heard`，因此不宣称其整体更准，也不改公开默认；qwen3.8 对静音样本未直接确认，但对音乐性和弦也未确认。N3 本地 tarball 安装、stdio 单 Tool 握手与 14 个 `dist/*.js` 哈希核对已通过。为避免重复付费，本轮未在新桌面 Codex 会话里重跑私人原片；npm 公布版 `0.6.1` 未改动。现已另行接受 ADR 0022，仅为当前 Tool 添加默认关闭的可选数字静音核对；此决定不接受 ADR 0019 的其它 v0.7 方向。
 
 P0（0.6.1）已发布。ADR 0019 的 v0.7 新 Tool 方向仍见 [`docs/SPEC_V07.md`](docs/SPEC_V07.md) 与 [`SPEC_V07_PROPOSAL.md`](docs/SPEC_V07_PROPOSAL.md)，尚未整体接受。现有 `analyze_video` 可选静音核对由独立 [ADR 0022](docs/decisions/0022-analyze-video-optional-silence-check.md) 授权，实现细节与安全边界见 [`tasks/analyze-video-optional-silence-measurement-proposal-20260925.md`](tasks/analyze-video-optional-silence-measurement-proposal-20260925.md)。授权输入实现使用继承已打开的只读 FileHandle fd + 固定 FFmpeg `fd:`；只在 Windows Node 24 + FFmpeg 8.1.1 的合成样本（含尾部 moov、双轨）验证。尚无 Node 22、Linux/macOS、其它 FFmpeg 版本、长媒体和并发原地写入验证。fstat 可发现常见变化，但不是不可变快照，也不能强制硬 byte-range。默认仍不依赖 FFmpeg；启用 on 时不兼容/解码失败 fail-soft，用户取消 fail-stop。五项质量门通过（`npm test`: 301 passed / 12 skipped），合成 FFmpeg 与 MCP 集成验证通过，独立 tarball install + stdio smoke 通过；本阶段没有额外付费 live 调用，没有发布。

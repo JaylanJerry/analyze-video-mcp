@@ -64,6 +64,30 @@ describe("VideoError", () => {
     expect(new VideoError({ code: "PROVIDER_UNAUTHORIZED", stage: "analyzing" }).retryable).toBe(
       false,
     );
+    expect(
+      new VideoError({ code: "PROVIDER_CONTENT_REJECTED", stage: "analyzing" }).retryable,
+    ).toBe(false);
+  });
+
+  it("exposes only a safe request id and inspection side in structured errors", () => {
+    const err = new VideoError({
+      code: "PROVIDER_CONTENT_REJECTED",
+      stage: "analyzing",
+      requestId: "req-safe-123",
+      diagnostic: {
+        inspection_side: "input",
+        error_code: "data_inspection_failed",
+        detail: CANARY_KEY,
+      },
+    });
+    expect(agentErrorStructuredContent(err)).toMatchObject({
+      code: "PROVIDER_CONTENT_REJECTED",
+      retryable: false,
+      request_id: "req-safe-123",
+      diagnostics: { inspection_side: "input", error_code: "data_inspection_failed" },
+    });
+    expect(JSON.stringify(agentErrorStructuredContent(err))).not.toContain(CANARY_KEY);
+    expect(err.agentMessage()).not.toContain("req-safe-123");
   });
 
   it("tells the agent to switch to HTTPS after a local upload failure", () => {

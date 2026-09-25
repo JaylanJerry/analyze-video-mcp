@@ -1,6 +1,7 @@
 import type { AppConfig } from "./config.js";
 import { VideoError } from "./errors.js";
 import { EVIDENCE_POLICY } from "./evidence.js";
+import { mapProviderError, safeProviderRequestId } from "./provider-error.js";
 import { SseParser } from "./sse.js";
 
 export function contentBlock(url: string): Record<string, unknown> {
@@ -80,12 +81,13 @@ function analysisHeaders(cfg: AppConfig, video: ProviderVideo): Record<string, s
   return headers;
 }
 
-function errorForStatus(status: number): VideoError {
+function errorForStatus(status: number, requestId?: string): VideoError {
   if (status === 401 || status === 403) {
     return new VideoError({
       code: "PROVIDER_UNAUTHORIZED",
       stage: "analyzing",
       httpStatus: status,
+      ...(requestId === undefined ? {} : { requestId }),
     });
   }
   if (status === 429) {
@@ -93,6 +95,7 @@ function errorForStatus(status: number): VideoError {
       code: "PROVIDER_RATE_LIMITED",
       stage: "analyzing",
       httpStatus: status,
+      ...(requestId === undefined ? {} : { requestId }),
     });
   }
   if (status === 502 || status === 503) {
@@ -100,6 +103,7 @@ function errorForStatus(status: number): VideoError {
       code: "PROVIDER_UNAVAILABLE",
       stage: "analyzing",
       httpStatus: status,
+      ...(requestId === undefined ? {} : { requestId }),
     });
   }
   return new VideoError({
@@ -107,7 +111,37 @@ function errorForStatus(status: number): VideoError {
     stage: "analyzing",
     httpStatus: status,
     retryable: false,
+    ...(requestId === undefined ? {} : { requestId }),
   });
+}
+
+/** Error bodies can be arbitrary; read only enough to identify a provider error. */
+async function readErrorBody(body: ReadableStream<Uint8Array> | null): Promise<unknown> {
+  if (body === null) return undefined;
+  const reader = body.getReader();
+  const chunks: Buffer[] = [];
+  let bytes = 0;
+  try {
+    for (;;) {
+      const part = await reader.read();
+      if (part.done) break;
+      bytes += part.value.byteLength;
+      if (bytes > 64 * 1024) {
+        await reader.cancel().catch(() => undefined);
+        return undefined;
+      }
+      chunks.push(Buffer.from(part.value));
+    }
+  } catch {
+    return undefined;
+  } finally {
+    reader.releaseLock();
+  }
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;
+  } catch {
+    return undefined;
+  }
 }
 
 function canAutoRetry(err: VideoError, sawText: boolean, retriesLeft: number): boolean {
@@ -205,10 +239,18 @@ async function analyzeVideoOnce(
 
   if (!res.ok) {
     const wait = retryWaitMs(res);
-    if (res.body !== null) {
-      await res.body.cancel().catch(() => undefined);
-    }
-    return { ok: false, error: errorForStatus(res.status), retryAfterMs: wait, sawText: false };
+    const requestId =
+      safeProviderRequestId(res.headers.get("x-request-id")) ??
+      safeProviderRequestId(res.headers.get("x-dashscope-request-id"));
+    const providerError = mapProviderError(await readErrorBody(res.body), {
+      ...(requestId === undefined ? {} : { requestId }),
+      httpStatus: res.status,
+    });
+    const error =
+      providerError?.code === "PROVIDER_CONTENT_REJECTED"
+        ? providerError
+        : errorForStatus(res.status, requestId);
+    return { ok: false, error, retryAfterMs: wait, sawText: false };
   }
   if (res.body === null) {
     return {
@@ -219,7 +261,10 @@ async function analyzeVideoOnce(
     };
   }
 
-  const parser = new SseParser();
+  const requestId =
+    safeProviderRequestId(res.headers.get("x-request-id")) ??
+    safeProviderRequestId(res.headers.get("x-dashscope-request-id"));
+  const parser = new SseParser(requestId);
   try {
     for await (const chunk of bodyChunks(res.body)) {
       parser.push(chunk);
