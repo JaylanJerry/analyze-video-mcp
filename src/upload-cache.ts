@@ -1,9 +1,9 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { chmod, mkdir, open, readFile, rename, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { AppConfig } from "./config.js";
-import type { AuthorizedLocalVideo } from "./media.js";
-import type { MediaUploader, UploadedVideo } from "./upload.js";
+import type { AuthorizedLocalMedia } from "./media.js";
+import type { MediaUploader, UploadedMedia } from "./upload.js";
 
 /** Temporary oss:// objects last ~48h; keep a 1h safety margin. */
 export const OSS_CACHE_TTL_MS = 47 * 60 * 60 * 1000;
@@ -13,7 +13,7 @@ export interface UploadCacheClock {
   ttlMs?: number;
 }
 
-export type UploadCacheConfig = Pick<AppConfig, "model"> &
+export type UploadCacheConfig = Pick<AppConfig, "model" | "apiKey"> &
   Partial<Pick<AppConfig, "uploadUrl" | "uploadCache" | "uploadCachePath">>;
 
 interface DiskCacheFile {
@@ -32,15 +32,29 @@ function isDiskCacheFile(value: unknown): value is DiskCacheFile {
   return true;
 }
 
+/**
+ * One-way fingerprint of the configured credential. Bailian temporary URLs are
+ * bound to the uploading account, so a cached URL must not be reused after the
+ * API key changes. The fingerprint is a domain-separated SHA-256 prefix: it cannot
+ * be turned back into the key and is the only key-derived value that is persisted.
+ */
+export function credentialFingerprint(apiKey: string): string {
+  return createHash("sha256")
+    .update(`analyze-video-mcp/upload-cache/v1\0${apiKey}`, "utf8")
+    .digest("hex")
+    .slice(0, 16);
+}
+
 export function localUploadCacheKey(
-  video: AuthorizedLocalVideo,
+  media: AuthorizedLocalMedia,
   model: string,
-  uploadUrl = "",
+  uploadUrl: string,
+  credential: string,
 ): string | undefined {
-  if (video.identityKey.length === 0) {
+  if (media.identityKey.length === 0) {
     return undefined;
   }
-  return `${video.identityKey}\0${model}\0${uploadUrl}`;
+  return `${media.identityKey}\0${model}\0${uploadUrl}\0${credential}`;
 }
 
 async function readDiskEntries(
@@ -129,19 +143,24 @@ export function createCachedUploader(
   }
 
   return {
-    async upload(video, signal): Promise<UploadedVideo> {
+    async upload(media, signal): Promise<UploadedMedia> {
       if (cfg.uploadCache === false) {
-        return inner.upload(video, signal);
+        return inner.upload(media, signal);
       }
-      const key = localUploadCacheKey(video, cfg.model, cfg.uploadUrl ?? "");
+      const key = localUploadCacheKey(
+        media,
+        cfg.model,
+        cfg.uploadUrl ?? "",
+        credentialFingerprint(cfg.apiKey),
+      );
       await ensureLoaded();
       if (key !== undefined) {
         const hit = memory.get(key);
         if (hit !== undefined && hit.expiresAt > clock.now()) {
-          return { url: hit.url, requiresOssResolve: true };
+          return { url: hit.url, requiresOssResolve: true, reused: true };
         }
       }
-      const uploaded = await inner.upload(video, signal);
+      const uploaded = await inner.upload(media, signal);
       if (key !== undefined) {
         memory.set(key, { url: uploaded.url, expiresAt: clock.now() + ttlMs });
         if (persistPath !== undefined) {

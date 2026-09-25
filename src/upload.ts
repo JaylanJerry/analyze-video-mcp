@@ -5,16 +5,18 @@ import { Readable } from "node:stream";
 import { z } from "zod";
 import type { AppConfig } from "./config.js";
 import { BYTES_PER_MIB } from "./config.js";
-import { VideoError } from "./errors.js";
-import type { AuthorizedLocalVideo } from "./media.js";
+import { MediaError } from "./errors.js";
+import type { AuthorizedLocalMedia } from "./media.js";
 
-export interface UploadedVideo {
+export interface UploadedMedia {
   url: string;
   requiresOssResolve: true;
+  /** True only when a previously uploaded temporary object was reused. */
+  reused: boolean;
 }
 
 export interface MediaUploader {
-  upload(video: AuthorizedLocalVideo, signal: AbortSignal): Promise<UploadedVideo>;
+  upload(media: AuthorizedLocalMedia, signal: AbortSignal): Promise<UploadedMedia>;
 }
 
 /**
@@ -65,12 +67,12 @@ const NUMERIC_POLICY_FIELDS = new Set(["expire_in_seconds", "max_file_size_mb"])
 function policyFailure(
   reason: UploadPolicyReason,
   extra?: { httpStatus?: number; field?: string },
-): VideoError {
+): MediaError {
   const diagnostic: Record<string, unknown> = { parse_reason: reason };
   if (extra?.field !== undefined) {
     diagnostic.field = extra.field;
   }
-  return new VideoError({
+  return new MediaError({
     code: "UPLOAD_POLICY_FAILED",
     stage: "policy_acquired",
     ...(extra?.httpStatus !== undefined ? { httpStatus: extra.httpStatus } : {}),
@@ -99,7 +101,7 @@ function mergeSignals(external: AbortSignal, timeoutMs: number): AbortSignal {
 
 function assertSafePartValue(value: string): void {
   if (value.includes("\r") || value.includes("\n")) {
-    throw new VideoError({ code: "UPLOAD_POLICY_FAILED", stage: "policy_acquired" });
+    throw new MediaError({ code: "UPLOAD_POLICY_FAILED", stage: "policy_acquired" });
   }
 }
 
@@ -154,11 +156,11 @@ export function encodeMultipart(params: {
 const STREAM_CHUNK_BYTES = 64 * 1024;
 
 export function fileMultipartStream(
-  video: AuthorizedLocalVideo,
+  media: AuthorizedLocalMedia,
   preamble: Buffer,
   epilogue: Buffer,
 ): Readable {
-  const fileStream = video.handle.createReadStream({
+  const fileStream = media.handle.createReadStream({
     autoClose: false,
     start: 0,
     highWaterMark: STREAM_CHUNK_BYTES,
@@ -324,35 +326,35 @@ export async function fetchUploadPolicy(
   return parsed.data;
 }
 
-export async function uploadLocalVideo(
+export async function uploadLocalMedia(
   cfg: AppConfig,
-  video: AuthorizedLocalVideo,
+  media: AuthorizedLocalMedia,
   signal: AbortSignal,
   poster: MultipartPoster = postMultipartStream,
-): Promise<UploadedVideo> {
-  if (video.sizeBytes <= 0) {
-    throw new VideoError({ code: "UNSUPPORTED_VIDEO", stage: "authorized" });
+): Promise<UploadedMedia> {
+  if (media.sizeBytes <= 0) {
+    throw new MediaError({ code: "UNSUPPORTED_MEDIA", stage: "authorized" });
   }
-  if (video.sizeBytes > cfg.maxLocalVideoBytes) {
-    throw new VideoError({
-      code: "VIDEO_FILE_TOO_LARGE",
+  if (media.sizeBytes > cfg.maxLocalMediaBytes) {
+    throw new MediaError({
+      code: "MEDIA_FILE_TOO_LARGE",
       stage: "authorized",
-      diagnostic: { size_bytes: video.sizeBytes },
+      diagnostic: { size_bytes: media.sizeBytes },
     });
   }
 
   const policy = await fetchUploadPolicy(cfg, signal);
   const maxPolicyBytes = policy.data.max_file_size_mb * BYTES_PER_MIB;
-  if (video.sizeBytes > maxPolicyBytes) {
-    throw new VideoError({
-      code: "VIDEO_FILE_TOO_LARGE",
+  if (media.sizeBytes > maxPolicyBytes) {
+    throw new MediaError({
+      code: "MEDIA_FILE_TOO_LARGE",
       stage: "policy_acquired",
-      diagnostic: { size_bytes: video.sizeBytes },
+      diagnostic: { size_bytes: media.sizeBytes },
     });
   }
 
-  const key = objectKey(policy.data.upload_dir, undefined, video.objectExtension);
-  const boundary = `----QwenVideo${randomBytes(16).toString("hex")}`;
+  const key = objectKey(policy.data.upload_dir, undefined, media.objectExtension);
+  const boundary = `----QwenMedia${randomBytes(16).toString("hex")}`;
   const fields: (readonly [string, string])[] = [
     ["OSSAccessKeyId", policy.data.oss_access_key_id],
     ["Signature", policy.data.signature],
@@ -365,11 +367,11 @@ export async function uploadLocalVideo(
   const encoded = encodeMultipart({
     boundary,
     fields,
-    fileSize: video.sizeBytes,
-    fileName: video.uploadName,
-    contentType: video.contentType,
+    fileSize: media.sizeBytes,
+    fileName: media.uploadName,
+    contentType: media.contentType,
   });
-  const body = fileMultipartStream(video, encoded.preamble, encoded.epilogue);
+  const body = fileMultipartStream(media, encoded.preamble, encoded.epilogue);
   const uploadHost = httpsHost(policy.data.upload_host);
   const headers = {
     "Content-Type": `multipart/form-data; boundary=${boundary}`,
@@ -381,26 +383,26 @@ export async function uploadLocalVideo(
     posted = await poster(uploadHost, headers, body, mergeSignals(signal, cfg.uploadTimeoutMs));
   } catch {
     body.destroy();
-    throw new VideoError({ code: "VIDEO_UPLOAD_FAILED", stage: "uploaded" });
+    throw new MediaError({ code: "MEDIA_UPLOAD_FAILED", stage: "uploaded" });
   }
 
   if (posted.status !== 200) {
-    throw new VideoError({
-      code: "VIDEO_UPLOAD_FAILED",
+    throw new MediaError({
+      code: "MEDIA_UPLOAD_FAILED",
       stage: "uploaded",
       httpStatus: posted.status,
     });
   }
-  return { url: `oss://${key}`, requiresOssResolve: true };
+  return { url: `oss://${key}`, requiresOssResolve: true, reused: false };
 }
 
 export function createTemporaryUploader(cfg: AppConfig, poster?: MultipartPoster): MediaUploader {
   return {
-    upload(video, signal) {
+    upload(media, signal) {
       if (poster === undefined) {
-        return uploadLocalVideo(cfg, video, signal);
+        return uploadLocalMedia(cfg, media, signal);
       }
-      return uploadLocalVideo(cfg, video, signal, poster);
+      return uploadLocalMedia(cfg, media, signal, poster);
     },
   };
 }

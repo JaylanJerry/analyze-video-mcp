@@ -9,8 +9,8 @@ import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import type { AppConfig } from "../src/config.js";
 import { BYTES_PER_MIB } from "../src/config.js";
-import { VideoError, agentErrorStructuredContent } from "../src/errors.js";
-import type { AuthorizedLocalVideo } from "../src/media.js";
+import { MediaError, agentErrorStructuredContent } from "../src/errors.js";
+import type { AuthorizedLocalMedia } from "../src/media.js";
 import {
   createTemporaryUploader,
   encodeMultipart,
@@ -18,7 +18,7 @@ import {
   fileMultipartStream,
   objectKey,
   postMultipartStream,
-  uploadLocalVideo,
+  uploadLocalMedia,
   type MultipartPoster,
 } from "../src/upload.js";
 
@@ -59,15 +59,14 @@ function cfg(overrides: Partial<AppConfig> = {}): AppConfig {
     baseUrl: "https://dashscope.test/v1",
     uploadUrl: POLICY_URL,
     allowedRoots: [],
-    allowAnyLocalVideo: false,
-    audioSilenceCheck: false,
-    audioSilenceCheckInvalid: false,
-    maxLocalVideoBytes: 500 * BYTES_PER_MIB,
+    allowAnyLocalFile: false,
+    maxLocalMediaBytes: 500 * BYTES_PER_MIB,
     uploadTimeoutMs: 30_000,
     analysisTimeoutMs: 5_000,
     analysisRetries: 1,
     uploadCache: true,
     uploadCachePath: undefined,
+    legacyMediaVars: [],
     ...overrides,
   };
 }
@@ -119,12 +118,13 @@ function capturePoster(status = 200): MultipartPoster {
   };
 }
 
-async function localVideo(bytes: Buffer): Promise<AuthorizedLocalVideo> {
+async function localVideo(bytes: Buffer): Promise<AuthorizedLocalMedia> {
   const path = join(dir, "clip.mp4");
   await writeFile(path, bytes);
   const handle = await open(path, "r");
   return {
     kind: "local",
+    mediaKind: "video",
     handle,
     sizeBytes: bytes.length,
     identityKey: `clip|${String(bytes.length)}|1`,
@@ -138,7 +138,7 @@ async function localVideo(bytes: Buffer): Promise<AuthorizedLocalVideo> {
   };
 }
 
-async function sparseVideo(size: number): Promise<AuthorizedLocalVideo> {
+async function sparseVideo(size: number): Promise<AuthorizedLocalMedia> {
   const path = join(dir, `sparse-${String(size)}.mp4`);
   const created = await open(path, "w+");
   await created.truncate(size);
@@ -146,6 +146,7 @@ async function sparseVideo(size: number): Promise<AuthorizedLocalVideo> {
   const handle = await open(path, "r");
   return {
     kind: "local",
+    mediaKind: "video",
     handle,
     sizeBytes: size,
     identityKey: `sparse|${String(size)}|1`,
@@ -220,20 +221,20 @@ describe("fetchUploadPolicy", () => {
     const err = await fetchUploadPolicy(cfg(), new AbortController().signal).catch(
       (e: unknown) => e,
     );
-    expect(err).toBeInstanceOf(VideoError);
+    expect(err).toBeInstanceOf(MediaError);
     expect(err).toMatchObject({ code: "UPLOAD_POLICY_FAILED" });
     expect(String(err)).not.toContain(CANARY);
     expect(String(err)).not.toContain("http://upload.test");
   });
 });
 
-describe("uploadLocalVideo", () => {
+describe("uploadLocalMedia", () => {
   it("streams the file and sends protocol fields with file last", async () => {
     mockPolicy();
     const bytes = Buffer.from("0123456789abcdef");
     const video = await localVideo(bytes);
     try {
-      const uploaded = await uploadLocalVideo(
+      const uploaded = await uploadLocalMedia(
         cfg(),
         video,
         new AbortController().signal,
@@ -288,9 +289,9 @@ describe("uploadLocalVideo", () => {
     const video = await localVideo(Buffer.alloc(0));
     try {
       await expect(
-        uploadLocalVideo(cfg(), video, new AbortController().signal),
+        uploadLocalMedia(cfg(), video, new AbortController().signal),
       ).rejects.toMatchObject({
-        code: "UNSUPPORTED_VIDEO",
+        code: "UNSUPPORTED_MEDIA",
       });
       expect(policyGets).toBe(0);
       expect(uploadPosts).toBe(0);
@@ -305,7 +306,7 @@ describe("uploadLocalVideo", () => {
     const ac = new AbortController();
     ac.abort();
     try {
-      await expect(uploadLocalVideo(cfg(), video, ac.signal)).rejects.toMatchObject({
+      await expect(uploadLocalMedia(cfg(), video, ac.signal)).rejects.toMatchObject({
         code: "UPLOAD_POLICY_FAILED",
       });
       expect(policyGets).toBe(0);
@@ -320,9 +321,9 @@ describe("uploadLocalVideo", () => {
     const video = await sparseVideo(2 * BYTES_PER_MIB);
     try {
       await expect(
-        uploadLocalVideo(cfg(), video, new AbortController().signal),
+        uploadLocalMedia(cfg(), video, new AbortController().signal),
       ).rejects.toMatchObject({
-        code: "VIDEO_FILE_TOO_LARGE",
+        code: "MEDIA_FILE_TOO_LARGE",
       });
       expect(uploadPosts).toBe(0);
     } finally {
@@ -334,13 +335,13 @@ describe("uploadLocalVideo", () => {
     mockPolicy(policyJson({ signature: CANARY }));
     const video = await localVideo(Buffer.from("abc"));
     try {
-      const err = await uploadLocalVideo(
+      const err = await uploadLocalMedia(
         cfg(),
         video,
         new AbortController().signal,
         capturePoster(403),
       ).catch((e: unknown) => e);
-      expect(err).toMatchObject({ code: "VIDEO_UPLOAD_FAILED" });
+      expect(err).toMatchObject({ code: "MEDIA_UPLOAD_FAILED" });
       expect(String(err)).not.toContain(CANARY);
       expect(String(err)).not.toContain("oss://");
       expect(uploadPosts).toBe(1);
@@ -354,13 +355,13 @@ describe("uploadLocalVideo", () => {
     const video = await sparseVideo(2 * BYTES_PER_MIB);
     try {
       await expect(
-        uploadLocalVideo(
-          cfg({ maxLocalVideoBytes: BYTES_PER_MIB }),
+        uploadLocalMedia(
+          cfg({ maxLocalMediaBytes: BYTES_PER_MIB }),
           video,
           new AbortController().signal,
         ),
       ).rejects.toMatchObject({
-        code: "VIDEO_FILE_TOO_LARGE",
+        code: "MEDIA_FILE_TOO_LARGE",
       });
       expect(policyGets).toBe(0);
     } finally {
@@ -368,14 +369,14 @@ describe("uploadLocalVideo", () => {
     }
   });
 
-  it("maps a thrown poster to VIDEO_UPLOAD_FAILED without leaking the host", async () => {
+  it("maps a thrown poster to MEDIA_UPLOAD_FAILED without leaking the host", async () => {
     mockPolicy(policyJson({ signature: CANARY }));
     const video = await localVideo(Buffer.from("abc"));
     try {
-      const err = await uploadLocalVideo(cfg(), video, new AbortController().signal, () =>
+      const err = await uploadLocalMedia(cfg(), video, new AbortController().signal, () =>
         Promise.reject(new Error(`upload exploded ${CANARY} ${UPLOAD_HOST}`)),
       ).catch((e: unknown) => e);
-      expect(err).toMatchObject({ code: "VIDEO_UPLOAD_FAILED" });
+      expect(err).toMatchObject({ code: "MEDIA_UPLOAD_FAILED" });
       expect(String(err)).not.toContain(CANARY);
       expect(String(err)).not.toContain(UPLOAD_HOST);
     } finally {
@@ -449,8 +450,8 @@ describe("fetchUploadPolicy errors", () => {
 
 describe("fetchUploadPolicy diagnostics", () => {
   function reasonOf(err: unknown): Record<string, unknown> {
-    expect(err).toBeInstanceOf(VideoError);
-    if (!(err instanceof VideoError)) {
+    expect(err).toBeInstanceOf(MediaError);
+    if (!(err instanceof MediaError)) {
       return {};
     }
     return err.diagnostic;
@@ -468,7 +469,7 @@ describe("fetchUploadPolicy diagnostics", () => {
     const video = await localVideo(Buffer.from("abc"));
     try {
       await expect(
-        uploadLocalVideo(cfg(), video, new AbortController().signal, capturePoster(200)),
+        uploadLocalMedia(cfg(), video, new AbortController().signal, capturePoster(200)),
       ).resolves.toMatchObject({ requiresOssResolve: true });
       expect(uploadPosts).toBe(1);
     } finally {
@@ -513,8 +514,8 @@ describe("fetchUploadPolicy diagnostics", () => {
     expect(reasonOf(err)).toEqual({ parse_reason: "http_error" });
     expect(String(err)).toContain("http_error");
     expect(String(err)).toContain("http_status=401");
-    expect(err).toBeInstanceOf(VideoError);
-    if (err instanceof VideoError) {
+    expect(err).toBeInstanceOf(MediaError);
+    if (err instanceof MediaError) {
       expect(err.httpStatus).toBe(401);
       expect(agentErrorStructuredContent(err)).toMatchObject({
         code: "UPLOAD_POLICY_FAILED",
@@ -616,7 +617,7 @@ describe("MOV upload metadata", () => {
     };
     try {
       await expect(
-        uploadLocalVideo(cfg(), video, new AbortController().signal, capturePoster(200)),
+        uploadLocalMedia(cfg(), video, new AbortController().signal, capturePoster(200)),
       ).resolves.toMatchObject({ requiresOssResolve: true });
     } finally {
       await video.handle.close();
@@ -641,7 +642,7 @@ describe("MOV upload metadata", () => {
     mockPolicy();
     const video = await localVideo(Buffer.from("mp4-bytes"));
     try {
-      await uploadLocalVideo(cfg(), video, new AbortController().signal, capturePoster(200));
+      await uploadLocalMedia(cfg(), video, new AbortController().signal, capturePoster(200));
     } finally {
       await video.handle.close();
     }
@@ -659,11 +660,11 @@ describe("MOV upload metadata", () => {
         fileSize: 1,
         fileName: injected,
       }),
-    ).toThrow(VideoError);
+    ).toThrow(MediaError);
     const injectedType = `video/mp4${String.fromCharCode(10)}X-Evil: 1`;
     expect(() =>
       encodeMultipart({ boundary: "b", fields: [], fileSize: 1, contentType: injectedType }),
-    ).toThrow(VideoError);
+    ).toThrow(MediaError);
   });
 });
 
@@ -675,7 +676,7 @@ describe("encodeMultipart safety", () => {
         fields: [["key", "tmp/user/\r\nx.mp4"]],
         fileSize: 1,
       }),
-    ).toThrow(VideoError);
+    ).toThrow(MediaError);
   });
 });
 

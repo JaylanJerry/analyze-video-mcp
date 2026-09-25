@@ -1,5 +1,7 @@
 # DashScope 上传与 Qwen Provider 协议
 
+> **下一大版本分支（未发布）变更：** 本文件既记录仍有效的传输协议，也保留旧报告层的历史实测。当前代码（`analyze_media`）的推理请求见下方 [§3 推理请求](#3-推理请求) 与新增的 [§3b 音频输入](#3b-音频输入input_audio)；`EVIDENCE_POLICY` 系统提示、证据 JSON 门禁、纠错二次请求与 FFmpeg 数字静音核对**已从代码移除**，相关小节仅作历史记录，不代表当前行为。
+
 本文件是实现协议的单一参考。官方文档可能变化；若 live 结果与本文冲突，保存脱敏证据并在 Gate 停下，不要静默兼容。
 
 官方来源：
@@ -80,6 +82,8 @@ data.x_oss_forbid_overwrite
 - 待验证项：新默认模型的真实调用（含思考流下的正文完整性、`usage` 是否有值）需要用户授权的付费 live；本次只有 mocked SSE 覆盖。
 
 ## 1e. 音频未被利用与原始 JSON（2026-09-22 实测发现）
+
+> **历史记录：** 本节及下方第 7、8 节的修复都针对**已移除**的旧证据报告层（强制证据 JSON、纠错二次请求、coverage 判定、静音文案改写）。其中关于模型是否利用内嵌音轨的实测观察仍有参考价值，但描述的重写逻辑不再存在于代码中。
 
 - 实测：MOV 直传成功（`qwen3.8-omni-flash`，约 196 秒、811 个流式事件）；同批另一条 MP4 真实调用返回了时间线，但**回答称无法确认音轨**，而文件确有 AAC 音轨且本地测得非零信号，同时 `coverage.audio_analyzed=true`。三条可能原因（模型未利用音轨 / 采样忽略 / 提示词过保守）无法从现有证据区分，因此本轮只做“不再超额声明 + 明确告知模型 + 写出限制”，不宣称根因。
 - 措施一：把本地已确认的容器与轨道事实写进 user 轮（`buildUserQuestion` 的本地事实行），并明确要求“音轨存在却没听到时，说清是近似静音还是无法判断，不要写成没有声音”。
@@ -174,6 +178,51 @@ X-DashScope-OssResourceResolve: enable   # 仅 oss:// 输入需要
 - Base64 编码串必须小于 10 MB，因此不是本项目本地文件主路径。
 - 官方示例要求 `stream: true`。
 
+### 3b. 音频输入（`input_audio`）
+
+纯音频（本地 MP3）走同一 Chat Completions 端点，但内容块换成音频类型：
+
+```json
+{
+  "type": "input_audio",
+  "input_audio": { "data": "<oss://…>", "format": "mp3" }
+}
+```
+
+- `data` 使用本地上传得到的 `oss://` 临时引用，因此同样需要 `X-DashScope-OssResourceResolve: enable`。
+- `format` 固定为 `mp3`；本版本只接受 MPEG Layer III（见 `src/mpeg-audio.ts`）。
+- 本地音频上传的 multipart 文件名为 `audio.mp3`、Content-Type 为 `audio/mpeg`，对象 key 仍是随机 UUID + `.mp3`。
+- 仍然不得发送 `thinking_budget`、`enable_thinking`、audio output 配置或第二份媒体。
+
+**验证状态（2026-09-25，已 live 验证组合可用）：** `input_audio` + 临时 `oss://` + `X-DashScope-OssResourceResolve: enable` 已在默认地域用 `qwen3.8-omni-flash` 完成真实调用：
+
+- 非私密合成样本（9.04 秒、440 / 880 / 1760 Hz 三段递增音调、72,559 B）同一进程内连续两次调用都成功（`is_error:false`），模型准确回答“三段、依次升高、每段约 3 秒”；`usage` 188/474/662 与 188/725/913，SSE 事件 179 与 239，request id `2da18856-09e4-9afd-9e0e-1e1546dc3f2f` 与 `d52ed864-89d8-967d-9184-b23bbcfc7b01`；第二次返回 `upload_reused:true` 且仍完成了一次新的分析。
+- 另一份 890 秒真实 MP3（7.12 MiB）成功：`usage` 6350/1541/7891、575 个 SSE 事件、约 22 秒，`media.kind=audio`、`duration_seconds=889.99`，回答与音频内容一致。
+- 脱敏核验：这些运行的 stderr 与回答正文都不含 `oss://`、密钥或本地路径；`text_has_path=false`、`stderr_has_oss=false`、`stderr_has_sk=false`。
+
+**仍未验证：** `MEDIA_MODEL_UNSUPPORTED` 的服务商真实错误码措辞（allowlist 目前只有 mock 证据）；新会话手动拖入、Codex 宿主 MOV/MP3 与 ZCode 宿主调用；费用金额（按服务商计费，本项目不记录账单）。当前 Codex 任务已另用公开 MP4 夹具通过一次 `analyze_media` 真实调用，见 [`../tasks/todo-next-major-media-gateway.md`](../tasks/todo-next-major-media-gateway.md) D4；这不能替代上述宿主路径验收。
+
+**模型能力实测（2026-09-25，同一 MP3 样本，3 次调用）：**
+
+| 配置                                 | 服务商行为                                                                                                                                                                                                                                                                                                                  |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `qwen3.8-omni-flash`（默认）         | 正常读取音频：`prompt_tokens=188`，回答正确                                                                                                                                                                                                                                                                                 |
+| `qwen-plus`（纯文本）                | **不报错**：`prompt_tokens=78`、`completion_tokens=3`、回答仅「听不清。」。**对照测量（2026-09-25）**：同一模型、同一 system 说明与问题、**去掉媒体块**的请求得到完全相同的 `prompt_tokens=78`、`completion_tokens=3` 与同一句回答，即该音频块对这个模型/端点**没有贡献任何输入 token**（同模型同问题对照，不是跨模型推断） |
+| `qwen-vl-max-latest`（本账号未开通） | HTTP **403** → `PROVIDER_UNAUTHORIZED`（不是模态拒绝；已把该错误文本改为同时提示“模型是否已开通”）                                                                                                                                                                                                                          |
+
+结论：本次 `qwen-plus` 没有产生可用的模态拒绝错误码，因此 `MEDIA_MODEL_UNSUPPORTED` 仍只在服务商明确给出 allowlist 中的措辞时触发（目前尚无真实样本命中）。**有/无媒体块的同模型对照**证明该音频块对 `qwen-plus` 没有贡献输入 token（78 对 78、回答相同），但**跨模型**的 `prompt_tokens` 差异仍不能作为“媒体是否被读取”的通用判据（tokenizer 与提示模板不同）。因此本项目目前的做法是：**不**根据用量猜测模型是否读了媒体，而是把 `request.model` 与 `usage` 如实暴露给调用方，并在 `limitations` 里声明本地校验不证明模型听到；安装者需要自行确认所选模型支持该模态。
+
+**已记录的负例（2026-09-25）：** 只有音频轨、没有视频轨的 MP4（`ftyp isom` + 单个 `soun` trak、890 秒、6.9 MiB）经 `video_url` 提交时，服务商返回 **HTTP 400**，没有 SSE 事件也没有用量（两次复现：request id `0a7e3482-0744-9183-8cc3-5b928c4f91dc`、`2832b8e7-9235-9818-b89b-c186c6a5c0f4`）。同一协议对含视频轨的 MP4 与 MOV 正常（见下），因此该 400 与“音频-only 容器”有关，但**具体原因未定位**（缺视频轨、文件其它属性或服务商策略都可能）。当前实现不会预先拒绝音频-only MP4，使用者会看到 `MEDIA_ANALYSIS_FAILED` + `http_status=400`；若要把“音频-only MP4 自动改走音频路径”做成产品行为，需要另立规格（涉及本地转封装，属于禁止的自动转码范畴，须单独批准）。
+
+**2026-09-25 其它格式 live 对照（同一模型、默认地域、公开合成夹具）：**
+
+| 样本                                                  | 结果                                                                                                         |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| MP4，H.264 + AAC，3 秒（`test/fixtures/live-av.mp4`） | 成功：画面 `24`、语音 `3.1415926`；`usage` 784/213/997、78 事件、约 6.8 秒；`media.audio_track_present=true` |
+| MOV，同一码流 `-c copy` 转封装（31,039 B）            | 成功：画面 `24`、语音 `3.1415926`；`usage` 784/223/1007、75 事件、约 6.0 秒；`container=mov`                 |
+
+系统消息只包含固定的 `PROTOCOL_NOTE`（要求文本回答、只写实际看到或听到的内容、不确定就说明、不要编造）。它不规定时间线、构图、色彩、音乐、优缺点或用途建议，也不随问题变化；服务端不再追加业务提纲。
+
 ## 4. SSE 聚合
 
 解析器处理字节流，不假设一个网络 chunk 等于一行或一个事件。
@@ -254,5 +303,7 @@ received_sse_events
 - 安装形态：2026-09-25 本地构建打成独立 npm tarball 后安装，stdio 握手仅列出 `analyze_video`；工作区与安装包 14 个 `dist/*.js` 哈希一致。没有再次调用视频。此包版本仍是本地构建的 `0.6.1`，npm 公共版本未变。桌面 Codex 新会话原片回归未重复，以免为同一现象再次付费。
 
 ## 2026-09-25 现有 Tool 的可选数字静音核对
+
+> **历史记录：** 该可选 FFmpeg 数字静音核对已在下一大版本移除，`QWEN_AUDIO_SILENCE_CHECK` 不再生效，代码与 `src/audio-silence.ts` 已删除。本节与 [`tasks/analyze-video-optional-silence-measurement-proposal-20260925.md`](../tasks/analyze-video-optional-silence-measurement-proposal-20260925.md) 仅作证据留存。
 
 [ADR 0022](decisions/0022-analyze-video-optional-silence-check.md) 已单独批准并接入现有 `analyze_video` 的默认关闭开关 `QWEN_AUDIO_SILENCE_CHECK=off|on`。启用时只对授权本地文件使用现存只读 FileHandle fd 做一次 FFmpeg 全音轨统计；不改变模型、请求数、schema 或大小/时长上限。完整 PCM 全零与模型 `heard` 冲突时降级声音 observation 并保留可读视觉结果。非零信号不是可听内容真值；不判断歌曲或歌声。失败/缺 FFmpeg/不支持参数 fail-soft，用户取消 fail-stop。该实现目前只在 Windows Node 24 + FFmpeg 8.1.1 的本地合成 fixture 上验证，没有跨平台/版本矩阵结论，不包含私人媒体或付费 live。

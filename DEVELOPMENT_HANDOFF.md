@@ -1,5 +1,7 @@
 # Video MCP 开发交接
 
+> **2026-09-25 下一大版本接手入口：** 用户已确认“一个媒体分析 Tool、Agent 决定问题、本地 MP4/MOV/MP3、首发百炼”的大版本重构方向。DeepSeek 开发请先读 [`docs/SPEC_NEXT_MAJOR_MEDIA_GATEWAY.md`](docs/SPEC_NEXT_MAJOR_MEDIA_GATEWAY.md)、[ADR 0024](docs/decisions/0024-agent-directed-media-gateway.md)、[`tasks/plan-next-major-media-gateway.md`](tasks/plan-next-major-media-gateway.md)、[`tasks/todo-next-major-media-gateway.md`](tasks/todo-next-major-media-gateway.md) 和 [`tasks/deepseek-next-major-handoff.md`](tasks/deepseek-next-major-handoff.md)。以下 v0.7 三 Tool/综合审核计划是历史基线，**不再作为下一大版本实施指令**。当前工作区分支已实现 `analyze_media`，尚未提交或发布；npm 上的 `0.6.1` 仍使用 `analyze_video`。
+
 状态：v0.6.1 已在 npm（[`docs/SPEC_V061.md`](docs/SPEC_V061.md)、[ADR 0016](docs/decisions/0016-config-sources-and-evidence-audit.md)）。v0.6.0 基线见 [`docs/SPEC_V06.md`](docs/SPEC_V06.md)，未单独打 tag。推已授权的 `v*` tag 时，`release.yml` 用 Trusted Publishing 发 npm 并建 GitHub Release（[ADR 0014](docs/decisions/0014-npm-trusted-publishing.md)）。人须在 npm 包设置里点一次 Trusted Publisher。不要添加 `NPM_TOKEN`。不要补打已发 npm 的 `v0.5.1` / `v0.5.2`，也不要补打 `v0.6.0`。
 
 基线快照：`sommio/qwen-omni-mcp@8a07182554a985456153644e0006a22bd1c769f7`。
@@ -15,6 +17,10 @@ v1 已本机收尾。V2 已实施。安装：钉版本 `npx` + 显式 MCP `env` 
 已在 Windows Node 24 + Cursor 上验证：中文文件名小视频、口播、496.8 MiB 漫剧。示例 Host 键是 `analyze_video_mcp`；已装的旧键（`analyze-video` / `mcp_analyze_video`）可继续用。
 
 ## 下一阶段
+
+**2026-09-25 Codex 宿主补验：** 当前 Codex 任务已挂载 `mcp__analyze_video_mcp__analyze_media`，并用仓库公开 3 秒 MP4 夹具完成一次真实调用；`qwen3.5-omni-plus` 报告看到 `24`、听到 `3.1415926`，与夹具说明一致，`isError=false`、`usage=770/26/796`。文件前后 SHA-256 相同。此项验证当前任务的 Tool 调用链；新会话手动拖入、Codex 宿主 MOV/MP3 与 ZCode 宿主仍未验证。该次服务商费用金额未知。详情见 [`tasks/todo-next-major-media-gateway.md`](tasks/todo-next-major-media-gateway.md) D4。
+
+**2026-09-25 下一大版本已在本工作区分支实现（未提交、未推送、未发布）：** 按 [`docs/SPEC_NEXT_MAJOR_MEDIA_GATEWAY.md`](docs/SPEC_NEXT_MAJOR_MEDIA_GATEWAY.md) 与 [ADR 0024](docs/decisions/0024-agent-directed-media-gateway.md) 完成单入口 `analyze_media(media, prompt)`：本地 MP4/MOV **与 MP3**、公开 HTTPS 视频直连；服务端不再补写九段提纲、不再强制证据 JSON、不再有纠错二次请求；本地授权改为 `MEDIA_ALLOWED_ROOTS` / `MEDIA_ALLOW_ANY_LOCAL_FILE`（旧 `QWEN_ALLOWED_ROOTS` / `QWEN_ALLOW_ANY_LOCAL_VIDEO` / `QWEN_MAX_LOCAL_VIDEO_MB` / `QWEN_AUDIO_SILENCE_CHECK` 只被 doctor 报告为失效，不授予任何访问）；旧报告层 `src/evidence.ts`、可选 FFmpeg 静音核对 `src/audio-silence.ts`、`analyze_video` 注册与旧报告专用测试已删除（内容仍在 git 历史）。新增 `src/mpeg-audio.ts`（有界 MPEG Layer III 解析）、`src/bytes.ts`（共享探测预算）、`src/sanitize.ts`（保留的脱敏出口）；上传缓存键加入 API Key 单向指纹，换账号不再复用旧 `oss://`。本地门禁全通过：typecheck / lint / format:check / `npm test` 258 passed+1 skipped / coverage 88.18% stmts、81.84% branch / build；`dist/index.js --doctor` 只注册 `analyze_media`。**2026-09-25 真实百炼验收（用户授权，共 7 次调用）：** ① 非私密合成 MP3（9.04 秒、三段递增音调）两次调用都成功，模型准确说出三段与“依次升高”，第二次 `upload_reused:true`；② 890 秒真实 MP3 成功概括内容；③ 公开夹具 MP4 与 `-c copy` 转封装的 MOV 都读出画面 `24` 与语音 `3.1415926`。**负例：** 只有音频轨、没有视频轨的 MP4 经视频路径被服务商 **HTTP 400** 拒绝（复现 2 次，原因未定位）。全部运行的 stderr 与正文均无 `oss://`、密钥或本地路径。**仍属未验证：** `MEDIA_MODEL_UNSUPPORTED` 的服务商真实措辞、宿主 GUI（Codex/ZCode）、费用金额、内容检查拒绝的真实触发；Node 22 与 CI 未跑（本机只有 Node 24，且没有推送）。详见 [`tasks/todo-next-major-media-gateway.md`](tasks/todo-next-major-media-gateway.md)。npm 上的 `0.6.1` 未改动，仍是 `analyze_video`；本轮没有 commit、push、tag 或 publish。
 
 2026-09-25 内容检查错误修复：真实 `1_merged.mp4` 调用两次在首个 SSE 事件返回 `data_inspection_failed`，本地全量解码通过，但无法确定输入/输出触发点。现按 [ADR 0023](docs/decisions/0023-provider-inspection-errors.md) 将 SSE 与 HTTP 正文中的已知内容检查错误明确报告为不可直接重试的 `PROVIDER_CONTENT_REJECTED`；仅归纳固定措辞的侧别并保留安全 Request ID，不透传服务商原文。五项质量门通过（`npm test`: 318 passed / 12 skipped），打包后独立安装与 stdio 握手通过。本机构建已覆盖全局安装，四个关键 `dist` 文件哈希一致；已运行中的 Codex MCP 进程仍需重启才会加载新代码。没有为此重新上传原视频，已发布 npm 包未更新。
 
@@ -56,9 +62,9 @@ P0（0.6.1）已发布。ADR 0019 的 v0.7 新 Tool 方向仍见 [`docs/SPEC_V07
 6. [`docs/SPEC_V07.md`](docs/SPEC_V07.md)
 7. [`docs/decisions/0017-host-config-key-analyze-video-mcp.md`](docs/decisions/0017-host-config-key-analyze-video-mcp.md)
 
-## 硬规则
+## 硬规则与版本边界
 
-- 不改变 `analyze_video` 的名称与字段。
+- **已发布 `0.6.1`** 不改变 `analyze_video` 的名称与字段；**当前工作区的下一大版本**已按 ADR 0024 改为唯一的 `analyze_media(media, prompt)`，不得把两者长期并列或把分支实现写成已发布。
 - 不增加生产依赖。不要从本机主动推送或 `npm publish`，除非用户明确要求。已授权的 `v*` tag 由 `release.yml` 发 npm。
 - 不读取、复制、打印或提交密钥或 `text/*.key`。
 - 私人 live fixture 留在 `text/`。CI 用 `test/fixtures/live-av.mp4`。
@@ -66,15 +72,12 @@ P0（0.6.1）已发布。ADR 0019 的 v0.7 新 Tool 方向仍见 [`docs/SPEC_V07
 
 ## 接手者先读
 
-v1 背景仍按原顺序：`AGENTS.md`、`docs/SPEC.md`、`docs/API_CONTRACT.md`、架构 / 协议 / 安全 / 测试、`tasks/todo.md`、`docs/REVIEW_GATES.md`。
+下一大版本先按本文开头的五份目标文档读，再核对 `AGENTS.md`、`docs/API_CONTRACT.md`、架构 / 协议 / 安全 / 测试及现行代码。`docs/SPEC.md` 与 `tasks/todo.md` 只用于追溯 v1 背景。
 
-然后读通用方向四份文档。实现方向与已接受 ADR 冲突时，必须先有新 ADR 被批准。
+实现方向若超出 ADR 0024 与新规格，先记录证据并提出规格/决策调整；不得用旧 v0.7 提案覆盖已接受的新方向。
 
-## 给下一模型的启动提示词
+## 给下一模型的启动提示词（下一大版本）
 
 ```text
-你在 analyze-video-mcp 仓库根工作。v1 / V2 / 安装 / v0.5.x / v0.6.1 已发布。下一阶段是 v0.7，见 docs/SPEC_V07.md。
-默认安装钉 analyze-video-mcp@0.6.1。不要改 analyze_video
-字段，不要加依赖，不要读密钥。不要本机 npm publish。已授权的 v* tag 由 release.yml 发 npm。
-不要实现 `analyze_audio`、`audit_media`，也不要把可选静音核对默认打开。
+你在 analyze-video-mcp 仓库根工作。先读 AGENTS.md、DEVELOPMENT_HANDOFF.md、docs/SPEC_NEXT_MAJOR_MEDIA_GATEWAY.md、ADR 0024、tasks/plan-next-major-media-gateway.md 和 tasks/todo-next-major-media-gateway.md。工作区分支已实现唯一的 analyze_media(media, prompt)，支持本地 MP4/MOV/MP3 与公开 HTTPS 视频，尚未提交或发布；npm 0.6.1 仍是 analyze_video。MP3 协议和 MP4/MOV/MP3 服务商调用已有真实证据，当前 Codex 任务的公开 MP4 Tool 调用也已通过。先核对任务清单的证据与剩余项，再验收新会话手动拖入、Codex 宿主 MOV/MP3、ZCode 宿主和 Node 22 CI；不要重复已完成的付费调用，也不要外推单个宿主结果。保留授权、脱敏、取消、缓存和内容检查拒绝防护；缓存不能跨账号或凭证身份复用。不要读密钥或 text/；新依赖、新的付费 live、推送和发布按仓库规则另行审阅。逐项记录已实现、已验证、未验证和下一步，并维护现有工作区改动。
 ```

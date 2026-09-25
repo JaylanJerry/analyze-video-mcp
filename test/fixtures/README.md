@@ -33,6 +33,8 @@ ffmpeg -hide_banner -loglevel error -y -f lavfi -i "color=c=gray:s=320x180:r=12:
 node scripts/research/file-handle-audio-input.mjs
 ```
 
+> **历史（2026-09-25 下一大版本）：** 以下关于可选 FFmpeg 数字静音测量的夹具与实验记录保留作证据；该测量、`src/audio-silence.ts` 与 `test/audio-silence.test.ts` 已从代码中移除，`QWEN_AUDIO_SILENCE_CHECK` 不再生效，`RUN_FFMPEG_FIXTURES=1` 也不再对应任何测试文件。`test/fixtures/synthetic-multitrack-*.mp4` 仍留在仓库中。
+
 For the opt-in silence measurement, two additional multitrack fixtures were derived from the listed synthetic silence and tone inputs. The first duplicates the silent AAC track; the second retains one silent track and adds the non-zero tone track. Their independent truth is track-level digital zero/non-zero only; the tone is not evidence of music, song, or singing.
 
 ```powershell

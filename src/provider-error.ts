@@ -1,4 +1,4 @@
-import { VideoError, looksSensitive } from "./errors.js";
+import { MediaError, looksSensitive } from "./errors.js";
 
 type ProviderRecord = Record<string, unknown>;
 
@@ -18,6 +18,23 @@ export function safeProviderRequestId(value: unknown): string | undefined {
     : undefined;
 }
 
+/**
+ * Provider error codes that name a model/modality capability failure rather than a
+ * bad request. This list is fixed by mock tests only: a live probe must confirm the
+ * exact spellings before MEDIA_MODEL_UNSUPPORTED is claimed as verified. An unknown
+ * code never becomes "this model cannot do it".
+ */
+const MODEL_UNSUPPORTED_CODES = new Set(
+  [
+    "unsupportedmodel",
+    "modelnotsupported",
+    "unsupportedmodality",
+    "modalnotsupported",
+    "unsupportedmediatype",
+    "invalidmodality",
+  ].map((code) => code.toLowerCase()),
+);
+
 function inspectionSide(value: unknown): "input" | "output" | "unknown" {
   if (typeof value !== "string") return "unknown";
   if (/^Input(?: [A-Za-z0-9_-]+)? data may contain inappropriate content\.?$/i.test(value)) {
@@ -29,11 +46,11 @@ function inspectionSide(value: unknown): "input" | "output" | "unknown" {
   return "unknown";
 }
 
-/** Map only bounded identifiers and a known inspection verdict; never relay provider prose. */
+/** Map only bounded identifiers and a known verdict; never relay provider prose. */
 export function mapProviderError(
   payload: unknown,
   options: { requestId?: string; receivedEvents?: number; httpStatus?: number } = {},
-): VideoError | undefined {
+): MediaError | undefined {
   const root = asRecord(payload);
   if (root === undefined || !("error" in root || "code" in root)) return undefined;
   const error = asRecord(root.error) ?? root;
@@ -44,8 +61,15 @@ export function mapProviderError(
     safeProviderRequestId(options.requestId);
   const inspection =
     errorCode !== undefined && /^(?:data_inspection_failed|DataInspectionFailed)$/i.test(errorCode);
-  return new VideoError({
-    code: inspection ? "PROVIDER_CONTENT_REJECTED" : "VIDEO_ANALYSIS_FAILED",
+  const modelUnsupported =
+    errorCode !== undefined && MODEL_UNSUPPORTED_CODES.has(errorCode.toLowerCase());
+  const code = inspection
+    ? "PROVIDER_CONTENT_REJECTED"
+    : modelUnsupported
+      ? "MEDIA_MODEL_UNSUPPORTED"
+      : "MEDIA_ANALYSIS_FAILED";
+  return new MediaError({
+    code,
     stage: "analyzing",
     ...(options.httpStatus === undefined ? {} : { httpStatus: options.httpStatus }),
     ...(requestId === undefined ? {} : { requestId }),
@@ -56,6 +80,7 @@ export function mapProviderError(
         ? {}
         : { received_sse_events: options.receivedEvents }),
       ...(inspection ? { inspection_side: inspectionSide(error.message) } : {}),
+      ...(modelUnsupported ? { input_kind: "model_capability" } : {}),
     },
   });
 }

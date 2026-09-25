@@ -15,7 +15,7 @@ describe("doctor", () => {
   it("reports a missing key without printing secrets", async () => {
     const canary = "sk-doctor-canary-secret";
     delete process.env.DASHSCOPE_API_KEY;
-    delete process.env.QWEN_ALLOWED_ROOTS;
+    delete process.env.MEDIA_ALLOWED_ROOTS;
     process.env.QWEN_MODEL = canary;
     const report = await runDoctor();
     expect(report.ok).toBe(false);
@@ -23,7 +23,7 @@ describe("doctor", () => {
     expect(report.api_key.configured).toBe(false);
     expect(report.api_key.source).toBe("unset");
     expect(report.handshake.registered).toBe(true);
-    expect(report.handshake.tool).toBe("analyze_video");
+    expect(report.handshake.tool).toBe("analyze_media");
     const json = JSON.stringify(report);
     const text = formatDoctorText(report);
     expect(json).not.toContain(canary);
@@ -37,7 +37,7 @@ describe("doctor", () => {
     const dir = await realpath(await mkdtemp(join(tmpdir(), "qwen-doctor-")));
     try {
       process.env.DASHSCOPE_API_KEY = "sk-test";
-      process.env.QWEN_ALLOWED_ROOTS = `${dir}${delimiter}${dir}`;
+      process.env.MEDIA_ALLOWED_ROOTS = `${dir}${delimiter}${dir}`;
       const report = await runDoctor();
       expect(report.allowed_roots.configured).toBe(true);
       expect(report.allowed_roots.valid).toBe(true);
@@ -49,25 +49,25 @@ describe("doctor", () => {
   });
 
   it("reports the allowed-roots policy when the any-path opt-in is unset", async () => {
-    delete process.env.QWEN_ALLOW_ANY_LOCAL_VIDEO;
+    delete process.env.MEDIA_ALLOW_ANY_LOCAL_FILE;
     process.env.DASHSCOPE_API_KEY = "sk-test";
-    delete process.env.QWEN_ALLOWED_ROOTS;
+    delete process.env.MEDIA_ALLOWED_ROOTS;
     const report = await runDoctor();
-    expect(report.local_video_policy).toEqual({ mode: "allowed_roots", source: "unset" });
-    expect(formatDoctorText(report)).toContain("local_video_policy.mode=allowed_roots");
-    expect(formatDoctorText(report)).toContain("QWEN_ALLOWED_ROOTS is unset");
+    expect(report.local_media_policy).toEqual({ mode: "allowed_roots", source: "unset" });
+    expect(formatDoctorText(report)).toContain("local_media_policy.mode=allowed_roots");
+    expect(formatDoctorText(report)).toContain("MEDIA_ALLOWED_ROOTS is unset");
   });
 
   it("reports the any-path policy and its trade-off when the opt-in is on", async () => {
     process.env.DASHSCOPE_API_KEY = "sk-test";
-    process.env.QWEN_ALLOW_ANY_LOCAL_VIDEO = "on";
-    delete process.env.QWEN_ALLOWED_ROOTS;
+    process.env.MEDIA_ALLOW_ANY_LOCAL_FILE = "on";
+    delete process.env.MEDIA_ALLOWED_ROOTS;
     const report = await runDoctor();
-    expect(report.local_video_policy).toEqual({ mode: "any_local_path", source: "process.env" });
+    expect(report.local_media_policy).toEqual({ mode: "any_local_file", source: "process.env" });
     expect(report.ok).toBe(true);
     const text = formatDoctorText(report);
-    expect(text).toContain("local_video_policy.mode=any_local_path");
-    expect(text).toContain("QWEN_ALLOW_ANY_LOCAL_VIDEO is on");
+    expect(text).toContain("local_media_policy.mode=any_local_file");
+    expect(text).toContain("MEDIA_ALLOW_ANY_LOCAL_FILE is on");
     expect(text).not.toContain("local MP4s will be refused");
   });
 
@@ -90,22 +90,22 @@ describe("doctor", () => {
 
   it("warns about an unparsable opt-in value without switching the policy", async () => {
     process.env.DASHSCOPE_API_KEY = "sk-test";
-    process.env.QWEN_ALLOW_ANY_LOCAL_VIDEO = "maybe";
+    process.env.MEDIA_ALLOW_ANY_LOCAL_FILE = "maybe";
     const report = await runDoctor();
-    expect(report.local_video_policy.mode).toBe("allowed_roots");
-    expect(formatDoctorText(report)).toContain("QWEN_ALLOW_ANY_LOCAL_VIDEO must be on or off");
+    expect(report.local_media_policy.mode).toBe("allowed_roots");
+    expect(formatDoctorText(report)).toContain("MEDIA_ALLOW_ANY_LOCAL_FILE must be on or off");
   });
 
   it("stays ok when a stale allowed root is ignored because the any-path switch is on", async () => {
     const dir = await realpath(await mkdtemp(join(tmpdir(), "qwen-doctor-")));
     try {
       process.env.DASHSCOPE_API_KEY = "sk-test";
-      process.env.QWEN_ALLOW_ANY_LOCAL_VIDEO = "on";
-      process.env.QWEN_ALLOWED_ROOTS = [dir, join(dir, "renamed-away")].join(delimiter);
+      process.env.MEDIA_ALLOW_ANY_LOCAL_FILE = "on";
+      process.env.MEDIA_ALLOWED_ROOTS = [dir, join(dir, "renamed-away")].join(delimiter);
       const report = await runDoctor();
       expect(report.ok).toBe(true);
       expect(report.allowed_roots.count).toBe(1);
-      expect(report.local_video_policy.mode).toBe("any_local_path");
+      expect(report.local_media_policy.mode).toBe("any_local_file");
       expect(formatDoctorText(report)).toContain("entries that are not usable directories");
       expect(JSON.stringify(report)).not.toContain("renamed-away");
     } finally {
@@ -117,12 +117,12 @@ describe("doctor", () => {
     const dir = await realpath(await mkdtemp(join(tmpdir(), "qwen-doctor-")));
     try {
       process.env.DASHSCOPE_API_KEY = "sk-test";
-      delete process.env.QWEN_ALLOW_ANY_LOCAL_VIDEO;
-      process.env.QWEN_ALLOWED_ROOTS = join(dir, "renamed-away");
+      delete process.env.MEDIA_ALLOW_ANY_LOCAL_FILE;
+      process.env.MEDIA_ALLOWED_ROOTS = join(dir, "renamed-away");
       const report = await runDoctor();
       expect(report.ok).toBe(false);
       expect(report.allowed_roots.valid).toBe(false);
-      expect(formatDoctorText(report)).toContain("QWEN_ALLOWED_ROOTS could not be parsed");
+      expect(formatDoctorText(report)).toContain("MEDIA_ALLOWED_ROOTS could not be parsed");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

@@ -1,5 +1,7 @@
 # 下一阶段任务清单（待审阅）
 
+> **历史清单，不作为下一大版本新任务入口。** 已完成状态保留；新的单入口路线见 [`todo-next-major-media-gateway.md`](todo-next-major-media-gateway.md)。
+
 按 [`plan-v07-proposal.md`](plan-v07-proposal.md) 的依赖顺序执行。A 批已完成一次 Codex 桌面短片流程验证；B 批仍在收口。完成一项时补充实测结果，不以文档勾选代替真实用户流程。
 
 ## A. Codex 任意目录视频输入（P0）

@@ -7,9 +7,11 @@ import {
   DEFAULT_BASE_URL,
   DEFAULT_MODEL,
   DEFAULT_UPLOAD_URL,
+  LEGACY_MEDIA_VARS,
+  legacyMediaVarWarning,
   loadConfig,
   parseOnOffToken,
-  readAllowedRoots,
+  readMediaAllowedRoots,
 } from "./config.js";
 import {
   type ConfigLookupOptions,
@@ -18,10 +20,10 @@ import {
   lookupConfigValue,
 } from "./config-lookup.js";
 import { looksSensitive } from "./errors.js";
-import { createServer } from "./server.js";
+import { TOOL_NAME, createServer } from "./server.js";
 import { formatPackageBanner, PACKAGE_VERSION } from "./version.js";
 
-export type LocalVideoPolicy = "allowed_roots" | "any_local_path";
+export type LocalMediaPolicy = "allowed_roots" | "any_local_file";
 
 export interface DoctorReport {
   ok: boolean;
@@ -32,7 +34,7 @@ export interface DoctorReport {
   api_key: { configured: boolean; source: ConfigSource };
   model: { id: string; source: ConfigSource };
   allowed_roots: { configured: boolean; source: ConfigSource; count: number; valid: boolean };
-  local_video_policy: { mode: LocalVideoPolicy; source: ConfigSource };
+  local_media_policy: { mode: LocalMediaPolicy; source: ConfigSource };
   endpoints: { base_url_ok: boolean; upload_url_ok: boolean };
   handshake: { tool: string; registered: boolean };
   warnings: string[];
@@ -112,50 +114,59 @@ export async function runDoctor(
 
   const modelResolved = lookupConfigValue("QWEN_MODEL", lookup);
 
-  const anyLocalVideoResolved = lookupConfigValue("QWEN_ALLOW_ANY_LOCAL_VIDEO", lookup);
-  const anyLocalVideoRaw = anyLocalVideoResolved.value;
-  const anyLocalVideoToggle =
-    anyLocalVideoRaw === undefined ? undefined : parseOnOffToken(anyLocalVideoRaw);
-  const anyLocalVideoOn = anyLocalVideoToggle === true;
+  const anyLocalFileResolved = lookupConfigValue("MEDIA_ALLOW_ANY_LOCAL_FILE", lookup);
+  const anyLocalFileRaw = anyLocalFileResolved.value;
+  const anyLocalFileToggle =
+    anyLocalFileRaw === undefined ? undefined : parseOnOffToken(anyLocalFileRaw);
+  const anyLocalFileOn = anyLocalFileToggle === true;
+
+  for (const name of LEGACY_MEDIA_VARS) {
+    if (lookupConfigValue(name, lookup).value !== undefined) {
+      const warning = legacyMediaVarWarning(name);
+      if (warning !== undefined) {
+        warnings.push(warning);
+      }
+    }
+  }
 
   let rootsCount = 0;
   let rootsValid = true;
   const rootsConfigured = inspection.allowed_roots.configured;
   if (rootsConfigured) {
-    if (anyLocalVideoOn) {
+    if (anyLocalFileOn) {
       // With the any-path switch on the allowlist is unused, so unusable entries are
       // dropped instead of failing the install; report them rather than hiding them.
-      rootsCount = readAllowedRoots(lookup, true).length;
+      rootsCount = readMediaAllowedRoots(lookup, true).length;
       let ignored: boolean;
       try {
-        ignored = readAllowedRoots(lookup).length !== rootsCount;
+        ignored = readMediaAllowedRoots(lookup).length !== rootsCount;
       } catch {
         ignored = true;
       }
       if (ignored) {
         warnings.push(
-          "QWEN_ALLOWED_ROOTS has entries that are not usable directories; they are ignored while QWEN_ALLOW_ANY_LOCAL_VIDEO is on",
+          "MEDIA_ALLOWED_ROOTS has entries that are not usable directories; they are ignored while MEDIA_ALLOW_ANY_LOCAL_FILE is on",
         );
       }
     } else {
       try {
-        rootsCount = readAllowedRoots(lookup).length;
+        rootsCount = readMediaAllowedRoots(lookup).length;
         rootsValid = rootsCount > 0;
       } catch {
         rootsValid = false;
-        warnings.push("QWEN_ALLOWED_ROOTS could not be parsed");
+        warnings.push("MEDIA_ALLOWED_ROOTS could not be parsed");
       }
     }
   }
 
-  if (anyLocalVideoRaw !== undefined && anyLocalVideoToggle === undefined) {
-    warnings.push("QWEN_ALLOW_ANY_LOCAL_VIDEO must be on or off");
-  } else if (anyLocalVideoOn) {
+  if (anyLocalFileRaw !== undefined && anyLocalFileToggle === undefined) {
+    warnings.push("MEDIA_ALLOW_ANY_LOCAL_FILE must be on or off");
+  } else if (anyLocalFileOn) {
     warnings.push(
-      "QWEN_ALLOW_ANY_LOCAL_VIDEO is on: any local MP4 path an Agent names is uploaded, including files the user never picked",
+      "MEDIA_ALLOW_ANY_LOCAL_FILE is on: any local MP4/MOV/MP3 path an Agent names is uploaded, including files the user never picked",
     );
   } else if (!rootsConfigured) {
-    warnings.push("QWEN_ALLOWED_ROOTS is unset; local MP4s will be refused");
+    warnings.push("MEDIA_ALLOWED_ROOTS is unset; local media files will be refused");
   }
 
   const baseOk = httpsEndpointOk(
@@ -181,7 +192,7 @@ export async function runDoctor(
     await mcp.connect(serverTransport);
     await client.connect(clientTransport);
     const listed = await client.listTools();
-    registered = listed.tools.length === 1 && listed.tools[0]?.name === "analyze_video";
+    registered = listed.tools.length === 1 && listed.tools[0]?.name === TOOL_NAME;
   } catch {
     registered = false;
   } finally {
@@ -189,7 +200,7 @@ export async function runDoctor(
     await mcp.close().catch(() => undefined);
   }
   if (!registered) {
-    warnings.push("analyze_video was not registered");
+    warnings.push(`${TOOL_NAME} was not registered`);
   }
 
   let runtimeOk = true;
@@ -219,12 +230,12 @@ export async function runDoctor(
       count: rootsCount,
       valid: rootsValid,
     },
-    local_video_policy: {
-      mode: anyLocalVideoOn ? "any_local_path" : "allowed_roots",
-      source: anyLocalVideoResolved.source,
+    local_media_policy: {
+      mode: anyLocalFileOn ? "any_local_file" : "allowed_roots",
+      source: anyLocalFileResolved.source,
     },
     endpoints: { base_url_ok: baseOk, upload_url_ok: uploadOk },
-    handshake: { tool: "analyze_video", registered },
+    handshake: { tool: TOOL_NAME, registered },
     warnings,
   };
 }
@@ -237,7 +248,7 @@ export function formatDoctorText(report: DoctorReport): string {
     `api_key.configured=${String(report.api_key.configured)} source=${report.api_key.source}`,
     `model.id=${report.model.id} source=${report.model.source}`,
     `allowed_roots.configured=${String(report.allowed_roots.configured)} source=${report.allowed_roots.source} count=${String(report.allowed_roots.count)} valid=${String(report.allowed_roots.valid)}`,
-    `local_video_policy.mode=${report.local_video_policy.mode} source=${report.local_video_policy.source}`,
+    `local_media_policy.mode=${report.local_media_policy.mode} source=${report.local_media_policy.source}`,
     `endpoints.base_url_ok=${String(report.endpoints.base_url_ok)} upload_url_ok=${String(report.endpoints.upload_url_ok)}`,
     `handshake.registered=${String(report.handshake.registered)}`,
   ];

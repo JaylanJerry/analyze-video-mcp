@@ -17,11 +17,14 @@ const required = [
   "dist/config.js",
   "dist/config-lookup.js",
   "dist/media.js",
-  "dist/audio-silence.js",
+  "dist/mpeg-audio.js",
+  "dist/bytes.js",
+  "dist/sanitize.js",
   "dist/upload.js",
   "dist/upload-cache.js",
   "dist/bailian.js",
-  "dist/evidence.js",
+  "dist/provider-error.js",
+  "dist/sse.js",
   "dist/doctor.js",
   "scripts/prepare.mjs",
 ];
@@ -112,10 +115,10 @@ try {
     const keys = Object.keys(props ?? {}).sort();
     const ok =
       names.length === 1 &&
-      names[0] === "analyze_video" &&
+      names[0] === "analyze_media" &&
       keys.length === 2 &&
-      keys[0] === "question" &&
-      keys[1] === "video";
+      keys[0] === "media" &&
+      keys[1] === "prompt";
     process.stdout.write(
       `${JSON.stringify({
         ok,

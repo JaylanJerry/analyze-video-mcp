@@ -22,7 +22,7 @@ for (const [name, value] of Object.entries(process.env)) {
   if (value !== undefined) env[name] = value;
 }
 if (video !== undefined) {
-  env.QWEN_ALLOWED_ROOTS = dirname(resolve(video));
+  env.MEDIA_ALLOWED_ROOTS = dirname(resolve(video));
   env.QWEN_ALLOW_ANY_LOCAL_VIDEO = "off";
 }
 if (audioMode && requestedModel !== undefined) env.QWEN_MODEL = requestedModel;
@@ -37,7 +37,7 @@ const client = new Client({ name: "installed-smoke", version: "1.0.0" });
 try {
   await client.connect(transport);
   const tools = (await client.listTools()).tools.map((tool) => tool.name);
-  if (tools.length !== 1 || tools[0] !== "analyze_video") {
+  if (tools.length !== 1 || tools[0] !== "analyze_media") {
     throw new Error("Installed MCP tool surface is incorrect");
   }
   if (video === undefined) {
@@ -46,7 +46,7 @@ try {
     const started = Date.now();
     const result = await client.callTool(
       {
-        name: "analyze_video",
+        name: "analyze_media",
         arguments: {
           video: resolve(video),
           question: audioMode

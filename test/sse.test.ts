@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { VideoError } from "../src/errors.js";
+import { MediaError } from "../src/errors.js";
 import { MAX_SSE_BUFFER_BYTES, SseParser, aggregateSse, stripThinkingBlocks } from "../src/sse.js";
 
 function bytes(text: string): Uint8Array {
@@ -121,7 +121,7 @@ describe("SseParser", () => {
       err = error;
     }
     expect(err).toMatchObject({
-      code: "VIDEO_ANALYSIS_FAILED",
+      code: "MEDIA_ANALYSIS_FAILED",
       retryable: false,
       diagnostic: { parse_reason: "provider_error", error_code: "InvalidParameter" },
     });
@@ -260,7 +260,7 @@ describe("SseParser", () => {
     } catch (error: unknown) {
       err = error;
     }
-    expect(err).toBeInstanceOf(VideoError);
+    expect(err).toBeInstanceOf(MediaError);
     expect(err).toMatchObject({ code: "PROVIDER_RESPONSE_INVALID" });
     expect(String(err)).not.toContain("sk-canary");
     expect(String(err)).not.toContain("oss://");
@@ -287,8 +287,8 @@ describe("SseParser", () => {
     } catch (error: unknown) {
       err = error;
     }
-    expect(err).toBeInstanceOf(VideoError);
-    if (err instanceof VideoError) {
+    expect(err).toBeInstanceOf(MediaError);
+    if (err instanceof MediaError) {
       const shape = String(err.diagnostic.event_shape ?? "");
       expect(shape).toContain("choices");
       expect(shape).toContain("_other");
@@ -302,7 +302,7 @@ describe("SseParser", () => {
     parser.push(bytes('data: {"choices":[{"delta":{"content":"x"}}]}'));
     expect(parser.sawText).toBe(false);
     expect(parser.eventCount).toBe(0);
-    expect(() => parser.finish()).toThrow(VideoError);
+    expect(() => parser.finish()).toThrow(MediaError);
   });
 
   it("exposes sawText and eventCount after complete events", () => {
@@ -431,8 +431,8 @@ describe("thinking-mode streams", () => {
     } catch (error: unknown) {
       err = error;
     }
-    expect(err).toBeInstanceOf(VideoError);
-    if (err instanceof VideoError) {
+    expect(err).toBeInstanceOf(MediaError);
+    if (err instanceof MediaError) {
       expect(err.code).toBe("PROVIDER_RESPONSE_INVALID");
       expect(err.diagnostic.parse_reason).toBe("reasoning_only");
       expect(String(err)).not.toContain("只有思考");

@@ -6,7 +6,13 @@
 [![License: MIT](https://img.shields.io/github/license/JaylanJerry/analyze-video-mcp)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22-339933)](https://nodejs.org)
 
-MCP server that gives local agents **video understanding**: the model reads picture and embedded audio together, then answers in text. One tool: `analyze_video`.
+> **Unreleased next major (this branch):** the code here implements one tool, `analyze_media(media, prompt)` — local MP4/MOV/MP3 plus a public HTTPS video URL — with no server-side analysis outline, no evidence-JSON gate, no automatic second request, and `MEDIA_ALLOWED_ROOTS` / `MEDIA_ALLOW_ANY_LOCAL_FILE` for local access. It is **not published yet**: the install snippets below still pin the published `0.6.1`, which exposes `analyze_video(video, question?)` and reads the `QWEN_*` names. Migration table: [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md#迁移表旧契约--新契约).
+>
+> **下一大版本（本分支，尚未发布）：** 代码已改为唯一 Tool `analyze_media(media, prompt)`，支持本地 MP4/MOV/MP3 与公开 HTTPS 视频；服务端不再补写分析提纲、不再强制证据 JSON、不再为纠错自动发第二次请求；本地授权改用 `MEDIA_ALLOWED_ROOTS` / `MEDIA_ALLOW_ANY_LOCAL_FILE`。下面的安装示例仍钉已发布的 `0.6.1`（`analyze_video` + `QWEN_*`）。
+
+MCP server that gives local agents **media understanding**: the model reads picture and embedded audio together (or a standalone audio file), then answers in text.
+
+给本地 Agent 增加媒体理解：看画面、听内嵌音轨或独立音频，只返回文本回答。已发布版本的工具名是 `analyze_video`；本分支的下一大版本改为 `analyze_media`。
 
 给本地 Agent 增加视频理解：同时看画面、听视频里的音轨，只返回文本。把下面的标准配置贴进 MCP 客户端，填入百炼 Key。
 
@@ -53,7 +59,8 @@ Names (do not mix them):
 | --------------------------------------------------- | ------------------- |
 | Repository, npm package, CLI, MCP `initialize.name` | `analyze-video-mcp` |
 | Host config key                                     | `analyze_video_mcp` |
-| Tool                                                | `analyze_video`     |
+| Tool (published 0.6.1)                              | `analyze_video`     |
+| Tool (next major, this branch, unreleased)          | `analyze_media`     |
 
 The Host config key is yours to rename. Changing it does not change the tool name. Old keys (`analyze-video`, `mcp_analyze_video`) still work if already installed.
 
@@ -138,6 +145,26 @@ Example:
 Analyze this video: C:\Videos\clip.mp4
 What happens on screen, and what does the soundtrack say?
 ```
+
+## Migrating to the next major (unreleased)
+
+The next major is a breaking change: the tool is renamed, `prompt` is required, the report layer is gone, and local authorization moves to `MEDIA_*`.
+
+| Published `0.6.1`                                                     | Next major (this branch)                                                         |
+| --------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `analyze_video(video, question?)`                                     | `analyze_media(media, prompt)`, `prompt` required                                |
+| `question` optional; omitted → server default question                | no default question; empty/over-long prompt is `INVALID_MEDIA_INPUT`             |
+| Broad question → server appends a nine-section outline                | server appends only a fixed protocol note; the prompt is passed through verbatim |
+| Evidence JSON enforced; a failed check triggers one more paid request | plain text answer; exactly one provider request per call                         |
+| Local files: MP4/MOV                                                  | Local files: MP4/MOV + MP3 (MPEG Layer III)                                      |
+| `coverage` / `subtitle_audit` / itemized observations                 | `media` / `request` / `usage` / `limitations`                                    |
+| `QWEN_ALLOWED_ROOTS`                                                  | `MEDIA_ALLOWED_ROOTS` (the old name grants nothing; `--doctor` reports it)       |
+| `QWEN_ALLOW_ANY_LOCAL_VIDEO`                                          | `MEDIA_ALLOW_ANY_LOCAL_FILE` (default `off`)                                     |
+| `QWEN_MAX_LOCAL_VIDEO_MB`                                             | `MEDIA_MAX_LOCAL_MEDIA_MB`                                                       |
+| `QWEN_AUDIO_SILENCE_CHECK`                                            | removed; no FFmpeg silence check                                                 |
+| `VIDEO_*` / `VIDEO_ANALYSIS_*` error codes                            | `MEDIA_*` codes; cancellation is `MEDIA_ANALYSIS_CANCELLED`                      |
+
+Local MP3 support is verified end to end against the live provider (2026-09-25, `qwen3.8-omni-flash`): a 9 s synthetic sample and an 890 s MP3 both analyzed correctly through `input_audio` with an `oss://` URL plus the OSS-resolve header, and a repeat call reported `upload_reused: true`. Two caveats: an **audio-only MP4** (no video track) is refused by the provider with HTTP 400 through the video path, so give audio-only files the `.mp3` extension — and `.mp3` files whose bytes are actually an MP4 container are refused as a wrong extension rather than silently re-routed.
 
 ## Environment
 

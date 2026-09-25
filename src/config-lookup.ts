@@ -16,13 +16,23 @@ export type ConfigSource = (typeof CONFIG_SOURCES)[number];
 
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const WINDOWS_ENV_NAME = /^[A-Z][A-Z0-9_]*$/;
+/**
+ * Names the Windows user environment may supply when no MCP env, --config file or
+ * user config file sets them. The legacy media names are included so --doctor can
+ * report that they no longer take effect; they are never read for authorization.
+ * MEDIA_ALLOW_ANY_LOCAL_FILE and QWEN_ALLOW_ANY_LOCAL_VIDEO stay out on purpose:
+ * a switch that turns any path into an upload authorization must be set explicitly.
+ */
 const WINDOWS_FALLBACK_NAMES = [
   "DASHSCOPE_API_KEY",
-  "QWEN_ALLOWED_ROOTS",
+  "MEDIA_ALLOWED_ROOTS",
+  "MEDIA_MAX_LOCAL_MEDIA_MB",
   "QWEN_MODEL",
-  "QWEN_AUDIO_SILENCE_CHECK",
   "DASHSCOPE_BASE_URL",
   "DASHSCOPE_UPLOAD_URL",
+  "QWEN_ALLOWED_ROOTS",
+  "QWEN_MAX_LOCAL_VIDEO_MB",
+  "QWEN_AUDIO_SILENCE_CHECK",
 ] as const;
 
 let windowsUserEnvCache: { readAt: number; values: Record<string, string> } | undefined;
@@ -318,7 +328,7 @@ export function requireConfigValue(name: string, options?: ConfigLookupOptions):
 
 export function inspectConfig(options?: ConfigLookupOptions): ConfigInspection {
   const apiKey = lookupConfigValue("DASHSCOPE_API_KEY", options);
-  const roots = lookupConfigValue("QWEN_ALLOWED_ROOTS", options);
+  const roots = lookupConfigValue("MEDIA_ALLOWED_ROOTS", options);
   return {
     api_key: {
       configured: apiKey.value !== undefined,

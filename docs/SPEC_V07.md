@@ -1,5 +1,7 @@
 # v0.7.0：纯音频、确定性测量与交叉审核（尚未实施）
 
+> **历史方向：不再作为下一大版本实施规格。** 新目标见 [`SPEC_NEXT_MAJOR_MEDIA_GATEWAY.md`](SPEC_NEXT_MAJOR_MEDIA_GATEWAY.md) 与 [ADR 0024](decisions/0024-agent-directed-media-gateway.md)；下文保留原 v0.7 设想和当时状态。
+
 状态：已记录，**尚未实施**。用户 2026-08-22 综合优化需求的第二批；2026-09-22 补充“手动拖入视频不受文件夹限制”的目标。详细的待审阅方案见 [`SPEC_V07_PROPOSAL.md`](SPEC_V07_PROPOSAL.md)；实施前须批准 [ADR 0018](decisions/0018-v07-tool-surface.md)、[ADR 0019](decisions/0019-v07-local-measurement.md) 与经宿主验证的 [ADR 0020](decisions/0020-user-granted-local-media.md)。
 
 依赖：[`SPEC_V061.md`](SPEC_V061.md) 的 P0 已落地。不要把新 Tool 建在不稳定的宿主配置和证据体系上。

@@ -1,5 +1,7 @@
 # 下一阶段优化路线（待审阅）
 
+> **历史路线，下一大版本不再按 C/D 的三 Tool、FFmpeg 测量、综合审核实施。** 当前接手计划见 [`plan-next-major-media-gateway.md`](plan-next-major-media-gateway.md)。本文件的 A/B 阶段记录保留为已有工作的历史证据。
+
 状态：**目标与顺序提案，尚未开始实现**。当前发布版为 v0.6.1；稳定接口是 `analyze_video(video, question?)`。本路线依据 [`SPEC_V07_PROPOSAL.md`](../docs/SPEC_V07_PROPOSAL.md)、[ADR 0018](../docs/decisions/0018-v07-tool-surface.md)、[ADR 0019](../docs/decisions/0019-v07-local-measurement.md)、[ADR 0020](../docs/decisions/0020-user-granted-local-media.md)。具体任务见 [`todo-v07-proposal.md`](todo-v07-proposal.md)。
 
 ## 产品目标与优先级

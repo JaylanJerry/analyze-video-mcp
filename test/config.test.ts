@@ -6,11 +6,11 @@ import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  ABSOLUTE_MAX_LOCAL_VIDEO_MB,
+  ABSOLUTE_MAX_LOCAL_MEDIA_MB,
   BYTES_PER_MIB,
   DEFAULT_ANALYSIS_TIMEOUT_SECONDS,
   DEFAULT_BASE_URL,
-  DEFAULT_MAX_LOCAL_VIDEO_MB,
+  DEFAULT_MAX_LOCAL_MEDIA_MB,
   DEFAULT_MODEL,
   DEFAULT_SERVER_NAME,
   DEFAULT_UPLOAD_TIMEOUT_SECONDS,
@@ -50,28 +50,47 @@ function expectNoEnvValues(message: string, ...values: string[]): void {
 }
 
 describe("loadConfig", () => {
-  it("defaults the optional audio silence check to off and accepts explicit on", () => {
+  it("defaults the any-local-file opt-in to off and accepts explicit on", () => {
     process.env.DASHSCOPE_API_KEY = "k";
-    delete process.env.QWEN_AUDIO_SILENCE_CHECK;
-    expect(loadConfig().audioSilenceCheck).toBe(false);
-    process.env.QWEN_AUDIO_SILENCE_CHECK = "on";
-    expect(loadConfig().audioSilenceCheck).toBe(true);
+    delete process.env.MEDIA_ALLOW_ANY_LOCAL_FILE;
+    expect(loadConfig().allowAnyLocalFile).toBe(false);
+    process.env.MEDIA_ALLOW_ANY_LOCAL_FILE = "on";
+    expect(loadConfig().allowAnyLocalFile).toBe(true);
   });
 
-  it("rejects invalid optional audio silence check values", () => {
+  it("rejects an unrecognized any-local-file opt-in value", () => {
     process.env.DASHSCOPE_API_KEY = "k";
-    process.env.QWEN_AUDIO_SILENCE_CHECK = "maybe";
-    expect(loadConfig()).toMatchObject({
-      audioSilenceCheck: false,
-      audioSilenceCheckInvalid: true,
-    });
+    process.env.MEDIA_ALLOW_ANY_LOCAL_FILE = "maybe";
+    expect(() => loadConfig()).toThrow(ConfigError);
+  });
+
+  it("reports legacy media variables as no longer read", () => {
+    process.env.DASHSCOPE_API_KEY = "k";
+    delete process.env.QWEN_ALLOWED_ROOTS;
+    delete process.env.QWEN_ALLOW_ANY_LOCAL_VIDEO;
+    delete process.env.QWEN_MAX_LOCAL_VIDEO_MB;
+    delete process.env.QWEN_AUDIO_SILENCE_CHECK;
+    expect(loadConfig().legacyMediaVars).toEqual([]);
+
+    process.env.QWEN_ALLOWED_ROOTS = String.raw`C:\Videos`;
+    process.env.QWEN_ALLOW_ANY_LOCAL_VIDEO = "on";
+    process.env.QWEN_AUDIO_SILENCE_CHECK = "on";
+    const cfg = loadConfig();
+    expect(cfg.legacyMediaVars).toEqual([
+      "QWEN_ALLOWED_ROOTS",
+      "QWEN_ALLOW_ANY_LOCAL_VIDEO",
+      "QWEN_AUDIO_SILENCE_CHECK",
+    ]);
+    // A legacy opt-in never becomes a media authorization for the new tool.
+    expect(cfg.allowedRoots).toEqual([]);
+    expect(cfg.allowAnyLocalFile).toBe(false);
   });
   it("defaults the model to qwen3.8-omni-flash when only the API key is set", () => {
     delete process.env.QWEN_MODEL;
     delete process.env.DASHSCOPE_BASE_URL;
     delete process.env.DASHSCOPE_UPLOAD_URL;
-    delete process.env.QWEN_ALLOWED_ROOTS;
-    delete process.env.QWEN_MAX_LOCAL_VIDEO_MB;
+    delete process.env.MEDIA_ALLOWED_ROOTS;
+    delete process.env.MEDIA_MAX_LOCAL_MEDIA_MB;
     delete process.env.QWEN_UPLOAD_TIMEOUT;
     delete process.env.QWEN_ANALYSIS_TIMEOUT;
     delete process.env.QWEN_ANALYSIS_RETRIES;
@@ -88,10 +107,10 @@ describe("loadConfig", () => {
     expect(cfg.baseUrl).toBe(DEFAULT_BASE_URL);
     expect(cfg.uploadUrl).toBe(DEFAULT_UPLOAD_URL);
     expect(cfg.allowedRoots).toEqual([]);
-    expect(DEFAULT_MAX_LOCAL_VIDEO_MB).toBe(1024);
-    expect(ABSOLUTE_MAX_LOCAL_VIDEO_MB).toBe(1024);
-    expect(cfg.maxLocalVideoBytes).toBe(1024 * BYTES_PER_MIB);
-    expect(501 * BYTES_PER_MIB).toBeLessThan(cfg.maxLocalVideoBytes);
+    expect(DEFAULT_MAX_LOCAL_MEDIA_MB).toBe(1024);
+    expect(ABSOLUTE_MAX_LOCAL_MEDIA_MB).toBe(1024);
+    expect(cfg.maxLocalMediaBytes).toBe(1024 * BYTES_PER_MIB);
+    expect(501 * BYTES_PER_MIB).toBeLessThan(cfg.maxLocalMediaBytes);
     expect(cfg.uploadTimeoutMs).toBe(DEFAULT_UPLOAD_TIMEOUT_SECONDS * 1000);
     expect(cfg.analysisTimeoutMs).toBe(DEFAULT_ANALYSIS_TIMEOUT_SECONDS * 1000);
     expect(cfg.analysisRetries).toBe(1);
@@ -105,8 +124,8 @@ describe("loadConfig", () => {
     process.env.QWEN_MODEL = "qwen-vl-max-latest";
     process.env.DASHSCOPE_BASE_URL = "https://example.test/v1/";
     process.env.DASHSCOPE_UPLOAD_URL = "https://example.test/api/v1/uploads/";
-    process.env.QWEN_ALLOWED_ROOTS = root;
-    process.env.QWEN_MAX_LOCAL_VIDEO_MB = "250";
+    process.env.MEDIA_ALLOWED_ROOTS = root;
+    process.env.MEDIA_MAX_LOCAL_MEDIA_MB = "250";
     process.env.QWEN_UPLOAD_TIMEOUT = "60";
     process.env.QWEN_ANALYSIS_TIMEOUT = "90";
     process.env.QWEN_ANALYSIS_RETRIES = "0";
@@ -119,7 +138,7 @@ describe("loadConfig", () => {
     expect(cfg.baseUrl).toBe("https://example.test/v1");
     expect(cfg.uploadUrl).toBe("https://example.test/api/v1/uploads");
     expect(cfg.allowedRoots).toEqual([root]);
-    expect(cfg.maxLocalVideoBytes).toBe(250 * BYTES_PER_MIB);
+    expect(cfg.maxLocalMediaBytes).toBe(250 * BYTES_PER_MIB);
     expect(cfg.uploadTimeoutMs).toBe(60_000);
     expect(cfg.analysisTimeoutMs).toBe(90_000);
     expect(cfg.analysisRetries).toBe(0);
@@ -134,7 +153,7 @@ describe("loadConfig", () => {
       await mkdir(join(root, "media"), { recursive: true }).then(() => join(root, "media")),
     );
     process.env.DASHSCOPE_API_KEY = "k";
-    process.env.QWEN_ALLOWED_ROOTS = [root, `${root}${delimiter}${nested}`, root].join(delimiter);
+    process.env.MEDIA_ALLOWED_ROOTS = [root, `${root}${delimiter}${nested}`, root].join(delimiter);
 
     const cfg = loadConfig();
     expect(cfg.allowedRoots).toEqual([root, nested]);
@@ -148,28 +167,28 @@ describe("loadConfig", () => {
     expect(cfg.uploadCachePath).toBeUndefined();
   });
 
-  it("defaults QWEN_ALLOW_ANY_LOCAL_VIDEO to off", () => {
+  it("defaults MEDIA_ALLOW_ANY_LOCAL_FILE to off", () => {
     process.env.DASHSCOPE_API_KEY = "k";
-    delete process.env.QWEN_ALLOW_ANY_LOCAL_VIDEO;
-    expect(loadConfig().allowAnyLocalVideo).toBe(false);
+    delete process.env.MEDIA_ALLOW_ANY_LOCAL_FILE;
+    expect(loadConfig().allowAnyLocalFile).toBe(false);
   });
 
-  it("accepts the documented on/off spellings for QWEN_ALLOW_ANY_LOCAL_VIDEO", () => {
+  it("accepts the documented on/off spellings for MEDIA_ALLOW_ANY_LOCAL_FILE", () => {
     process.env.DASHSCOPE_API_KEY = "k";
     for (const raw of ["on", "ON", "1", "true", "True"]) {
-      process.env.QWEN_ALLOW_ANY_LOCAL_VIDEO = raw;
-      expect(loadConfig().allowAnyLocalVideo).toBe(true);
+      process.env.MEDIA_ALLOW_ANY_LOCAL_FILE = raw;
+      expect(loadConfig().allowAnyLocalFile).toBe(true);
     }
     for (const raw of ["off", "OFF", "0", "false", "False"]) {
-      process.env.QWEN_ALLOW_ANY_LOCAL_VIDEO = raw;
-      expect(loadConfig().allowAnyLocalVideo).toBe(false);
+      process.env.MEDIA_ALLOW_ANY_LOCAL_FILE = raw;
+      expect(loadConfig().allowAnyLocalFile).toBe(false);
     }
   });
 
-  it("rejects an unrecognized QWEN_ALLOW_ANY_LOCAL_VIDEO value", () => {
+  it("rejects an unrecognized MEDIA_ALLOW_ANY_LOCAL_FILE value", () => {
     process.env.DASHSCOPE_API_KEY = "k";
-    process.env.QWEN_ALLOW_ANY_LOCAL_VIDEO = "maybe";
-    expect(() => loadConfig()).toThrow(/QWEN_ALLOW_ANY_LOCAL_VIDEO must be on or off/);
+    process.env.MEDIA_ALLOW_ANY_LOCAL_FILE = "maybe";
+    expect(() => loadConfig()).toThrow(/MEDIA_ALLOW_ANY_LOCAL_FILE must be on or off/);
   });
 
   it("rejects an invalid QWEN_MCP_SERVER_NAME without echoing other env values", () => {
@@ -213,15 +232,15 @@ describe("loadConfig", () => {
 
   it("accepts a user cap of 500 MiB", () => {
     process.env.DASHSCOPE_API_KEY = "k";
-    process.env.QWEN_MAX_LOCAL_VIDEO_MB = "500";
-    expect(loadConfig().maxLocalVideoBytes).toBe(500 * BYTES_PER_MIB);
+    process.env.MEDIA_MAX_LOCAL_MEDIA_MB = "500";
+    expect(loadConfig().maxLocalMediaBytes).toBe(500 * BYTES_PER_MIB);
   });
 
   it("rejects a local video cap above 1024 MiB without echoing the value", () => {
     process.env.DASHSCOPE_API_KEY = "k";
-    process.env.QWEN_MAX_LOCAL_VIDEO_MB = "1025";
+    process.env.MEDIA_MAX_LOCAL_MEDIA_MB = "1025";
     expect(() => loadConfig()).toThrow(
-      new RegExp(`QWEN_MAX_LOCAL_VIDEO_MB.*${String(ABSOLUTE_MAX_LOCAL_VIDEO_MB)}`),
+      new RegExp(`MEDIA_MAX_LOCAL_MEDIA_MB.*${String(ABSOLUTE_MAX_LOCAL_MEDIA_MB)}`),
     );
     try {
       loadConfig();
@@ -254,8 +273,8 @@ describe("loadConfig", () => {
 
   it("rejects a relative allowed root without echoing the path", () => {
     process.env.DASHSCOPE_API_KEY = "k";
-    process.env.QWEN_ALLOWED_ROOTS = "relative-media";
-    expect(() => loadConfig()).toThrow(/QWEN_ALLOWED_ROOTS/);
+    process.env.MEDIA_ALLOWED_ROOTS = "relative-media";
+    expect(() => loadConfig()).toThrow(/MEDIA_ALLOWED_ROOTS/);
     try {
       loadConfig();
     } catch (err) {
@@ -268,8 +287,8 @@ describe("loadConfig", () => {
     const filePath = join(root, "not-a-dir.mp4");
     await writeFile(filePath, "x");
     process.env.DASHSCOPE_API_KEY = "k";
-    process.env.QWEN_ALLOWED_ROOTS = filePath;
-    expect(() => loadConfig()).toThrow(/QWEN_ALLOWED_ROOTS/);
+    process.env.MEDIA_ALLOWED_ROOTS = filePath;
+    expect(() => loadConfig()).toThrow(/MEDIA_ALLOWED_ROOTS/);
     try {
       loadConfig();
     } catch (err) {
@@ -277,9 +296,9 @@ describe("loadConfig", () => {
     }
   });
 
-  it("names QWEN_ALLOWED_ROOTS in the agent error for an unusable entry", () => {
+  it("names MEDIA_ALLOWED_ROOTS in the agent error for an unusable entry", () => {
     process.env.DASHSCOPE_API_KEY = "k";
-    process.env.QWEN_ALLOWED_ROOTS = join(tmpdir(), "qwen-definitely-missing-root");
+    process.env.MEDIA_ALLOWED_ROOTS = join(tmpdir(), "qwen-definitely-missing-root");
     const err = ((): unknown => {
       try {
         loadConfig();
@@ -289,7 +308,7 @@ describe("loadConfig", () => {
       }
     })();
     expect(err).toBeInstanceOf(ConfigError);
-    expect(agentErrorText(err)).toContain("QWEN_ALLOWED_ROOTS");
+    expect(agentErrorText(err)).toContain("MEDIA_ALLOWED_ROOTS");
   });
 
   it("ignores unusable allowed-root entries while the any-path switch is on", async () => {
@@ -298,19 +317,19 @@ describe("loadConfig", () => {
       await mkdir(join(root, "media"), { recursive: true }).then(() => join(root, "media")),
     );
     process.env.DASHSCOPE_API_KEY = "k";
-    process.env.QWEN_ALLOW_ANY_LOCAL_VIDEO = "on";
-    process.env.QWEN_ALLOWED_ROOTS = [
+    process.env.MEDIA_ALLOW_ANY_LOCAL_FILE = "on";
+    process.env.MEDIA_ALLOWED_ROOTS = [
       join(root, "renamed-away"),
       nested,
       join(root, "also-gone"),
     ].join(delimiter);
 
     const cfg = loadConfig();
-    expect(cfg.allowAnyLocalVideo).toBe(true);
+    expect(cfg.allowAnyLocalFile).toBe(true);
     expect(cfg.allowedRoots).toEqual([nested]);
 
-    process.env.QWEN_ALLOW_ANY_LOCAL_VIDEO = "off";
-    expect(() => loadConfig()).toThrow(/QWEN_ALLOWED_ROOTS/);
+    process.env.MEDIA_ALLOW_ANY_LOCAL_FILE = "off";
+    expect(() => loadConfig()).toThrow(/MEDIA_ALLOWED_ROOTS/);
   });
 });
 

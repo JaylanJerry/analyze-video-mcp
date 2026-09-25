@@ -1,6 +1,8 @@
 # v0.7 规格提案：音频分析、确定性测量与媒体审核
 
-状态：**待审阅，未批准或实施**。本文件细化 [`SPEC_V07.md`](SPEC_V07.md) 的方向；v0.6.1 契约仍有效。接口和运行时决策分别见 Proposed [ADR 0018](decisions/0018-v07-tool-surface.md) 与 [ADR 0019](decisions/0019-v07-local-measurement.md)。跨目录手动附件输入见 Proposed [ADR 0020](decisions/0020-user-granted-local-media.md)。
+> **历史提案，已停止作为下一大版本实施路线。** 用户在 2026-09-25 确认单入口媒体网关方向，见 [`SPEC_NEXT_MAJOR_MEDIA_GATEWAY.md`](SPEC_NEXT_MAJOR_MEDIA_GATEWAY.md) 与 [ADR 0024](decisions/0024-agent-directed-media-gateway.md)。本文件保留研究和未实施设想，不可据此新增三 Tool、FFmpeg 审核或声称它们已获批准；已接受的 ADR 0022 可选静音核对仍以当前代码与当前契约为准。
+
+状态：**历史提案，未整体批准或实施，下一大版本不按此路线开发**。本文件细化 [`SPEC_V07.md`](SPEC_V07.md) 的原方向；当前运行版契约仍有效。旧接口和运行时提案分别见已撤回的 [ADR 0018](decisions/0018-v07-tool-surface.md) 与已暂缓的 [ADR 0019](decisions/0019-v07-local-measurement.md)。跨目录输入的后续决定见 [ADR 0021](decisions/0021-allow-any-local-video-opt-in.md)。
 
 ## 目标与假设
 

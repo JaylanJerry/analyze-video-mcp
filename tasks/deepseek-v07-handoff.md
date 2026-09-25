@@ -1,5 +1,7 @@
 # DeepSeek 开发交接：下一阶段优化
 
+> **旧交接，供追溯 v0.7 阶段工作。** 2026-09-25 起下一大版本接手入口改为 [`deepseek-next-major-handoff.md`](deepseek-next-major-handoff.md)；本文件下文不再指挥新重构方向。
+
 状态：**A 批代码已实现，Codex CLI 与一个桌面 GUI 短片流程已验证；B 批仍在收口**。用户已认可 [`plan-v07-proposal.md`](plan-v07-proposal.md) 的优先顺序，并指定 **Codex 桌面版**作为跨目录拖入视频的首个宿主。当前发布版仍为 v0.6.1；本工作树的改动尚未发布。先读仓库根 [`AGENTS.md`](../AGENTS.md) 和 [`DEVELOPMENT_HANDOFF.md`](../DEVELOPMENT_HANDOFF.md)，再读本文件与关联规格。
 
 用户的使用边界：**只有用户明确要求“调用 MCP 分析此视频”时才调用 `analyze_video` MCP**。其他视频分析请求使用 Codex 自带流程；视频被拖入聊天窗口本身不表示用户授权调用 MCP 或上传到百炼。A1 宿主探针只检查附件交接，不触发实际分析；A4 的真实 MCP 分析仍须用户明确提出并授权相应费用。

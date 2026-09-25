@@ -1,23 +1,21 @@
 import type { AppConfig } from "./config.js";
-import { VideoError } from "./errors.js";
-import { EVIDENCE_POLICY } from "./evidence.js";
+import { MediaError } from "./errors.js";
 import { mapProviderError, safeProviderRequestId } from "./provider-error.js";
 import { SseParser } from "./sse.js";
 
-export function contentBlock(url: string): Record<string, unknown> {
-  return { type: "video_url", video_url: { url } };
-}
+export type ProviderMediaFormat = "video" | "mp3";
 
-export interface ProviderVideo {
+export interface ProviderMedia {
   url: string;
+  format: ProviderMediaFormat;
   requiresOssResolve: boolean;
 }
 
-export interface AnalyzeVideoRequest {
-  question: string;
+export interface AnalyzeRequest {
+  prompt: string;
 }
 
-export interface AnalyzeVideoResult {
+export interface AnalyzeResult {
   answer: string;
   requestId: string | undefined;
   receivedEvents: number;
@@ -31,12 +29,27 @@ export interface AnalyzeVideoResult {
     | undefined;
 }
 
-export interface VideoAnalyzer {
+export interface MediaAnalyzer {
   analyze(
-    input: ProviderVideo,
-    request: AnalyzeVideoRequest,
+    media: ProviderMedia,
+    request: AnalyzeRequest,
     signal?: AbortSignal,
-  ): Promise<AnalyzeVideoResult>;
+  ): Promise<AnalyzeResult>;
+}
+
+/**
+ * The only server-side wording added to a request. It is protocol-level — ask for
+ * text, and do not fabricate — and deliberately carries no analysis outline: the
+ * Agent owns the question, and the server must not expand or replace it.
+ */
+export const PROTOCOL_NOTE =
+  "只输出文本回答。只写你实际看到或听到的内容；看不清、听不清或无法判断的地方请直接说明，不要编造或补全没有观察到的内容。";
+
+export function contentBlock(media: ProviderMedia): Record<string, unknown> {
+  if (media.format === "mp3") {
+    return { type: "input_audio", input_audio: { data: media.url, format: "mp3" } };
+  }
+  return { type: "video_url", video_url: { url: media.url } };
 }
 
 const MAX_RETRY_AFTER_MS = 30_000;
@@ -46,21 +59,21 @@ function chatCompletionsUrl(cfg: AppConfig): string {
   return `${base}/chat/completions`;
 }
 
-export function buildVideoPayload(
+export function buildMediaPayload(
   cfg: AppConfig,
-  video: ProviderVideo,
-  request: AnalyzeVideoRequest,
+  media: ProviderMedia,
+  request: AnalyzeRequest,
 ): Record<string, unknown> {
   return {
     model: cfg.model,
     messages: [
       {
         role: "system",
-        content: [{ type: "text", text: EVIDENCE_POLICY }],
+        content: [{ type: "text", text: PROTOCOL_NOTE }],
       },
       {
         role: "user",
-        content: [contentBlock(video.url), { type: "text", text: request.question }],
+        content: [contentBlock(media), { type: "text", text: request.prompt }],
       },
     ],
     modalities: ["text"],
@@ -69,21 +82,21 @@ export function buildVideoPayload(
   };
 }
 
-function analysisHeaders(cfg: AppConfig, video: ProviderVideo): Record<string, string> {
+function analysisHeaders(cfg: AppConfig, media: ProviderMedia): Record<string, string> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     Authorization: `Bearer ${cfg.apiKey}`,
     Accept: "text/event-stream",
   };
-  if (video.requiresOssResolve || video.url.startsWith("oss://")) {
+  if (media.requiresOssResolve || media.url.startsWith("oss://")) {
     headers["X-DashScope-OssResourceResolve"] = "enable";
   }
   return headers;
 }
 
-function errorForStatus(status: number, requestId?: string): VideoError {
+function errorForStatus(status: number, requestId?: string): MediaError {
   if (status === 401 || status === 403) {
-    return new VideoError({
+    return new MediaError({
       code: "PROVIDER_UNAUTHORIZED",
       stage: "analyzing",
       httpStatus: status,
@@ -91,7 +104,7 @@ function errorForStatus(status: number, requestId?: string): VideoError {
     });
   }
   if (status === 429) {
-    return new VideoError({
+    return new MediaError({
       code: "PROVIDER_RATE_LIMITED",
       stage: "analyzing",
       httpStatus: status,
@@ -99,15 +112,15 @@ function errorForStatus(status: number, requestId?: string): VideoError {
     });
   }
   if (status === 502 || status === 503) {
-    return new VideoError({
+    return new MediaError({
       code: "PROVIDER_UNAVAILABLE",
       stage: "analyzing",
       httpStatus: status,
       ...(requestId === undefined ? {} : { requestId }),
     });
   }
-  return new VideoError({
-    code: "VIDEO_ANALYSIS_FAILED",
+  return new MediaError({
+    code: "MEDIA_ANALYSIS_FAILED",
     stage: "analyzing",
     httpStatus: status,
     retryable: false,
@@ -144,7 +157,7 @@ async function readErrorBody(body: ReadableStream<Uint8Array> | null): Promise<u
   }
 }
 
-function canAutoRetry(err: VideoError, sawText: boolean, retriesLeft: number): boolean {
+function canAutoRetry(err: MediaError, sawText: boolean, retriesLeft: number): boolean {
   if (sawText || retriesLeft <= 0) {
     return false;
   }
@@ -162,7 +175,7 @@ async function sleep(ms: number, signal: AbortSignal): Promise<void> {
     }, ms);
     const onAbort = (): void => {
       clearTimeout(timer);
-      reject(new VideoError({ code: "PROVIDER_TIMEOUT", stage: "analyzing" }));
+      reject(new MediaError({ code: "PROVIDER_TIMEOUT", stage: "analyzing" }));
     };
     if (signal.aborted) {
       onAbort();
@@ -202,36 +215,36 @@ async function* bodyChunks(body: ReadableStream<Uint8Array>): AsyncIterable<Uint
   }
 }
 
-type VideoAttempt =
-  | { ok: true; result: AnalyzeVideoResult }
-  | { ok: false; error: VideoError; retryAfterMs: number; sawText: boolean };
+type MediaAttempt =
+  | { ok: true; result: AnalyzeResult }
+  | { ok: false; error: MediaError; retryAfterMs: number; sawText: boolean };
 
-async function analyzeVideoOnce(
+async function analyzeMediaOnce(
   cfg: AppConfig,
-  video: ProviderVideo,
-  request: AnalyzeVideoRequest,
+  media: ProviderMedia,
+  request: AnalyzeRequest,
   signal: AbortSignal,
-): Promise<VideoAttempt> {
+): Promise<MediaAttempt> {
   let res: Response;
   try {
     res = await fetch(chatCompletionsUrl(cfg), {
       method: "POST",
-      headers: analysisHeaders(cfg, video),
-      body: JSON.stringify(buildVideoPayload(cfg, video, request)),
+      headers: analysisHeaders(cfg, media),
+      body: JSON.stringify(buildMediaPayload(cfg, media, request)),
       signal,
     });
   } catch (err) {
     if (err instanceof Error && err.name === "AbortError") {
       return {
         ok: false,
-        error: new VideoError({ code: "PROVIDER_TIMEOUT", stage: "analyzing" }),
+        error: new MediaError({ code: "PROVIDER_TIMEOUT", stage: "analyzing" }),
         retryAfterMs: 0,
         sawText: false,
       };
     }
     return {
       ok: false,
-      error: new VideoError({ code: "PROVIDER_UNAVAILABLE", stage: "analyzing" }),
+      error: new MediaError({ code: "PROVIDER_UNAVAILABLE", stage: "analyzing" }),
       retryAfterMs: retryWaitMs(undefined),
       sawText: false,
     };
@@ -247,7 +260,8 @@ async function analyzeVideoOnce(
       httpStatus: res.status,
     });
     const error =
-      providerError?.code === "PROVIDER_CONTENT_REJECTED"
+      providerError?.code === "PROVIDER_CONTENT_REJECTED" ||
+      providerError?.code === "MEDIA_MODEL_UNSUPPORTED"
         ? providerError
         : errorForStatus(res.status, requestId);
     return { ok: false, error, retryAfterMs: wait, sawText: false };
@@ -255,7 +269,7 @@ async function analyzeVideoOnce(
   if (res.body === null) {
     return {
       ok: false,
-      error: new VideoError({ code: "PROVIDER_RESPONSE_INVALID", stage: "analyzing" }),
+      error: new MediaError({ code: "PROVIDER_RESPONSE_INVALID", stage: "analyzing" }),
       retryAfterMs: 0,
       sawText: false,
     };
@@ -271,7 +285,7 @@ async function analyzeVideoOnce(
     }
     const aggregated = parser.finish();
     if (aggregated.finishReason === "length") {
-      throw new VideoError({
+      throw new MediaError({
         code: "PROVIDER_RESPONSE_INVALID",
         stage: "analyzing",
         ...(aggregated.requestId === undefined ? {} : { requestId: aggregated.requestId }),
@@ -302,9 +316,9 @@ async function analyzeVideoOnce(
     };
   } catch (err) {
     const error =
-      err instanceof VideoError
+      err instanceof MediaError
         ? err
-        : new VideoError({
+        : new MediaError({
             code: "PROVIDER_RESPONSE_INVALID",
             stage: "analyzing",
             diagnostic: { received_sse_events: parser.eventCount },
@@ -313,18 +327,18 @@ async function analyzeVideoOnce(
   }
 }
 
-export async function analyzeVideo(
+export async function analyzeMedia(
   cfg: AppConfig,
-  video: ProviderVideo,
-  request: AnalyzeVideoRequest,
+  media: ProviderMedia,
+  request: AnalyzeRequest,
   external?: AbortSignal,
-): Promise<AnalyzeVideoResult> {
+): Promise<AnalyzeResult> {
   const controller = new AbortController();
   const abortFromExternal = (): void => {
     controller.abort();
   };
   if (external?.aborted) {
-    throw new VideoError({ code: "VIDEO_ANALYSIS_FAILED", stage: "aborted" });
+    throw new MediaError({ code: "MEDIA_ANALYSIS_CANCELLED", stage: "aborted" });
   }
   external?.addEventListener("abort", abortFromExternal, { once: true });
   const timer = setTimeout(() => {
@@ -334,12 +348,12 @@ export async function analyzeVideo(
 
   try {
     for (;;) {
-      const attempt = await analyzeVideoOnce(cfg, video, request, controller.signal);
+      const attempt = await analyzeMediaOnce(cfg, media, request, controller.signal);
       if (attempt.ok) {
         return attempt.result;
       }
       if (external?.aborted) {
-        throw new VideoError({ code: "VIDEO_ANALYSIS_FAILED", stage: "aborted" });
+        throw new MediaError({ code: "MEDIA_ANALYSIS_CANCELLED", stage: "aborted" });
       }
       if (!canAutoRetry(attempt.error, attempt.sawText, retriesLeft)) {
         throw attempt.error;
@@ -353,10 +367,10 @@ export async function analyzeVideo(
   }
 }
 
-export function createVideoAnalyzer(cfg: AppConfig): VideoAnalyzer {
+export function createMediaAnalyzer(cfg: AppConfig): MediaAnalyzer {
   return {
-    analyze(input, request, signal) {
-      return analyzeVideo(cfg, input, request, signal);
+    analyze(media, request, signal) {
+      return analyzeMedia(cfg, media, request, signal);
     },
   };
 }

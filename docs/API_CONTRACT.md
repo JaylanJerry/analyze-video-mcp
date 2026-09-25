@@ -1,5 +1,7 @@
 # MCP Tool 契约
 
+> **状态（2026-09-25，下一大版本分支）：** 本文件描述本工作区**已实现但尚未发布**的 `analyze_media(media, prompt)`。npm 上的 `analyze-video-mcp@0.6.1` 仍是旧契约 `analyze_video(video, question?)`，其行为见文末 [迁移表](#迁移表旧契约--新契约) 与 git 历史。发布前本文不得被当成已上线证据。目标与边界见 [`SPEC_NEXT_MAJOR_MEDIA_GATEWAY.md`](SPEC_NEXT_MAJOR_MEDIA_GATEWAY.md) 与 [ADR 0024](decisions/0024-agent-directed-media-gateway.md)。
+
 本文件定义 Agent 可见的稳定接口。Provider、模型与上传实现可以替换，但不得修改此契约，除非新增 ADR 并经用户批准。
 
 ## Tool 列表
@@ -7,73 +9,67 @@
 Server 只注册：
 
 ```text
-analyze_video
+analyze_media
 ```
 
-不得注册上游的 `analyze_image`、`analyze_audio`、`analyze_audio_video` 或 `check_endpoint_status`。这是专项 fork 的有意破坏性收敛，见 ADR 0001。
+不注册上游的 `analyze_image`、`analyze_audio`、`analyze_audio_video` 或 `check_endpoint_status`，也不保留 `analyze_video` 作为别名（ADR 0001、ADR 0024 备选方案 3）。
 
 ## 输入 schema
 
 ```json
 {
-  "video": "C:\\Videos\\example.mp4",
-  "question": "画面里发生了什么？音频说了什么？"
+  "media": "C:\\Users\\user\\Videos\\example.mov",
+  "prompt": "只分析 00:30 附近画面与声音是否对应；不确定时直接说明"
 }
 ```
 
-| 字段       | 类型   | 必需 | 默认                               | 约束                                  |
-| ---------- | ------ | ---- | ---------------------------------- | ------------------------------------- |
-| `video`    | string | 是   | 无                                 | 本地绝对 MP4/MOV 路径或公开 HTTPS URL |
-| `question` | string | 否   | `画面里发生了什么？音频说了什么？` | trim 后 1–8000 字符                   |
+| 字段     | 类型   | 必需 | 默认 | 约束                                                     |
+| -------- | ------ | ---- | ---- | -------------------------------------------------------- |
+| `media`  | string | 是   | 无   | 本地绝对 MP4/MOV/MP3 路径，或无凭证的公开 HTTPS 视频 URL |
+| `prompt` | string | 是   | 无   | trim 后 1–8000 字符；空或超长是输入错误，不替换也不截断  |
 
-Tool schema 不得出现：`max_tokens`、`model`、`provider`、`thinking_budget`、`stream`、`upload`、`audio`、`frames`、`oss_url`。回答长度按模型自身上限，不给 Agent 旋钮。
+Tool schema 不得出现：`max_tokens`、`model`、`provider`、`thinking_budget`、`stream`、`upload`、`audio`、`frames`、`oss_url`、`question`。回答长度按模型自身上限，不给 Agent 旋钮。
+
+`media` 的拒绝规则：相对路径、目录、伪装后缀、`http:`、`file:`、`data:`、含用户名/密码的 URL、localhost 与 obvious loopback/private 字面量。**路径明显以 `.mp3` 结尾的 HTTPS URL 拒绝为未支持的远端音频**（`UNSUPPORTED_MEDIA`，`diagnostics.input_kind=remote_audio`）：本机不抓取远端内容，后缀不构成远端格式证明。其它无法判别的 HTTPS URL 仍按视频直连，这**不代表**其远端格式已被验证。
 
 ## Tool 描述语义
 
 描述文本应让 Agent 明确：
 
 ```text
-只在用户明确要求用 MCP（本工具）分析视频时才调用；用户只是要你处理视频而没点名本工具时走宿主自己的流程，不要自动调用。
-它会联合分析视频画面和视频内嵌音频，并返回文本回答。
-不要先自行抽帧或抽音频；直接传入视频路径或 HTTPS URL。
-一次最多 1 小时；本地还受 1024 MiB 与当场上传政策约束。
-这是抽样理解，不是帧级剪辑定位。精确转场请先提供 5–30 秒片段。
-本地文件（MP4 / MOV，ISO BMFF）须已获授权：位于 QWEN_ALLOWED_ROOTS 内，或该安装已开启 QWEN_ALLOW_ANY_LOCAL_VIDEO。被拒绝时提示用户改配置，不要换路径重试。同一本地文件会复用已上传地址；未命中则全量上传。
-把用户的分析要求写入 question：具体则原样转发，空话则先整理再调用。
+只在用户明确要求用 MCP（本工具）分析媒体时才调用；用户只是要你处理媒体而没点名本工具时走宿主自己的流程，不要自动调用。
+它把本地 MP4/MOV 视频（画面与内嵌声音一起）、本地 MP3 音频或公开 HTTPS 视频 URL 交给媒体模型分析，返回文本回答。
+不要先自行抽帧或抽音频。
+prompt 必填：把用户的分析要求写进去；服务端不补写分析提纲，也不改写你的问题。
+一次最多 1 小时、本地最大 1024 MiB；这是抽样理解，不是帧级或逐字核验。精确转场请先提供 5–30 秒片段。
+本地文件须已获授权：位于 MEDIA_ALLOWED_ROOTS 内，或该安装已开启 MEDIA_ALLOW_ANY_LOCAL_FILE（被拒绝时提示用户改配置，不要换路径重试）。同一本地文件会复用已上传地址；未命中则全量上传。
 ```
 
-Server-level instructions 与 Tool 描述保持同义，第一句表达“仅在用户明确要求时调用”，随后说明“视频画面 + 音频”。
+Server-level instructions 与 Tool 描述保持同义，第一句表达“仅在用户明确要求时调用”。
 
-宽泛请求（省略 `question`，或「分析一下」「看看这个视频」这类短而笼统的说法）由服务端补上默认分析要求：时间线分段（单一场景/循环画面可不分段）、构图与画面元素（前景/主体/背景分层）、动态与特效（镜头运动、元素运动、光效与转场及时间）、色彩与光影（主色、冷暖、光源与轮廓光、质感；不猜制作软件）、实际听到的声音与推断声音分开并说明是否与画面同步、节奏与情绪、有依据的优点与问题、用途建议、不确定处；并声明这是抽样理解而非逐帧或逐字核验。要求里不设固定条数或字数，也不要求编造内容。问题里带时间码或「只核对…」这类限定词时按具体问题原样发送，不套用模板。
+**服务端不注入业务提纲。** 每个请求只附带一条固定的协议性系统说明（`src/bailian.ts` 的 `PROTOCOL_NOTE`）：要求文本回答、只写实际看到或听到的内容、不确定就说明、不要编造。它不规定时间线、构图、色彩、音乐、优缺点、用途建议或任何条数/字数，也不随 prompt 变化。宽泛问题（例如“分析一下”）与具体问题（例如带时间码的核对要求）都按原意发送，服务端不展开、不重写、不追加模板。
 
-调用条件属于**提示词层面的引导**，不是强制机制：宿主是否加载 instructions、模型是否遵守都不由本服务决定。真正可控的是服务端校验与安装配置（允许根、`QWEN_ALLOW_ANY_LOCAL_VIDEO` 默认关闭、宿主的工具可见性与审批模式），文档不得把提示词写成“保证不会被调用”。
+调用条件属于**提示词层面的引导**，不是强制机制：宿主是否加载 instructions、模型是否遵守都不由本服务决定。真正可控的是服务端校验与安装配置（`MEDIA_ALLOWED_ROOTS`、`MEDIA_ALLOW_ANY_LOCAL_FILE` 默认关闭、宿主的工具可见性与审批模式），文档不得把提示词写成“保证不会被调用”。
 
 ## 成功结果
 
-MCP `CallToolResult`：
-
 ```json
 {
-  "content": [
-    {
-      "type": "text",
-      "text": "模型回答\n\n分项观察（抽样）：\n画面：\n- 00:05 （看到）标题卡\n声音：\n- 00:06 （模型报告听到）女声朗读…\n（以上为抽样观察，不是逐帧、逐字或全量核验。）"
-    }
-  ],
+  "content": [{ "type": "text", "text": "模型的回答（经敏感信息脱敏）" }],
   "structuredContent": {
     "ok": true,
-    "coverage": {
-      "video_strategy": "sampled_multimodal",
-      "ocr_performed": false
+    "answer": "模型的回答（经敏感信息脱敏）",
+    "media": {
+      "kind": "video",
+      "container": "mov",
+      "duration_seconds": 42,
+      "audio_track_present": true
     },
-    "subtitle_audit": {
-      "mode": "sampled",
-      "complete_verification": false
-    },
-    "visual_observations": [],
-    "audio_observations": [],
-    "inferences": [],
-    "uncertainties": []
+    "request": { "provider": "dashscope", "model": "本次实际模型 ID", "upload_reused": false },
+    "usage": { "prompt_tokens": 100, "completion_tokens": 30, "total_tokens": 130 },
+    "limitations": [
+      "画面与内嵌音频由模型分析，本机未逐帧核验；本地轨道探测只证明文件含可解码音轨，不代表模型确认听到声音。"
+    ]
   },
   "isError": false
 }
@@ -81,27 +77,33 @@ MCP `CallToolResult`：
 
 规则：
 
-- 文本必须是完整中文回答（模型 JSON 的 `answer`，或模型未返回 JSON 时的原文），且 `answer` 是文本的第一段。
-- 模型返回合格证据 JSON 时，文本还要带上分项观察：按 `画面` / `声音` / `推断` / `不确定` 分节，每项写成 `- 时间（证据类型[, 置信度]）描述`，置信度低于 0.6 时才显示。这样只读文本、不读 `structuredContent` 的宿主也能看到分段证据，而不是只剩一段摘要。
-- 观测数量与单条长度只受**展示上限**约束（`src/evidence.ts` 的 `DEFAULT_TEXT_LIMITS`：每节 12 条、单条 220 字）。超出条数时，文本按输入列表的原顺序分成连续索引组，每组选择一条代表项；首组和末组分别保留该组首尾，内部组优先选择 `seen` / `heard` / `measured` 直接观察，否则选择靠近组中点的条目。此策略不解析或重排时间戳，不保证按真实时间等距覆盖；输入若乱序，输出也保持原列表顺序。结构化结果保留完整列表。被截断时附一行「另有 N 项未在此展开」，不向模型要求固定条数或固定字数。
-- 报告里没有任何分项观察时，文本写明「本次没有可列出的分项观察」，不补造小节。
-- 不加固定标题、模型名、request id 或耗时。不得把原始 JSON 当作唯一可见结果。
-- 若模型返回了合格的证据 JSON，可附加安全的 `structuredContent`（无路径、无 Key、无 OSS）。成功结果还带 `coverage` 与 `subtitle_audit`；本版 `complete_verification` 恒为 `false`。旧 Host 忽略未知字段。
-- 成功回答和所有结构化描述在单一出口统一去除内部 `oss://` 地址、凭证形态和本机绝对路径（包括含空格的 Windows 视频路径）；普通 HTTPS 链接与媒体描述保留。无法解析为结构化报告的散文不产生分项证据或“已核实”语义。正文声音结论由 `heard` 分项校验；无法对应的确定性声音句在本地清理，不为此单独发起第二次付费请求。该词句校验是保守规则，不等同于语义真值验证。
-- 分项时间码须为 `MM:SS`（分钟可超过两位、秒为 `00–59`），本地媒体上不得晚于已知时长；缺失、格式无效或越界的直接观察降为不确定项。时间码仍是模型抽样位置，不代表精确帧定位。
-- 正文里的确定性声音结论必须有正向 `heard` 观察支持；仅在本地确认有音轨且已完整测得数字静音时，明确否定的 `heard` 描述（如“未检测到声音”“无对白、无音乐”）才会规范为 `uncertain`、不计入 `audio_observed` 或声音冲突，并清除匹配否定句中的内联 `(evidence=heard)` 标记。默认关闭、HTTPS、无音轨或测量不完整时不做此规范化。按分句识别，像“没听到音乐，但听到枪声”仍包含正向 heard 声明。只有 `uncertain` / `inferred` 音频项时，会移除正文中无支持的确定性声音句，并明确本次未能确认声音内容。`audio_observed` 表示存在符合门槛的正向模型报告，不等于独立核听或准确率。
-- 空白回答视为错误。
+- `content[0].text` 与 `structuredContent.answer` 必须是**同一份**脱敏文本，即模型回答本身；不附加固定审核报告、分项观察、模型名、request id 或耗时。
+- 脱敏只在单一出口移除内部 `oss://` 地址、凭证形态与本地绝对路径（含空格的 Windows 路径）；`普通 HTTPS 链接与媒体语义保留`，不做句子删除、重排、纠错或结论升级。
+- 空白回答是错误（`PROVIDER_RESPONSE_INVALID`）。
+- **本地 MP3 协议已于 2026-09-25 用真实百炼调用验证**（非私密合成 9 秒样本 + 890 秒真实 MP3，均为 `qwen3.8-omni-flash`；证据见 [`PROVIDER_PROTOCOL.md`](PROVIDER_PROTOCOL.md) §3b）。仍未验证：`MEDIA_MODEL_UNSUPPORTED` 的服务商真实错误码措辞、宿主 GUI、费用金额。
+- **已知限制（2026-09-25 实测）：** 只有音频轨、没有视频轨的 MP4 经视频路径提交会被服务商以 **HTTP 400** 拒绝（`MEDIA_ANALYSIS_FAILED` + `http_status=400`，无 SSE 事件与用量）。请为纯音频使用 `.mp3`；不要把它当视频提交。服务端不做自动转封装。
+- `media` 只放本次**确实建立**的本地事实；字段缺席表示未知，不能填 `false` 冒充已检查：
+  - `kind`：`video` 或 `audio`。本地由已验证的文件内容决定；首批 HTTPS 输入按视频处理。
+  - `container`：仅本地格式识别成功时出现（`mp4` / `mov` / `mp3`）。
+  - `duration_seconds`：仅本地可靠求出时出现（MP4/MOV 读 `mvhd`；MP3 需 Xing/VBRI 帧数或确认的恒定码率）。求不出就不出现，也不猜一个数字。
+  - `audio_track_present`：仅本地视频轨道探测**完整**时出现（`true` 表示发现受支持音轨，`false` 表示轨道结构完整但确无音轨）。探测不完整时不出现。MP3 不设视频轨或轨道缺失结论，因此该字段不出现。
+- `request.provider` 固定为 `dashscope`（首发唯一服务商，不自动跨云回退）。`request.model` 是本次实际模型 id。`request.upload_reused` **仅对本地文件出现**，只陈述本地上传缓存命中，不表示模型记忆、也不表示本次分析免费（每次分析仍可能计费）。HTTPS 没有上传，因此不出现该字段。
+- `usage` 只填服务商实际返回的值；缺失字段不补 0，全部缺失时整个 `usage` 不出现。
+- `limitations` 只写与本次媒体和已执行检查相符的限制，并按媒体类型区分：视频写“未逐帧核验”，音频写“未逐字转写核验”，HTTPS 写“本机未下载或探测远端内容”。不得把“文件有音轨/已提交音频”写成“模型确实听到”；模型自己说听到也只是模型报告。
 - Tool 不流式向 Agent 暴露 provider chunk；内部 SSE 只用于满足 provider 协议并聚合结果。
-- 若 Host 在调用时提供 `progressToken`，本地路径会在上传开始、上传结束、推理开始各发一次 `notifications/progress`；HTTPS 只发推理开始。消息为中文通用句，不含路径或密钥。无 token 的旧 Host 仍只收到最终纯文本。
+- 若 Host 在调用时提供 `progressToken`，会依次收到四步进度：`正在校验媒体` → `媒体校验完成` → `上传完成`（HTTPS 跳过）→ `正在等待模型回答` → `分析完成`，`total` 恒为 4。消息不含路径或密钥；无 token 的 Host 仍只收到最终结果。
+- 取消（Host 取消请求或进程收到 SIGINT/SIGTERM）返回 `MEDIA_ANALYSIS_CANCELLED`，并释放文件句柄、停止未完成的上传与推理；不会把宿主 60 秒等待超时写成服务商失败。
+
+**每次调用只发起一次模型请求。** 不存在“证据纠错”式第二次付费分析；允许的自动重试只有传输层在**尚未收到任何文本**时对 429/502/503 的一次有限重试（沿用旧契约的同一上限）。
 
 ## 错误结果
 
 ```json
 {
-  "content": [{ "type": "text", "text": "VIDEO_FILE_TOO_LARGE: 视频超过本地允许上限。" }],
+  "content": [{ "type": "text", "text": "MEDIA_TOO_LONG: 媒体时长超过 1 小时上限。" }],
   "structuredContent": {
     "ok": false,
-    "code": "VIDEO_FILE_TOO_LARGE",
+    "code": "MEDIA_TOO_LONG",
     "stage": "authorized",
     "retryable": false
   },
@@ -111,82 +113,87 @@ MCP `CallToolResult`：
 
 允许的 Agent 错误码：
 
-| 错误码                      | 含义                                                                                                                                                                                                                     | 是否建议 Agent 重试 |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------- |
-| `INVALID_VIDEO_INPUT`       | schema 之外的输入问题                                                                                                                                                                                                    | 否                  |
-| `VIDEO_PATH_NOT_ALLOWED`    | 本地路径未被授权：不在允许根内，且安装未开启 `QWEN_ALLOW_ANY_LOCAL_VIDEO`                                                                                                                                                | 否                  |
-| `VIDEO_NOT_FOUND`           | 文件不存在或不可读                                                                                                                                                                                                       | 否                  |
-| `UNSUPPORTED_VIDEO`         | 非 MP4/MOV、magic 不符或不是普通文件                                                                                                                                                                                     | 否                  |
-| `UNSUPPORTED_VIDEO_CODEC`   | 编码不在支持集（视频 H.264/H.265，音频 AAC）；`diagnostics.codec` 给出检测到的 fourcc。若点名 PCM 且视频轨已受支持，可只将音频转为 AAC 并复制视频轨；`-c copy` 不会转换 PCM                                              | 否                  |
-| `VIDEO_FILE_TOO_LARGE`      | 超过本地或动态 policy 上限                                                                                                                                                                                               | 否                  |
-| `VIDEO_TOO_LONG`            | 本地 MP4 时长大于 3600 秒；正好 3600 允许                                                                                                                                                                                | 否                  |
-| `UPLOAD_POLICY_FAILED`      | 取上传凭证失败或凭证不可用；`diagnostics.parse_reason` 区分 `request_failed` / `http_error`（带 `http_status`）/ `invalid_json` / `shape_mismatch` / `field_type_mismatch` / `upload_host_invalid`，`field` 指向具体字段 | 可稍后重试          |
-| `VIDEO_UPLOAD_FAILED`       | 本地上传失败；应改用公开 HTTPS，不要重传原文件                                                                                                                                                                           | 否                  |
-| `PROVIDER_UNAUTHORIZED`     | API Key 或接口地址无效                                                                                                                                                                                                   | 否                  |
-| `VIDEO_ANALYSIS_BUSY`       | 已有一个视频任务正在上传或分析                                                                                                                                                                                           | 稍后重试            |
-| `PROVIDER_RATE_LIMITED`     | 429                                                                                                                                                                                                                      | 按提示稍后重试      |
-| `PROVIDER_TIMEOUT`          | 推理超时                                                                                                                                                                                                                 | 可重试              |
-| `PROVIDER_UNAVAILABLE`      | 502/503 等暂时故障                                                                                                                                                                                                       | 可重试              |
-| `PROVIDER_RESPONSE_INVALID` | SSE/JSON 不符合契约或中途截断                                                                                                                                                                                            | 可重试              |
-| `PROVIDER_CONTENT_REJECTED` | 百炼返回 `DataInspectionFailed` / `data_inspection_failed`，表示内容检查拦截；不能据此判定视频违规。原始服务商消息不透传                                                                                                 | 否                  |
-| `VIDEO_ANALYSIS_FAILED`     | 其他已脱敏错误                                                                                                                                                                                                           | 视情况              |
-| `CONFIG_MISSING`            | 启动后调用时仍缺 Key 等配置；`missing` 列出变量名                                                                                                                                                                        | 否                  |
+| 错误码                      | 含义                                                                                                                                                                                               | 是否建议 Agent 重试 |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
+| `INVALID_MEDIA_INPUT`       | schema 之外的输入问题（含空白/超长 `prompt`、非法 `media` 形式）                                                                                                                                   | 否                  |
+| `MEDIA_PATH_NOT_ALLOWED`    | 本地路径未被授权：不在 `MEDIA_ALLOWED_ROOTS` 内，且安装未开启 `MEDIA_ALLOW_ANY_LOCAL_FILE`                                                                                                         | 否                  |
+| `MEDIA_NOT_FOUND`           | 文件不存在、不可读或身份复核失败                                                                                                                                                                   | 否                  |
+| `UNSUPPORTED_MEDIA`         | 容器/内容无效或类型不支持（含非 MP4/MOV/MP3、MP3 无有效音频帧、远端 `.mp3` URL）                                                                                                                   | 否                  |
+| `UNSUPPORTED_MEDIA_CODEC`   | 已识别媒体中的编码组合不支持；`diagnostics.codec` 给出 fourcc（如 `ipcm`）或 MPEG 层（如 `mpeg1-layer2`）。若点名 PCM 且视频轨已受支持，可只把音频转为 AAC 并复制视频轨                            | 否                  |
+| `MEDIA_FILE_TOO_LARGE`      | 超过本地或动态 policy 上限                                                                                                                                                                         | 否                  |
+| `MEDIA_TOO_LONG`            | 已知时长大于 3600 秒；正好 3600 允许；时长未知则放行（不猜）                                                                                                                                       | 否                  |
+| `UPLOAD_POLICY_FAILED`      | 取上传凭证失败或凭证不可用；`diagnostics.parse_reason` 区分 `request_failed` / `http_error`（带 `http_status`）/ `invalid_json` / `shape_mismatch` / `field_type_mismatch` / `upload_host_invalid` | 可稍后重试          |
+| `MEDIA_UPLOAD_FAILED`       | 本地上传失败；应改用公开 HTTPS，不要重传原文件                                                                                                                                                     | 否                  |
+| `PROVIDER_UNAUTHORIZED`     | API Key 或接口地址无效                                                                                                                                                                             | 否                  |
+| `MEDIA_ANALYSIS_BUSY`       | 已有一个媒体任务正在上传或分析                                                                                                                                                                     | 稍后重试            |
+| `PROVIDER_RATE_LIMITED`     | 429                                                                                                                                                                                                | 按提示稍后重试      |
+| `PROVIDER_TIMEOUT`          | 推理超时                                                                                                                                                                                           | 可重试              |
+| `PROVIDER_UNAVAILABLE`      | 502/503 等暂时故障                                                                                                                                                                                 | 可重试              |
+| `PROVIDER_RESPONSE_INVALID` | SSE/JSON 不符合契约、中途截断、仅有 reasoning 或空回答                                                                                                                                             | 可重试              |
+| `PROVIDER_CONTENT_REJECTED` | 百炼返回 `DataInspectionFailed` / `data_inspection_failed`，表示内容检查拦截；不能据此判定媒体违规。原始服务商消息不透传                                                                           | 否                  |
+| `MEDIA_MODEL_UNSUPPORTED`   | 已核对的模型能力配置或服务商**明确**的模态/模型拒绝证明所选模型不支持该输入                                                                                                                        | 否                  |
+| `MEDIA_ANALYSIS_CANCELLED`  | 用户或 Host 取消（`stage: aborted`）；已释放资源                                                                                                                                                   | 否                  |
+| `MEDIA_ANALYSIS_FAILED`     | 其他已脱敏错误                                                                                                                                                                                     | 视情况              |
+| `CONFIG_MISSING`            | 启动后调用时仍缺 Key 等配置；`missing` 列出变量名                                                                                                                                                  | 否                  |
 
-当服务商在 SSE 错误事件或 HTTP 错误正文中返回内容检查错误时，结果会给出 `PROVIDER_CONTENT_REJECTED`、`retryable:false`，不会把它误报为无效 SSE。`diagnostics.error_code` 保留经过形状校验的服务商错误码，`diagnostics.inspection_side` 仅为 `input` / `output` / `unknown`：只从已知固定错误措辞判断，无法判断时用 `unknown`。如响应正文的显式 `request_id` 或 Header 提供符合安全格式的 Request ID，错误 `structuredContent.request_id` 会带上它；SSE 的 `id`（如 `chatcmpl-…`）是补全 ID，不当作 Request ID。原始错误消息、路径、密钥和 OSS URL 不透传。其他明确的 SSE 服务商错误归为不可直接重试的 `VIDEO_ANALYSIS_FAILED`，保留安全错误码；HTTP 429/502/503 的既有重试策略不变。内容检查拒绝不自动触发重复上传或分析调用。参见 [ADR 0023](decisions/0023-provider-inspection-errors.md)。
+补充规则：
 
-`coverage` 字段分三组语义，不要混用：
+- 已知内容检查拒绝保持**不可自动重试**，也不自动触发重复上传或分析；不根据拒绝推断用户媒体违规。
+- `MEDIA_MODEL_UNSUPPORTED` 只在服务商明确返回已核对的模态/模型拒绝错误码时使用（`src/provider-error.ts` 的固定 allowlist）。未知模型能力**不等于**已证明不支持；不得靠“回答没提到声音”推断此错误。该 allowlist 目前只由 mock 固定，真实服务商措辞仍需 live 核对。
+- SSE 的 `id`（如 `chatcmpl-…`）是补全 ID，**不当作 Request ID**；只有响应 Header 或正文中显式且符合安全格式的 `request_id` 才会出现在 `structuredContent.request_id`。
+- 内容检查拒绝的 `diagnostics.inspection_side` 仅为 `input` / `output` / `unknown`，只从已知固定措辞判断。
+- 缺 Key 或坏配置不得阻止 MCP `initialize` / `listTools`；工具调用时返回 `CONFIG_MISSING`。
+- `analyze-video-mcp --doctor --json` 与运行时共用同一配置解析器，绝不打印 Key，并报告旧媒体变量已失效。
 
-| 组                                           | 字段                                                                                      | 含义                                                                                                                                                                                                                                                                                                                                              |
-| -------------------------------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 本地事实（仅本地文件；HTTPS 为 `undefined`） | `container`、`video_track_present`、`audio_track_present`、`video_codecs`、`audio_codecs` | 由容器轻量探测得出；轨道存在性为 `true`（找到受支持编码）、`false`（轨道结构完整但未发现该轨）或缺席（探测不完整、无法判断）。fourcc 不证明整条轨道可解码。                                                                                                                                                                                       |
-| 请求层                                       | `video_analyzed`、`audio_analyzed`                                                        | 该模态随视频请求提交。本地文件按轨道存在性取值：**没有音轨时 `audio_analyzed=false`**；HTTPS 未探测，恒为 `true`。对本地文件，`audio_analyzed=true` 只说明音轨存在并随视频提交，不证明模型听清或完整核听                                                                                                                                          |
-| 报告层                                       | `video_observed`、`audio_observed`、`evidence_conflicts`                                  | `observed` 表示模型**直接确认**该类内容：画面需 `seen`、声音需 `heard`（`inferred`/`uncertain`/`cross_validated` 都不算），且本地探测未与之矛盾；散文路径无分项，均为 `false`。`evidence_conflicts` 列出**模型声明与本地探测冲突**的情形（例如声称听到、但本地未发现音轨），这类声明**不计入** `observed`，必须显式呈现给用户，不得当作已确认观察 |
+Agent 错误文本禁止包含：API Key 或任何首尾片段、policy/signature/临时 AccessKey、`oss://` 全路径、上传 host 的 query、本地绝对路径、provider 原始响应体。完整诊断只能写 stderr，且同样必须脱敏；允许记录错误码、HTTP 状态、阶段、request id、耗时和文件大小。
 
-`audio_observed=true` 只表示模型返回了至少一条通过规则检查的正向 `heard` 报告，且本地轨道探测未与其冲突；明确否定内容即使被模型标成 `heard`，也会降为 `uncertain`。混合肯定/否定描述按分句判断，任一正向子句仍算模型声称听到。此标记是模型报告层信号，不是独立听音、转录或与用户确认真值比对后的准确性结论。文本结果会将声音分项里的 `heard` 标为“模型报告听到”，画面、推断和待确认条目仍使用各自的证据标签。此措辞不改变结构化证据字段或公共 schema。
+## 迁移表：旧契约 → 新契约
 
-安装可选设置 `QWEN_AUDIO_SILENCE_CHECK=on` 时，工具会在上传前尝试对已授权本地文件的全部音轨作完整解码。只有每轨都产生样本且 peak 为 `-inf` 才确认 PCM 数字全零；此时正向模型 `heard` 声音条目被标为 `uncertain`，并在 `evidence_conflicts` 说明模型原报与本地数字静音冲突；只有描述的所有分句都明确否定（可包括“处于静音状态”的补充句）时，heard 才不产生冲突。若本地已确认存在音轨且 PCM 全零，工具会对少数明确声称“轨道不存在/空白”或“因无信号无法确定轨道存在”的措辞优先呈现本地事实，并窄范围修正“当前/实际音轨缺失”的推断，同时保留无法确认声音语义及视频原本是否应有可听声音的限制；没有完成此测量时不作此类改写。可明确分开的视觉前缀及结构化视觉 observations 会保留；自由文本里以声音开头、又把视觉动作连在同一分句中的句子（例如“听到枪声时男子倒地”）可能为避免保留未确认声音而整句删除。此检查默认关闭；HTTPS、FFmpeg 不存在/不兼容、解码失败或其它不完整情况都不会据此判断静音/非静音，而在 `coverage_limitations` 披露未执行或未完成。它不增加 Tool 参数或 structuredContent 键，也不增加 provider 请求。非零 PCM 不能证明声音可听、属于音乐/歌曲或含有歌声；数字全零也不证明整部媒体在人类感知上绝对无声。细节与威胁边界见 [ADR 0022](decisions/0022-analyze-video-optional-silence-check.md)。
-
-当 `audio_track_present=true` 而 `audio_observed=false`（或视频同理）时，`coverage_limitations` 会显式写出原因，并区分两种情形：完全没有该类条目（“没有给出任何「听到」的观察”），或只有其它类型条目（“没有直接确认听到的内容（现有音频条目为：声画一致、待确认）”）。文本结果也提醒这不表示静音，并建议截取目标处 5–30 秒针对声音复核。画面字幕、标题卡和其它屏幕文字只算 `seen`，不能证明听到对白或旁白。不得把 `audio_observed=false` 读成“文件没有声音”。结构化结果另含 `model`（本次实际使用的模型 id），便于核对是哪次调用产生的结论。
-
-`PROVIDER_RESPONSE_INVALID` 的 `diagnostics.parse_reason` 可能是 `json_without_answer`：模型返回了 JSON 但没有可用的 `answer` 字段，工具不会把原始 JSON 当回答返回。
-
-声画配对校验（`collectViolations` / `sanitizeEvidenceReport`）：`cross_validated` 条目要求对面模态存在**直接确认且自身能通过清理**的条目（画面需有可用的 `seen`，声音需有可用的 `heard`）。只有另一侧为非空数组不够——`uncertain` 不能作担保，**将被清理删除的条目也不能作担保**（例如一条因含“似乎”而被降级的 `seen`），两侧互相 `cross_validated` 而没有任何确认条目属于循环论证。不满足时该条目就地降级为 `inferred`（保留信息，不再是观察依据）。
-
-证据冲突（`coverage.evidence_conflicts`）：当模型报告了本地完整轨道探测未发现的模态内容（如声称听到、但未发现音轨）时，该项声明**不计入** `audio_observed` / `video_observed`，并写入 `evidence_conflicts` 与一条 `coverage_limitations` 提示。用户可见文本和结构化分项会把冲突条目标为 `uncertain`，正文改为冲突说明；`evidence_conflicts` 记录清理前的模型声明。**结构化输出在冲突列表为空时省略 `evidence_conflicts` 字段**；字段缺席表示本次没有检测到这类冲突，不表示做过完整验证，也不能据此证明某个版本是否部署。轨道探测不完整和 HTTPS 输入的 `*_track_present` 缺席，不产生冲突判定，也不能解释为无音轨。
-
-清理与校验使用同一套判定，因此 `sanitizeEvidenceReport` 的输出是**不动点**：对清理后的报告再跑一次 `collectViolations` 必为空、再清理一次结果不变（有回归测试守住这一点）。
-
-Agent 错误文本禁止包含：
-
-- API Key 或任何首尾片段；
-- policy、signature、临时 AccessKey；
-- `oss://` 全路径；
-- 上传 host 的 query；
-- 本地绝对路径；
-- provider 原始响应体。
-
-完整诊断只能写 stderr，且同样必须脱敏凭证和本地路径；允许记录错误码、HTTP 状态、阶段、request id、耗时和文件大小。Agent 同时收到安全的 `structuredContent`（`ok`/`code`/`stage`/`retryable`，可选 `http_status`、安全格式的 `request_id` 与受限 `diagnostics`）。`CONFIG_MISSING` 另含 `missing`、`suggestion` 与嵌套 `error`，仍不得含路径、Key、OSS、policy 或 signature。
-
-缺 Key 或坏配置不得阻止 MCP `initialize` / `listTools`。工具调用时返回 `CONFIG_MISSING`。`analyze-video-mcp --doctor --json` 与运行时共用同一配置解析器，绝不打印 Key。
-
-`VIDEO_TOO_LONG`：`retryable: false`；`stage` 为 `authorized`；Agent 文本与 diagnostic 不得含本地绝对路径。大于 3600 秒拒绝，正好 3600 秒允许。读不出时长（缺 `mvhd`、非法 box、`timescale == 0`）则放行，不得用本错误码。HTTPS 不探测时长。
+| 旧（`analyze-video-mcp@0.6.1`）                          | 新（本分支，未发布）                                       | 条件                              |
+| -------------------------------------------------------- | ---------------------------------------------------------- | --------------------------------- |
+| `analyze_video(video, question?)`                        | `analyze_media(media, prompt)`，`prompt` 必填              | Tool 名称与字段均变更，不并列保留 |
+| 省略 `question` 时用服务端默认问题                       | 无默认问题；`prompt` 空则 `INVALID_MEDIA_INPUT`            | 服务端不再替 Agent 提问           |
+| 宽泛请求追加九段分析提纲                                 | 只追加固定协议说明，无业务提纲                             | 服务端不再展开问题                |
+| 强制证据 JSON + 失败时二次纠错请求                       | 不做 JSON 强制解析，不产生第二次付费请求                   | 旧报告层与纠错已移除              |
+| `INVALID_VIDEO_INPUT`                                    | `INVALID_MEDIA_INPUT`                                      | 输入无效、路径/URL 形式错误       |
+| `VIDEO_PATH_NOT_ALLOWED`                                 | `MEDIA_PATH_NOT_ALLOWED`                                   | 本地访问未授权                    |
+| `VIDEO_NOT_FOUND`                                        | `MEDIA_NOT_FOUND`                                          | 不存在、不可读或身份复核失败      |
+| `UNSUPPORTED_VIDEO`                                      | `UNSUPPORTED_MEDIA`                                        | 容器/内容无效或类型不支持         |
+| `UNSUPPORTED_VIDEO_CODEC`                                | `UNSUPPORTED_MEDIA_CODEC`                                  | 已识别媒体中的编码组合不支持      |
+| `VIDEO_FILE_TOO_LARGE`                                   | `MEDIA_FILE_TOO_LARGE`                                     | 本地文件超过有效上限              |
+| `VIDEO_TOO_LONG`                                         | `MEDIA_TOO_LONG`                                           | 已知时长超过上限                  |
+| `VIDEO_UPLOAD_FAILED`                                    | `MEDIA_UPLOAD_FAILED`                                      | 本地上传失败                      |
+| `VIDEO_ANALYSIS_BUSY`                                    | `MEDIA_ANALYSIS_BUSY`                                      | 已有分析占用当前服务实例          |
+| `VIDEO_ANALYSIS_FAILED` + `stage=aborted`                | `MEDIA_ANALYSIS_CANCELLED`（`retryable:false`）            | 用户或 Host 取消                  |
+| 其它 `VIDEO_ANALYSIS_FAILED`                             | `MEDIA_ANALYSIS_FAILED`                                    | 未归入更具体错误                  |
+| （无）                                                   | `MEDIA_MODEL_UNSUPPORTED`                                  | 已证明模型不支持该模态            |
+| `UPLOAD_POLICY_FAILED` / `PROVIDER_*` / `CONFIG_MISSING` | 同码保留                                                   | 行为不变                          |
+| `coverage` / `subtitle_audit` / 分项观察等结构化字段     | `media` / `request` / `usage` / `limitations`              | 旧报告层字段整体移除              |
+| `QWEN_ALLOWED_ROOTS`                                     | `MEDIA_ALLOWED_ROOTS`（旧变量不再授予访问，doctor 会提示） | 显式迁移，不静默继承              |
+| `QWEN_ALLOW_ANY_LOCAL_VIDEO`                             | `MEDIA_ALLOW_ANY_LOCAL_FILE`（默认 `off`）                 | 显式迁移；不再有“任意视频”语义    |
+| `QWEN_MAX_LOCAL_VIDEO_MB`                                | `MEDIA_MAX_LOCAL_MEDIA_MB`                                 | 上限仍为 1024 MiB 硬顶            |
+| `QWEN_AUDIO_SILENCE_CHECK`                               | 移除；该变量不再生效                                       | 本地 FFmpeg 数字静音核对已退出    |
 
 ## 兼容性规则
 
 - 后续更换模型或上传器时，Tool 名称、输入字段与成功输出不变。
 - 增加可选字段也视为公开 API 变更，需要 ADR 和兼容性测试。
-- 如果后续纯视频模型不能听音频，适配器不得默默声称听到了内容。它可以正常回答视觉问题；当问题明确依赖音频时，返回诚实的能力限制说明，但仍使用同一 Tool。
-- v1 不承诺兼容上游五 Tool schema；这是独立专项产品接口。
+- 如果所选模型不能处理某种输入，适配器不得默默声称分析过该模态；应返回 `MEDIA_MODEL_UNSUPPORTED` 或保留模型自己的不确定性表述，不得把“没读到音频”包装成成功结论。
+- 不承诺兼容上游五 Tool schema；这是独立专项产品接口。
 
 ## 契约测试
 
-必须断言：
+必须断言（见 `test/tools.test.ts`、`test/boundary-matrix.test.ts`）：
 
-1. `listTools()` 恰好一个工具且名称正确。
-2. JSON schema 只有 `video` 和 `question`。
-3. 本地路径和 HTTPS URL 都能走到同一个 Tool handler。
-4. Tool 只返回一个 text content。
-5. provider 内部字段不会出现在成功或错误文本。
-6. 默认 prompt 明确要求画面和声音联合分析。
-7. 第二个并发调用稳定返回 `VIDEO_ANALYSIS_BUSY`，不会同时启动另一条大文件上传。
-8. 客户端请求 progress 时，本地路径收到上传开始/结束与推理开始；HTTPS 只收到推理开始；成功结果仍是单一 text content。
+1. `listTools()` 恰好一个工具且名称为 `analyze_media`。
+2. JSON schema 只有 `media` 与 `prompt`，且两者都必需；不出现 provider/model/预算类字段。
+3. instructions 与 Tool 描述都不含业务提纲关键词，且都包含“仅在用户明确要求时调用”与“prompt 必填”。
+4. 宽泛问题与具体问题都逐字送达 provider，且每次调用只请求一次。
+5. 空白与超长 `prompt` 被拒且不调用 provider。
+6. Tool 只返回一个 text content，且 `content[0].text === structuredContent.answer`。
+7. 路径、Key、`oss://` 不出现在文本或结构化结果中。
+8. 本地 MP4/MOV 与 MP3 端到端（mock provider）成功，MP3 走 `input_audio` + OSS resolve Header。
+9. HTTPS 只收到校验与等待/完成进度；本地文件额外收到上传完成。
+10. 第二个并发调用稳定返回 `MEDIA_ANALYSIS_BUSY`，不会同时启动另一条大文件上传。
+11. 取消返回 `MEDIA_ANALYSIS_CANCELLED` 且 `stage=aborted`。
+12. `MEDIA_MODEL_UNSUPPORTED` 只在明确模态拒绝时出现，未知错误码保持 `MEDIA_ANALYSIS_FAILED`。

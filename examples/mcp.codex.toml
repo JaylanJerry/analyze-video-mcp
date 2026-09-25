@@ -1,3 +1,10 @@
+# NOTE (unreleased next major, this branch): the published 0.6.1 pinned below still
+# exposes analyze_video(video, question?) and reads QWEN_ALLOWED_ROOTS /
+# QWEN_ALLOW_ANY_LOCAL_VIDEO. After the next major is published, the same install becomes
+# analyze_media(media, prompt) with MEDIA_ALLOWED_ROOTS / MEDIA_ALLOW_ANY_LOCAL_FILE /
+# MEDIA_MAX_LOCAL_MEDIA_MB. See docs/API_CONTRACT.md and
+# docs/SPEC_NEXT_MAJOR_MEDIA_GATEWAY.md for the migration table.
+
 [mcp_servers.analyze_video_mcp]
 command = "cmd"
 args = ["/c", "npx", "--prefer-offline", "-y", "analyze-video-mcp@0.6.1"]

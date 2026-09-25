@@ -14,33 +14,64 @@ export interface AppConfig {
   serverName: string;
   baseUrl: string;
   uploadUrl: string;
+  /** Roots that may hold local media for the media gateway (MEDIA_ALLOWED_ROOTS). */
   allowedRoots: string[];
-  allowAnyLocalVideo: boolean;
-  audioSilenceCheck: boolean;
-  audioSilenceCheckInvalid: boolean;
-  maxLocalVideoBytes: number;
+  /** MEDIA_ALLOW_ANY_LOCAL_FILE=on drops the containment requirement. */
+  allowAnyLocalFile: boolean;
+  maxLocalMediaBytes: number;
   uploadTimeoutMs: number;
   analysisTimeoutMs: number;
   analysisRetries: 0 | 1;
   uploadCache: boolean;
   uploadCachePath: string | undefined;
+  /**
+   * Legacy authorization/measurement variables that are still set but no longer
+   * read. Reported by --doctor so an existing install can migrate; never used to
+   * grant local access.
+   */
+  legacyMediaVars: string[];
 }
 
 export const DEFAULT_MODEL = "qwen3.8-omni-flash";
-/** The current default already is the cheap/fast omni tier. */
-export const FAST_MODEL = "qwen3.8-omni-flash";
 export const DEFAULT_SERVER_NAME = "analyze-video-mcp";
 const SERVER_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 export const DEFAULT_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1";
 export const DEFAULT_UPLOAD_URL = "https://dashscope.aliyuncs.com/api/v1/uploads";
-export const DEFAULT_MAX_LOCAL_VIDEO_MB = 1024;
-export const ABSOLUTE_MAX_LOCAL_VIDEO_MB = 1024;
+export const DEFAULT_MAX_LOCAL_MEDIA_MB = 1024;
+export const ABSOLUTE_MAX_LOCAL_MEDIA_MB = 1024;
 export const DEFAULT_UPLOAD_TIMEOUT_SECONDS = 900;
 export const DEFAULT_ANALYSIS_TIMEOUT_SECONDS = 900;
 export const DEFAULT_ANALYSIS_RETRIES = 1;
 export const MIN_TIMEOUT_SECONDS = 1;
 export const MAX_TIMEOUT_SECONDS = 3600;
 export const BYTES_PER_MIB = 1024 * 1024;
+
+/** Replaced by MEDIA_ALLOWED_ROOTS / MEDIA_ALLOW_ANY_LOCAL_FILE / MEDIA_MAX_LOCAL_MEDIA_MB. */
+export const LEGACY_MEDIA_VARS = [
+  "QWEN_ALLOWED_ROOTS",
+  "QWEN_ALLOW_ANY_LOCAL_VIDEO",
+  "QWEN_MAX_LOCAL_VIDEO_MB",
+  "QWEN_AUDIO_SILENCE_CHECK",
+] as const;
+
+const LEGACY_REPLACEMENT: Partial<Record<(typeof LEGACY_MEDIA_VARS)[number], string>> = {
+  QWEN_ALLOWED_ROOTS: "MEDIA_ALLOWED_ROOTS",
+  QWEN_ALLOW_ANY_LOCAL_VIDEO: "MEDIA_ALLOW_ANY_LOCAL_FILE",
+  QWEN_MAX_LOCAL_VIDEO_MB: "MEDIA_MAX_LOCAL_MEDIA_MB",
+};
+
+/** Set by an older install, but the feature itself is gone rather than renamed. */
+const LEGACY_REMOVED = new Set<string>(["QWEN_AUDIO_SILENCE_CHECK"]);
+
+export function legacyMediaVarWarning(name: string): string | undefined {
+  const replacement = LEGACY_REPLACEMENT[name as (typeof LEGACY_MEDIA_VARS)[number]];
+  if (replacement !== undefined) {
+    return `${name} is no longer read; use ${replacement}`;
+  }
+  return LEGACY_REMOVED.has(name)
+    ? `${name} was removed with the local silence check and no longer takes effect`
+    : undefined;
+}
 
 function readRaw(name: string, options?: ConfigLookupOptions): string | undefined {
   return lookupConfigValue(name, options).value;
@@ -116,7 +147,7 @@ export function defaultUploadCachePath(): string {
   return join(base, "analyze-video-mcp", "upload-cache.json");
 }
 
-/** Recognizes the on/off spellings used by QWEN_* toggles; undefined when unrecognized. */
+/** Recognizes the on/off spellings used by the toggle variables; undefined when unrecognized. */
 export function parseOnOffToken(raw: string): boolean | undefined {
   const value = raw.toLowerCase();
   if (value === "off" || value === "0" || value === "false") {
@@ -145,27 +176,17 @@ function parseUploadCache(options?: ConfigLookupOptions): boolean {
 }
 
 /**
- * Opt-in for uploading any local MP4 the Agent names, without requiring the file
- * to sit under QWEN_ALLOWED_ROOTS. Off by default: the path alone is not proof
- * that the user chose the file, so installers must turn this on deliberately.
+ * Opt-in for uploading any local media path the Agent names, without requiring the
+ * file to sit under MEDIA_ALLOWED_ROOTS. Off by default: the path alone is not
+ * proof that the user chose the file, so installers must turn this on deliberately.
+ * Deliberately absent from the Windows user-environment fallback so it is only ever
+ * picked up from an explicit MCP env block, --config file or user config file.
  */
-function parseAllowAnyLocalVideo(options?: ConfigLookupOptions): boolean {
-  return parseToggle("QWEN_ALLOW_ANY_LOCAL_VIDEO", false, options);
+function parseAllowAnyLocalFile(options?: ConfigLookupOptions): boolean {
+  return parseToggle("MEDIA_ALLOW_ANY_LOCAL_FILE", false, options);
 }
 
-function parseAudioSilenceCheck(options?: ConfigLookupOptions): {
-  enabled: boolean;
-  invalid: boolean;
-} {
-  const raw = readRaw("QWEN_AUDIO_SILENCE_CHECK", options);
-  if (raw === undefined) return { enabled: false, invalid: false };
-  const parsed = parseOnOffToken(raw);
-  return parsed === undefined
-    ? { enabled: false, invalid: true }
-    : { enabled: parsed, invalid: false };
-}
-
-export function readAllowedRoots(options?: ConfigLookupOptions, lenient = false): string[] {
+export function readMediaAllowedRoots(options?: ConfigLookupOptions, lenient = false): string[] {
   return parseAllowedRoots(options, lenient);
 }
 
@@ -185,12 +206,12 @@ function resolveAllowedRoot(part: string): string | undefined {
 
 /**
  * Strict by default: an unusable entry is a configuration error, so a broken
- * allowlist fails closed. With QWEN_ALLOW_ANY_LOCAL_VIDEO on the allowlist is not
+ * allowlist fails closed. With MEDIA_ALLOW_ANY_LOCAL_FILE on the allowlist is not
  * consulted at all, so unusable entries are dropped instead of failing every call
  * (a renamed or deleted media folder used to break the whole tool).
  */
 function parseAllowedRoots(options?: ConfigLookupOptions, lenient = false): string[] {
-  const raw = readRaw("QWEN_ALLOWED_ROOTS", options) ?? "";
+  const raw = readRaw("MEDIA_ALLOWED_ROOTS", options) ?? "";
   const parts = raw
     .split(delimiter)
     .map((part) => part.trim())
@@ -204,8 +225,8 @@ function parseAllowedRoots(options?: ConfigLookupOptions, lenient = false): stri
       if (lenient) {
         continue;
       }
-      throw new ConfigError("QWEN_ALLOWED_ROOTS entries must be absolute existing directories", {
-        missing: ["QWEN_ALLOWED_ROOTS"],
+      throw new ConfigError("MEDIA_ALLOWED_ROOTS entries must be absolute existing directories", {
+        missing: ["MEDIA_ALLOWED_ROOTS"],
       });
     }
     const key = process.platform === "win32" ? real.toLowerCase() : real;
@@ -219,28 +240,29 @@ function parseAllowedRoots(options?: ConfigLookupOptions, lenient = false): stri
   return resolved;
 }
 
+function readLegacyMediaVars(options?: ConfigLookupOptions): string[] {
+  return LEGACY_MEDIA_VARS.filter((name) => readRaw(name, options) !== undefined);
+}
+
 export function loadConfig(options?: ConfigLookupOptions): AppConfig {
-  const maxLocalVideoMb = boundedInt(
-    "QWEN_MAX_LOCAL_VIDEO_MB",
-    DEFAULT_MAX_LOCAL_VIDEO_MB,
+  const maxLocalMediaMb = boundedInt(
+    "MEDIA_MAX_LOCAL_MEDIA_MB",
+    DEFAULT_MAX_LOCAL_MEDIA_MB,
     1,
-    ABSOLUTE_MAX_LOCAL_VIDEO_MB,
+    ABSOLUTE_MAX_LOCAL_MEDIA_MB,
     options,
   );
   const uploadCache = parseUploadCache(options);
-  const allowAnyLocalVideo = parseAllowAnyLocalVideo(options);
-  const audioSilenceCheck = parseAudioSilenceCheck(options);
+  const allowAnyLocalFile = parseAllowAnyLocalFile(options);
   return {
     apiKey: requireConfigValue("DASHSCOPE_API_KEY", options),
     model: readRaw("QWEN_MODEL", options) ?? DEFAULT_MODEL,
     serverName: parseServerName(options),
     baseUrl: httpsUrl("DASHSCOPE_BASE_URL", DEFAULT_BASE_URL, options),
     uploadUrl: httpsUrl("DASHSCOPE_UPLOAD_URL", DEFAULT_UPLOAD_URL, options),
-    allowedRoots: parseAllowedRoots(options, allowAnyLocalVideo),
-    allowAnyLocalVideo,
-    audioSilenceCheck: audioSilenceCheck.enabled,
-    audioSilenceCheckInvalid: audioSilenceCheck.invalid,
-    maxLocalVideoBytes: maxLocalVideoMb * BYTES_PER_MIB,
+    allowedRoots: parseAllowedRoots(options, allowAnyLocalFile),
+    allowAnyLocalFile,
+    maxLocalMediaBytes: maxLocalMediaMb * BYTES_PER_MIB,
     uploadTimeoutMs:
       boundedInt(
         "QWEN_UPLOAD_TIMEOUT",
@@ -260,5 +282,6 @@ export function loadConfig(options?: ConfigLookupOptions): AppConfig {
     analysisRetries: zeroOrOne("QWEN_ANALYSIS_RETRIES", DEFAULT_ANALYSIS_RETRIES, options),
     uploadCache,
     uploadCachePath: uploadCache ? defaultUploadCachePath() : undefined,
+    legacyMediaVars: readLegacyMediaVars(options),
   };
 }

@@ -1,8 +1,10 @@
 # ADR 0018：v0.7 独立音频与媒体审核 Tool
 
-- Status: Proposed
+- Status: Withdrawn (never accepted; next-major direction is ADR 0024)
 - Date: 2026-09-22
 - Spec: [`SPEC_V07_PROPOSAL.md`](../SPEC_V07_PROPOSAL.md)
+
+> 2026-09-25：此三 Tool 提案已由 [ADR 0024](0024-agent-directed-media-gateway.md) 的单入口媒体网关方向取代。以下为历史提案，不是当前实施授权。
 
 ## Context
 

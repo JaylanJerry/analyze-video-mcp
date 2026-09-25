@@ -1,3 +1,9 @@
+// NOTE (unreleased next major, this branch): the published 0.6.1 above still exposes
+// analyze_video(video, question?) and reads QWEN_ALLOWED_ROOTS. Once the next major is
+// published, the same install becomes:
+//   tool: analyze_media(media, prompt)   # prompt is required
+//   MEDIA_ALLOWED_ROOTS / MEDIA_ALLOW_ANY_LOCAL_FILE / MEDIA_MAX_LOCAL_MEDIA_MB
+// See docs/API_CONTRACT.md and docs/SPEC_NEXT_MAJOR_MEDIA_GATEWAY.md.
 {
   "mcpServers": {
     "analyze_video_mcp": {

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { VideoError } from "./errors.js";
+import { MediaError } from "./errors.js";
 import { mapProviderError, safeProviderRequestId } from "./provider-error.js";
 
 const usageSchema = z.looseObject({
@@ -53,8 +53,8 @@ export function printableRequestId(raw: string): string | undefined {
   return out.length > 0 ? out : undefined;
 }
 
-function invalid(reason: string, extra?: Record<string, unknown>): VideoError {
-  return new VideoError({
+function invalid(reason: string, extra?: Record<string, unknown>): MediaError {
+  return new MediaError({
     code: "PROVIDER_RESPONSE_INVALID",
     stage: "analyzing",
     diagnostic: { parse_reason: reason, ...extra },

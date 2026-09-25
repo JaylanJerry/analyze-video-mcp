@@ -1,10 +1,9 @@
 import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { analyzeVideo, type AnalyzeVideoResult } from "../src/bailian.js";
+import { analyzeMedia, type AnalyzeResult } from "../src/bailian.js";
 import { loadConfig } from "../src/config.js";
-import { closeResolvedVideo, resolveVideo } from "../src/media.js";
-import { uploadLocalVideo } from "../src/upload.js";
-import { parseEvidence } from "../src/evidence.js";
+import { closeResolvedMedia, resolveMedia } from "../src/media.js";
+import { uploadLocalMedia } from "../src/upload.js";
 
 const LIVE = process.env.LIVE === "1";
 const LIVE_QUESTION =
@@ -26,36 +25,32 @@ function hitsExpected(answer: string, expected: string): boolean {
   return expected === "3.1415926" && answer.includes("三点一四一五九二六");
 }
 
+/**
+ * Text-level signals from the model's own prose. They are a record of what the
+ * model reported, never an independent confirmation that the audio contains it.
+ */
 function modelSoundSignals(answer: string): Record<string, boolean> {
-  const parsed = parseEvidence(answer);
-  const report = parsed.kind === "report" ? parsed.report : undefined;
-  const heardText =
-    report?.audio_observations
-      .filter((item) => item.evidence === "heard")
-      .map((item) => item.description)
-      .join(" ") ?? "";
   return {
-    any_heard_observation: heardText.length > 0,
-    music_or_musical_sound_keyword_in_heard: /音乐|歌曲|配乐|旋律|钢琴|音符|乐器/.test(heardText),
-    speech_or_vocal_keyword_in_heard:
-      /对白|人声|说话|旁白|朗读|语音|女声|男声|歌唱|唱歌|歌声|歌词/.test(heardText),
-    sound_effect_keyword_in_heard: /爆炸|枪声|脚步|撞击|关门|打斗|音效|风声|雷声|环境声/.test(
-      heardText,
+    music_or_musical_sound_keyword: /音乐|歌曲|配乐|旋律|钢琴|音符|乐器/.test(answer),
+    speech_or_vocal_keyword: /对白|人声|说话|旁白|朗读|语音|女声|男声|歌唱|唱歌|歌声|歌词/.test(
+      answer,
     ),
-    uncertainty_entries_present: (report?.uncertainties.length ?? 0) > 0,
+    sound_effect_keyword: /爆炸|枪声|脚步|撞击|关门|打斗|音效|风声|雷声|环境声/.test(answer),
+    explicit_negative_sound:
+      /没有(?:听到)?(?:任何)?(?:声音|音频)|未(?:能)?听到|听不到|无法确认(?:声音|音频)|静音/.test(
+        answer,
+      ),
   };
 }
 
 function reportLive(
-  result: AnalyzeVideoResult,
+  result: AnalyzeResult,
   started: number,
   model: string,
   sampleTruth: string,
   expectVisual: string,
   expectAudio: string,
 ): void {
-  const parsed = parseEvidence(result.answer);
-  const evidence = parsed.kind === "report" ? parsed.report : undefined;
   process.stderr.write(
     `${JSON.stringify({
       request_id: result.requestId,
@@ -68,37 +63,29 @@ function reportLive(
       hit_visual: hitsExpected(result.answer, expectVisual),
       hit_audio: hitsExpected(result.answer, expectAudio),
       answer_chars: result.answer.length,
-      evidence_kind: parsed.kind,
-      audio_evidence: evidence?.audio_observations.map((item) => item.evidence) ?? [],
-      audio_uncertainties: evidence?.uncertainties.length ?? null,
       model_reported_sound_signals: modelSoundSignals(result.answer),
     })}\n`,
   );
 }
 
 describe("live result summary labels", () => {
-  it("only classifies positive keywords inside model-reported heard observations", () => {
-    const answer = JSON.stringify({
-      visual_observations: [],
-      audio_observations: [
-        { time: "00:01", evidence: "heard", confidence: 0.9, description: "清晰人声对白" },
-        { time: "00:02", evidence: "uncertain", confidence: 0.2, description: "可能有背景音乐" },
-      ],
-      inferences: [],
-      uncertainties: [{ description: "没有确认是否有音效" }],
-      answer: "未确认背景音乐或音效。",
+  it("records which sound words the model itself used, without claiming audio truth", () => {
+    expect(modelSoundSignals("视频里有人声对白和清晰的脚步声，但我不确定是否有音乐。")).toEqual({
+      music_or_musical_sound_keyword: true,
+      speech_or_vocal_keyword: true,
+      sound_effect_keyword: true,
+      explicit_negative_sound: false,
     });
-    expect(modelSoundSignals(answer)).toEqual({
-      any_heard_observation: true,
-      music_or_musical_sound_keyword_in_heard: false,
-      speech_or_vocal_keyword_in_heard: true,
-      sound_effect_keyword_in_heard: false,
-      uncertainty_entries_present: true,
+    expect(modelSoundSignals("画面只有静态风景，没有听到任何声音。")).toEqual({
+      music_or_musical_sound_keyword: false,
+      speech_or_vocal_keyword: false,
+      sound_effect_keyword: false,
+      explicit_negative_sound: true,
     });
   });
 });
 
-describe.skipIf(!LIVE)("live: semantic AV via analyzeVideo", () => {
+describe.skipIf(!LIVE)("live: semantic AV via analyzeMedia", () => {
   it("fails when the API key or fixture is missing, otherwise hits both semantic tokens", async () => {
     const video = requiredLiveEnv("QWEN_LIVE_VIDEO");
     const expectVisual = process.env.QWEN_LIVE_EXPECT_VISUAL?.trim() || "24";
@@ -108,10 +95,10 @@ describe.skipIf(!LIVE)("live: semantic AV via analyzeVideo", () => {
     if (/^https:\/\//i.test(video)) {
       const cfg = loadConfig();
       const started = Date.now();
-      const result = await analyzeVideo(
+      const result = await analyzeMedia(
         cfg,
-        { url: video, requiresOssResolve: false },
-        { question: LIVE_QUESTION },
+        { url: video, format: "video", requiresOssResolve: false },
+        { prompt: LIVE_QUESTION },
       );
       reportLive(result, started, cfg.model, sampleTruth, expectVisual, expectAudio);
       if (expectVisual !== "-") expect(hitsExpected(result.answer, expectVisual)).toBe(true);
@@ -124,21 +111,33 @@ describe.skipIf(!LIVE)("live: semantic AV via analyzeVideo", () => {
     }
 
     const cfg = loadConfig();
-    const resolved = await resolveVideo(video, cfg);
+    const resolved = await resolveMedia(video, cfg);
     try {
       const started = Date.now();
-      const input =
+      const uploaded =
         resolved.kind === "https"
-          ? { url: resolved.url, requiresOssResolve: false }
-          : await uploadLocalVideo(cfg, resolved, new AbortController().signal);
-      const result = await analyzeVideo(cfg, input, {
-        question: LIVE_QUESTION,
+          ? undefined
+          : await uploadLocalMedia(cfg, resolved, new AbortController().signal);
+      const input =
+        uploaded === undefined
+          ? {
+              url: resolved.kind === "https" ? resolved.url : "",
+              format: "video" as const,
+              requiresOssResolve: false,
+            }
+          : {
+              url: uploaded.url,
+              format: resolved.mediaKind === "audio" ? ("mp3" as const) : ("video" as const),
+              requiresOssResolve: uploaded.requiresOssResolve,
+            };
+      const result = await analyzeMedia(cfg, input, {
+        prompt: LIVE_QUESTION,
       });
       reportLive(result, started, cfg.model, sampleTruth, expectVisual, expectAudio);
       if (expectVisual !== "-") expect(hitsExpected(result.answer, expectVisual)).toBe(true);
       if (expectAudio !== "-") expect(hitsExpected(result.answer, expectAudio)).toBe(true);
     } finally {
-      await closeResolvedVideo(resolved);
+      await closeResolvedMedia(resolved);
     }
   }, 180_000);
 });

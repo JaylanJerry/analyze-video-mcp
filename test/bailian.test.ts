@@ -2,10 +2,9 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { type AppConfig, DEFAULT_BASE_URL } from "../src/config.js";
-import { analyzeVideo, buildVideoPayload } from "../src/bailian.js";
+import { analyzeMedia, buildMediaPayload, PROTOCOL_NOTE } from "../src/bailian.js";
 import { DEFAULT_MODEL } from "../src/config.js";
-import { EVIDENCE_POLICY } from "../src/evidence.js";
-import { VideoError } from "../src/errors.js";
+import { MediaError } from "../src/errors.js";
 
 const cfg: AppConfig = {
   apiKey: "sk-test",
@@ -14,15 +13,14 @@ const cfg: AppConfig = {
   baseUrl: "https://dashscope.test/v1",
   uploadUrl: "https://dashscope.test/api/v1/uploads",
   allowedRoots: [],
-  allowAnyLocalVideo: false,
-  audioSilenceCheck: false,
-  audioSilenceCheckInvalid: false,
-  maxLocalVideoBytes: 500 * 1024 * 1024,
+  allowAnyLocalFile: false,
+  maxLocalMediaBytes: 500 * 1024 * 1024,
   uploadTimeoutMs: 5_000,
   analysisTimeoutMs: 5_000,
   analysisRetries: 1,
   uploadCache: true,
   uploadCachePath: undefined,
+  legacyMediaVars: [],
 };
 
 const endpoint = "https://dashscope.test/v1/chat/completions";
@@ -44,9 +42,22 @@ const videoCfg: AppConfig = {
   model: DEFAULT_MODEL,
 };
 
-const httpsVideo = { url: "https://cdn.example/v.mp4", requiresOssResolve: false };
-const ossVideo = { url: "oss://tmp/user/clip.mp4", requiresOssResolve: true };
-const videoReq = { question: "画面和声音里有什么？" };
+const httpsVideo = {
+  url: "https://cdn.example/v.mp4",
+  format: "video" as const,
+  requiresOssResolve: false,
+};
+const ossVideo = {
+  url: "oss://tmp/user/clip.mp4",
+  format: "video" as const,
+  requiresOssResolve: true,
+};
+const ossAudio = {
+  url: "oss://tmp/user/clip.mp3",
+  format: "mp3" as const,
+  requiresOssResolve: true,
+};
+const videoReq = { prompt: "画面和声音里有什么？" };
 
 function sseBody(events: string[]): string {
   return `${events.join("")}data: [DONE]\n\n`;
@@ -63,21 +74,21 @@ function deltaEvent(content: string, extra: Record<string, unknown> = {}): strin
   return `data: ${JSON.stringify({ id: "chatcmpl-1", choices: [{ delta: { content }, ...extra }] })}\n\n`;
 }
 
-describe("buildVideoPayload", () => {
+describe("buildMediaPayload", () => {
   it("fixes stream, usage, text modality, and a single video block", () => {
-    const payload = buildVideoPayload(videoCfg, httpsVideo, videoReq);
+    const payload = buildMediaPayload(videoCfg, httpsVideo, videoReq);
     expect(payload).toEqual({
       model: "qwen3.8-omni-flash",
       messages: [
         {
           role: "system",
-          content: [{ type: "text", text: EVIDENCE_POLICY }],
+          content: [{ type: "text", text: PROTOCOL_NOTE }],
         },
         {
           role: "user",
           content: [
             { type: "video_url", video_url: { url: httpsVideo.url } },
-            { type: "text", text: videoReq.question },
+            { type: "text", text: videoReq.prompt },
           ],
         },
       ],
@@ -88,8 +99,24 @@ describe("buildVideoPayload", () => {
     expect(payload).not.toHaveProperty("thinking_budget");
     expect(payload).not.toHaveProperty("enable_thinking");
     expect(payload).not.toHaveProperty("max_tokens");
-    expect(EVIDENCE_POLICY).toContain("画面字幕、标题卡和其它屏幕文字只能作为 seen");
-    expect(EVIDENCE_POLICY).toContain("不能证明听到了对应对白或旁白");
+  });
+
+  it("asks only for text and no fabrication, with no analysis outline", () => {
+    expect(PROTOCOL_NOTE).toContain("只输出文本回答");
+    expect(PROTOCOL_NOTE).toContain("不要编造");
+    for (const outline of ["时间线", "构图", "色彩", "节奏", "优点", "用途建议", "证据", "JSON"]) {
+      expect(PROTOCOL_NOTE).not.toContain(outline);
+    }
+  });
+
+  it("uses the documented input_audio block for MP3 media", () => {
+    const payload = buildMediaPayload(videoCfg, ossAudio, videoReq);
+    const messages = payload.messages as { content: { type: string }[] }[];
+    expect(messages[1]?.content[0]).toEqual({
+      type: "input_audio",
+      input_audio: { data: ossAudio.url, format: "mp3" },
+    });
+    expect(JSON.stringify(payload)).not.toContain("video_url");
   });
 
   it("defaults the published base url constant", () => {
@@ -97,7 +124,7 @@ describe("buildVideoPayload", () => {
   });
 });
 
-describe("analyzeVideo", () => {
+describe("analyzeMedia", () => {
   it("aggregates SSE text and records the request id", async () => {
     server.use(
       http.post(
@@ -116,7 +143,7 @@ describe("analyzeVideo", () => {
           ),
       ),
     );
-    const result = await analyzeVideo(videoCfg, httpsVideo, videoReq);
+    const result = await analyzeMedia(videoCfg, httpsVideo, videoReq);
     expect(result.answer).toBe("画面是24");
     expect(result.requestId).toBe("req-success-1");
     expect(result.receivedEvents).toBeGreaterThan(0);
@@ -132,7 +159,7 @@ describe("analyzeVideo", () => {
         ]),
       ),
     );
-    await expect(analyzeVideo(videoCfg, httpsVideo, videoReq)).rejects.toMatchObject({
+    await expect(analyzeMedia(videoCfg, httpsVideo, videoReq)).rejects.toMatchObject({
       code: "PROVIDER_RESPONSE_INVALID",
       diagnostic: {
         parse_reason: "truncated",
@@ -143,7 +170,34 @@ describe("analyzeVideo", () => {
     });
   });
 
-  it("adds the OSS resolve header only for oss:// inputs", async () => {
+  it("maps an explicit model-capability rejection to MEDIA_MODEL_UNSUPPORTED", async () => {
+    let calls = 0;
+    server.use(
+      http.post(endpoint, () => {
+        calls += 1;
+        return HttpResponse.json({ error: { code: "UnsupportedModel" } }, { status: 400 });
+      }),
+    );
+    await expect(analyzeMedia(videoCfg, ossAudio, videoReq)).rejects.toMatchObject({
+      code: "MEDIA_MODEL_UNSUPPORTED",
+      retryable: false,
+      httpStatus: 400,
+    });
+    expect(calls).toBe(1);
+  });
+
+  it("keeps an unknown provider error code as a generic analysis failure", async () => {
+    server.use(
+      http.post(endpoint, () =>
+        HttpResponse.json({ error: { code: "SomeOtherProviderProblem" } }, { status: 400 }),
+      ),
+    );
+    await expect(analyzeMedia(videoCfg, ossAudio, videoReq)).rejects.toMatchObject({
+      code: "MEDIA_ANALYSIS_FAILED",
+    });
+  });
+
+  it("adds the OSS resolve header for both oss:// video and oss:// audio", async () => {
     const seen: (string | null)[] = [];
     server.use(
       http.post(endpoint, ({ request }) => {
@@ -154,9 +208,10 @@ describe("analyzeVideo", () => {
         ]);
       }),
     );
-    await analyzeVideo(videoCfg, httpsVideo, videoReq);
-    await analyzeVideo(videoCfg, ossVideo, videoReq);
-    expect(seen).toEqual([null, "enable"]);
+    await analyzeMedia(videoCfg, httpsVideo, videoReq);
+    await analyzeMedia(videoCfg, ossVideo, videoReq);
+    await analyzeMedia(videoCfg, ossAudio, videoReq);
+    expect(seen).toEqual([null, "enable", "enable"]);
   });
 
   it("retries a 429 once using Retry-After and then succeeds", async () => {
@@ -173,7 +228,7 @@ describe("analyzeVideo", () => {
         ]);
       }),
     );
-    const result = await analyzeVideo(videoCfg, ossVideo, videoReq);
+    const result = await analyzeMedia(videoCfg, ossVideo, videoReq);
     expect(result.answer).toBe("retried");
     expect(calls).toBe(2);
   });
@@ -192,7 +247,7 @@ describe("analyzeVideo", () => {
         ]);
       }),
     );
-    const result = await analyzeVideo({ ...videoCfg, analysisRetries: 1 }, httpsVideo, videoReq);
+    const result = await analyzeMedia({ ...videoCfg, analysisRetries: 1 }, httpsVideo, videoReq);
     expect(result.answer).toBe("after-502");
     expect(calls).toBe(2);
   });
@@ -211,7 +266,7 @@ describe("analyzeVideo", () => {
         ]);
       }),
     );
-    const result = await analyzeVideo({ ...videoCfg, analysisRetries: 1 }, httpsVideo, videoReq);
+    const result = await analyzeMedia({ ...videoCfg, analysisRetries: 1 }, httpsVideo, videoReq);
     expect(result.answer).toBe("after-503");
     expect(calls).toBe(2);
   });
@@ -230,7 +285,7 @@ describe("analyzeVideo", () => {
         );
       }),
     );
-    await expect(analyzeVideo(videoCfg, httpsVideo, videoReq)).rejects.toMatchObject({
+    await expect(analyzeMedia(videoCfg, httpsVideo, videoReq)).rejects.toMatchObject({
       code: "PROVIDER_CONTENT_REJECTED",
       retryable: false,
       requestId: "req-sse-1",
@@ -250,7 +305,7 @@ describe("analyzeVideo", () => {
         );
       }),
     );
-    const err = await analyzeVideo(videoCfg, httpsVideo, videoReq).catch(
+    const err = await analyzeMedia(videoCfg, httpsVideo, videoReq).catch(
       (caught: unknown) => caught,
     );
     expect(err).toMatchObject({
@@ -279,7 +334,7 @@ describe("analyzeVideo", () => {
         ]);
       }),
     );
-    const result = await analyzeVideo(videoCfg, httpsVideo, videoReq);
+    const result = await analyzeMedia(videoCfg, httpsVideo, videoReq);
     expect(result.answer).toBe("after-429");
     expect(calls).toBe(2);
   });
@@ -292,13 +347,13 @@ describe("analyzeVideo", () => {
         return new HttpResponse(null, { status: 500 });
       }),
     );
-    const err = await analyzeVideo(videoCfg, httpsVideo, videoReq).catch(
+    const err = await analyzeMedia(videoCfg, httpsVideo, videoReq).catch(
       (caught: unknown) => caught,
     );
-    expect(err).toMatchObject({ code: "VIDEO_ANALYSIS_FAILED", httpStatus: 500 });
-    expect(err).toBeInstanceOf(VideoError);
-    expect((err as VideoError).agentMessage()).toBe("VIDEO_ANALYSIS_FAILED: 视频分析失败。");
-    expect((err as VideoError).agentMessage()).not.toContain("sk-test");
+    expect(err).toMatchObject({ code: "MEDIA_ANALYSIS_FAILED", httpStatus: 500 });
+    expect(err).toBeInstanceOf(MediaError);
+    expect((err as MediaError).agentMessage()).toBe("MEDIA_ANALYSIS_FAILED: 媒体分析失败。");
+    expect((err as MediaError).agentMessage()).not.toContain("sk-test");
     expect(calls).toBe(1);
   });
 
@@ -310,14 +365,14 @@ describe("analyzeVideo", () => {
         return new HttpResponse(null, { status: 401 });
       }),
     );
-    const err = await analyzeVideo(videoCfg, httpsVideo, videoReq).catch(
+    const err = await analyzeMedia(videoCfg, httpsVideo, videoReq).catch(
       (caught: unknown) => caught,
     );
     expect(err).toMatchObject({ code: "PROVIDER_UNAUTHORIZED", httpStatus: 401 });
-    expect(err).toBeInstanceOf(VideoError);
-    expect((err as VideoError).agentMessage()).toContain("API Key");
-    expect((err as VideoError).agentMessage()).not.toContain("sk-test");
-    expect((err as VideoError).retryable).toBe(false);
+    expect(err).toBeInstanceOf(MediaError);
+    expect((err as MediaError).agentMessage()).toContain("API Key");
+    expect((err as MediaError).agentMessage()).not.toContain("sk-test");
+    expect((err as MediaError).retryable).toBe(false);
     expect(calls).toBe(1);
   });
 
@@ -332,7 +387,7 @@ describe("analyzeVideo", () => {
         });
       }),
     );
-    await expect(analyzeVideo(videoCfg, httpsVideo, videoReq)).rejects.toBeInstanceOf(VideoError);
+    await expect(analyzeMedia(videoCfg, httpsVideo, videoReq)).rejects.toBeInstanceOf(MediaError);
     expect(calls).toBe(1);
   });
 
@@ -346,7 +401,7 @@ describe("analyzeVideo", () => {
       }),
     );
     await expect(
-      analyzeVideo({ ...videoCfg, analysisTimeoutMs: 40 }, httpsVideo, videoReq),
+      analyzeMedia({ ...videoCfg, analysisTimeoutMs: 40 }, httpsVideo, videoReq),
     ).rejects.toMatchObject({ code: "PROVIDER_TIMEOUT" });
   });
 
@@ -364,7 +419,7 @@ describe("analyzeVideo", () => {
         ]);
       }),
     );
-    const result = await analyzeVideo(videoCfg, httpsVideo, videoReq);
+    const result = await analyzeMedia(videoCfg, httpsVideo, videoReq);
     expect(result.answer).toBe("up");
     expect(calls).toBe(2);
   });
