@@ -18,6 +18,14 @@ describe("sanitizeSensitiveText", () => {
     }
   });
 
+  it("hides a forward-slash UNC path and a bare root-level file", () => {
+    for (const raw of ["//server/share/clip.mp4", "/clip.mp4", "/media.mov"]) {
+      const out = sanitizeSensitiveText(`见 ${raw} 处`);
+      expect(out).not.toContain(raw);
+      expect(out).toContain("[本地路径已隐藏]");
+    }
+  });
+
   it("hides POSIX absolute paths", () => {
     for (const raw of ["/tmp/demo.mp3", "/var/tmp/sample.mov", "/Users/demo/a.mp4", "/home/x/b"]) {
       const out = sanitizeSensitiveText(`media at ${raw} end`);
@@ -45,6 +53,16 @@ describe("sanitizeSensitiveText", () => {
   it("keeps a relative file name and a bare slash pair intact", () => {
     expect(sanitizeSensitiveText("clip.mp4 与 a/b/c 以及 // 都应保留")).toBe(
       "clip.mp4 与 a/b/c 以及 // 都应保留",
+    );
+  });
+
+  it("keeps a scheme-relative URL host intact while hiding a UNC path", () => {
+    // Both start with `//`; only the one without a scheme is a path.
+    expect(sanitizeSensitiveText("公开链接 https://cdn.example/a/b.mp4 可用")).toContain(
+      "https://cdn.example/a/b.mp4",
+    );
+    expect(sanitizeSensitiveText("本机 //fileserver/media/clip.mp4 不可外发")).not.toContain(
+      "fileserver",
     );
   });
 

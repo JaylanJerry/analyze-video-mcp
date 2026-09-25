@@ -655,7 +655,9 @@ describe("local MP3 support", () => {
       expect(resolved.objectExtension).toBe("mp3");
       expect(resolved.audioCodecs).toEqual(["mp3"]);
       expect(resolved.videoCodecs).toEqual([]);
-      expect(resolved.durationSeconds).toBeCloseTo((6 * 417 * 8) / 128000, 5);
+      // A plain constant-bitrate stream declares no frame count, so the duration stays
+      // unknown instead of being estimated.
+      expect(resolved.durationSeconds).toBeUndefined();
       const head = Buffer.alloc(2);
       const read = await resolved.handle.read(head, 0, 2, 0);
       expect(read.bytesRead).toBe(2);

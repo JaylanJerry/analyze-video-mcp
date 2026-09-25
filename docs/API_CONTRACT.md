@@ -85,7 +85,7 @@ Server-level instructions 与 Tool 描述保持同义，第一句表达“仅在
 - `media` 只放本次**确实建立**的本地事实；字段缺席表示未知，不能填 `false` 冒充已检查：
   - `kind`：`video` 或 `audio`。本地由已验证的文件内容决定；首批 HTTPS 输入按视频处理。
   - `container`：仅本地格式识别成功时出现（`mp4` / `mov` / `mp3`）。
-  - `duration_seconds`：仅本地可靠求出时出现（MP4/MOV 读 `mvhd`；MP3 需 Xing/VBRI 帧数，或**跨全文件多点抽样**都确认恒定码率——只看开头若干帧不算，避免把前段 CBR、后段 VBR 的文件按错误码率估算）。求不出就不出现，也不猜一个数字。
+  - `duration_seconds`：仅本地可靠求出时出现（MP4/MOV 读 `mvhd`；MP3 需流自己声明 Xing/Info/VBRI 帧数）。**不做码率估算**：采样无法证明整个文件恒定码率，错误数字还会驱动一小时门禁；没有声明帧数就不出现。求不出就不出现，也不猜一个数字。
   - `audio_track_present`：仅本地视频轨道探测**完整**时出现（`true` 表示发现受支持音轨，`false` 表示轨道结构完整但确无音轨）。探测不完整时不出现。MP3 不设视频轨或轨道缺失结论，因此该字段不出现。
 - `request.provider` 固定为 `dashscope`（首发唯一服务商，不自动跨云回退）。`request.model` 是本次实际模型 id。`request.upload_reused` **仅对本地文件出现**，只陈述本地上传缓存命中，不表示模型记忆、也不表示本次分析免费（每次分析仍可能计费）。HTTPS 没有上传，因此不出现该字段。
 - `usage` 只填服务商实际返回的值；缺失字段不补 0，全部缺失时整个 `usage` 不出现。

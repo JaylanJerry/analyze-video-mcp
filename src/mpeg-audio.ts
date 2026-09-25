@@ -158,9 +158,8 @@ async function findFirstFrame(
   from: number,
   fileSize: number,
   budget: ByteBudget,
-  windowBytes: number = FRAME_SCAN_BYTES,
 ): Promise<{ offset: number; header: FrameHeader } | { otherLayer: string } | undefined> {
-  const windowLength = Math.min(windowBytes, fileSize - from);
+  const windowLength = Math.min(FRAME_SCAN_BYTES, fileSize - from);
   if (windowLength < 4) return undefined;
   const window = await readBounded(reader, from, windowLength, budget, MP3_PROBE_BYTES_LIMIT);
   if (window === undefined) return undefined;
@@ -171,58 +170,6 @@ async function findFirstFrame(
     return { offset: from + index, header: parsed.header };
   }
   return undefined;
-}
-
-/**
- * Positions sampled to confirm a constant bitrate. The tail entries are retries for
- * files with trailing metadata (ID3v1 / APEv2), which is why they are checked after
- * the interior ones.
- */
-const SPREAD_SAMPLE_FRACTIONS = [0.99, 0.25, 0.5, 0.75, 0.95, 0.9, 0.8];
-const SPREAD_MIN_CONFIRMATIONS = 2;
-const SPREAD_WINDOW_BYTES = 4096;
-
-/**
- * A whole-file constant bitrate may only be claimed when regions far from the start
- * agree with the first frame. Sampling the opening frames alone is not enough: a file
- * that is constant at the beginning and variable later would otherwise get a wrong
- * duration. Every sampled position is checked (no early exit after the interior
- * points), and bytes that cannot be proven are reported as unknown rather than
- * guessed, so trailing metadata or unreadable regions produce no duration.
- */
-async function spreadBitrateMatches(
-  reader: PositionedReader,
-  fileSize: number,
-  audioStart: number,
-  firstHeader: FrameHeader,
-  budget: ByteBudget,
-): Promise<boolean> {
-  let confirmed = 0;
-  for (const fraction of SPREAD_SAMPLE_FRACTIONS) {
-    const span = fileSize - audioStart;
-    const position = audioStart + Math.floor(fraction * span);
-    if (position >= fileSize - 4) {
-      continue;
-    }
-    const found = await findFirstFrame(reader, position, fileSize, budget, SPREAD_WINDOW_BYTES);
-    if (found === undefined) {
-      continue;
-    }
-    if ("otherLayer" in found) {
-      return false;
-    }
-    const header = found.header;
-    if (
-      header.bitrateKbps !== firstHeader.bitrateKbps ||
-      header.sampleRate !== firstHeader.sampleRate ||
-      header.version !== firstHeader.version ||
-      header.layer !== firstHeader.layer
-    ) {
-      return false;
-    }
-    confirmed += 1;
-  }
-  return confirmed >= SPREAD_MIN_CONFIRMATIONS;
 }
 
 export async function probeMpegAudio(
@@ -287,18 +234,16 @@ export async function probeMpegAudio(
   const head = await readBounded(reader, firstOffset, headLength, budget, MP3_PROBE_BYTES_LIMIT);
   const declaredFrames = head === undefined ? undefined : frameCountFromTags(head, firstHeader);
 
-  let durationSeconds: number | undefined;
-  if (declaredFrames !== undefined) {
-    durationSeconds = plausibleDuration(
-      (declaredFrames * firstHeader.samplesPerFrame) / firstHeader.sampleRate,
-      fileSize,
-    );
-  } else if (await spreadBitrateMatches(reader, fileSize, firstOffset, firstHeader, budget)) {
-    durationSeconds = plausibleDuration(
-      ((fileSize - firstOffset) * 8) / (firstHeader.bitrateKbps * 1000),
-      fileSize,
-    );
-  }
+  // A duration is only reported when the stream declares it. Sampling cannot prove that
+  // a whole file is constant bitrate — a region between two samples can differ — and a
+  // wrong number would drive the one-hour gate, so an undeclared stream stays unknown.
+  const durationSeconds =
+    declaredFrames === undefined
+      ? undefined
+      : plausibleDuration(
+          (declaredFrames * firstHeader.samplesPerFrame) / firstHeader.sampleRate,
+          fileSize,
+        );
 
   return {
     status: "ok",

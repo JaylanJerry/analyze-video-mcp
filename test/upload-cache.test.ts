@@ -59,13 +59,24 @@ function countingUploader(): {
 describe("local upload cache", () => {
   const signal = new AbortController().signal;
 
-  it("builds a key from identity, model, endpoint and credential identity", () => {
-    const expected = `C:\\a.mp4|8|1\0${MODEL}\0\0cred`;
+  it("builds a key from identity, content fingerprint, model, endpoint and credential", () => {
+    const expected = `C:\\a.mp4|8|1\0fingerprint\0${MODEL}\0\0cred`;
     expect(localUploadCacheKey(video("C:\\a.mp4|8|1"), MODEL, "", "cred")).toBe(expected);
     expect(localUploadCacheKey(video("C:\\a.mp4|8|1"), MODEL, "https://up.example", "cred")).toBe(
-      `C:\\a.mp4|8|1\0${MODEL}\0https://up.example\0cred`,
+      `C:\\a.mp4|8|1\0fingerprint\0${MODEL}\0https://up.example\0cred`,
     );
     expect(localUploadCacheKey(video(""), MODEL, "", "cred")).toBeUndefined();
+    expect(localUploadCacheKey(video("p|8|1", ""), MODEL, "", "cred")).toBeUndefined();
+  });
+
+  it("misses when only the content fingerprint changes", async () => {
+    const inner = countingUploader();
+    const cached = createCachedUploader({ model: MODEL, apiKey: KEY }, inner.uploader);
+    const first = await cached.upload(video("p|8|1", "before"), signal);
+    const second = await cached.upload(video("p|8|1", "after"), signal);
+    expect(inner.calls).toBe(2);
+    expect(second.reused).toBe(false);
+    expect(second.url).not.toBe(first.url);
   });
 
   it("fingerprints the credential one way and without storing it", () => {

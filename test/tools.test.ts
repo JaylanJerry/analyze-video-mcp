@@ -558,11 +558,8 @@ ${formatted}
       const result = await call(client, { media: file, prompt: "说了什么" });
       expect(result.isError).toBe(false);
       expect(result.text).toBe("音频回答");
-      expect(result.structured.media).toEqual({
-        kind: "audio",
-        container: "mp3",
-        duration_seconds: (6 * 417 * 8) / 128000,
-      });
+      // The synthetic stream declares no frame count, so no duration is invented.
+      expect(result.structured.media).toEqual({ kind: "audio", container: "mp3" });
     });
     expect(seen?.ossResolve).toBe("enable");
     const messages = seen?.body.messages as { content: { type: string }[] }[] | undefined;

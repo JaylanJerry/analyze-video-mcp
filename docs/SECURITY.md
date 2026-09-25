@@ -88,8 +88,8 @@ validate absolute path and .mp4/.mov/.mp3 extension
 - symlink/junction 最终目标位于 allowed root 内可以接受；最终目标越界必须拒绝。`MEDIA_ALLOW_ANY_LOCAL_FILE=on` 时不做根判定，但仍以 `realpath` 后的目标文件做身份键与上传，改指仍会被打开前后复核发现。
 - 容器验证至少检查 ISO BMFF `ftyp` box；只读取固定小块，不推进上传流的起始位置或在上传前重置到 0。本地可接受 `.mp4` 与 `.mov`，上传时按容器给出固定文件名（`video.mp4` / `video.mov`）与 Content-Type（`video/mp4` / `video/quicktime`）；对象 key 始终是随机 UUID，不含原文件名。
 - 视频编码校验：解析 `moov/trak/mdia/hdlr` 与 `stbl/stsd` 只读 fourcc，视频仅接受 `avc1`/`avc3`/`hvc1`/`hev1`，音频仅接受 `mp4a`；其它组合在**上传前**以 `UNSUPPORTED_MEDIA_CODEC` 拒绝并在诊断里给出 fourcc。理由是：无法解码的音轨会变成误导性的“没听到声音”结论。
-- MP3 识别必须有有界解析（`src/mpeg-audio.ts`）：跳过 ID3v2（声明长度超过 1 MiB 上限即拒绝）、在有限窗口内定位首帧、要求连续有效帧、采样帧判断恒定码率。仅 ID3 的文件、伪造后缀的文本、Layer I/II 流、保留字段非法的帧、自由格式码率帧都会被拒绝。上传元数据固定为 `audio.mp3` / `audio/mpeg`，对象 key 仍为随机 UUID + `.mp3`。
-- 时长边界：MP4/MOV 读 `mvhd`，大于 3600 秒拒绝（正好 3600 允许）；MP3 只在 Xing/VBRI 帧数或恒定码率估算可靠时给出时长，大于 3600 秒拒绝，求不出时长则按未知放行，不猜数字。不得为探测顺序读完整文件，也不得引入 ffprobe。
+- MP3 识别必须有有界解析（`src/mpeg-audio.ts`）：跳过 ID3v2（声明长度超过 1 MiB 上限即拒绝）、在有限窗口内定位首帧、要求连续有效帧。仅 ID3 的文件、伪造后缀的文本、Layer I/II 流、保留字段非法的帧、自由格式码率帧都会被拒绝。上传元数据固定为 `audio.mp3` / `audio/mpeg`，对象 key 仍为随机 UUID + `.mp3`。
+- 时长边界：MP4/MOV 读 `mvhd`，大于 3600 秒拒绝（正好 3600 允许）；MP3 只在流自己声明帧数（Xing/Info/VBRI）时给出时长，大于 3600 秒拒绝；没有声明帧数就按未知放行（**不做码率估算**），不猜数字。不得为探测顺序读完整文件，也不得引入 ffprobe。
 - 大小同时满足：大于 0、≤用户配置上限（默认且硬顶 1024 MiB）、≤动态 policy 上限。
 - 上传必须使用这个句柄；不得通过字符串路径重新 `createReadStream(path)`。
 - 上面的顺序里只有 `containment against real allowed roots` 这一步会因 `MEDIA_ALLOW_ANY_LOCAL_FILE=on` 跳过；其余步骤在两种模式下都执行。
@@ -112,7 +112,7 @@ Node/Windows 无法提供完全可移植的 `openat + O_NOFOLLOW` 等价保证�
 - fragmented MP4 / fMP4：时长在 `moof`/`tfdt` 里，`moov/mvhd` 可能缺失、为 0，或只覆盖初始化段；
 - malformed box、非法 size、`timescale == 0`、探测字节或 box 数量触顶；
 - `moov` 在超大 `mdat` 之后且 box 链无法安全跳过时；
-- MP3 为纯 VBR 且没有 Xing/VBRI 帧数（字节估算不可靠）。
+- MP3 没有 Xing/Info/VBRI 帧数声明（含纯 CBR：字节估算无法证明全文件同码率）。
 
 这是有意残余，避免误杀合法文件。未知时长不得报 `MEDIA_TOO_LONG`。
 
@@ -124,7 +124,7 @@ Node/Windows 无法提供完全可移植的 `openat + O_NOFOLLOW` 等价保证�
 - stderr 中本地文件只记 `size_bytes`，必要时记不可逆短 hash，不记绝对路径。
 - API Key 不做“首尾脱敏展示”；只允许布尔状态 `configured`，且不需要成为 Agent Tool。
 - policy 所有 credential 字段为 secret 等级，不得持久化。
-- 上传缓存键包含：文件身份（真实路径、大小、mtime）、**该文件的有界内容指纹**（大小 + 首尾各 64 KiB 的 SHA-256 前缀，读自同一只读句柄）、模型、上传端点和 **API Key 的单向指纹**（域分隔 SHA-256，取前 16 位十六进制，不可还原 Key）。因此换 Key 或改内容都不会复用旧对象；缓存文件本身不含 Key、上传凭证或可还原它们的材料。残余风险：只改文件中段且保持大小与 mtime 不变的就地改写不会被指纹发现，与既有的同账户 TOCTOU 残余同级，已在文档声明。
+- 上传缓存键包含：文件身份（真实路径、大小、mtime）、**该文件的有界内容指纹**（大小 + 首尾各 64 KiB 的 SHA-256 前缀，读自同一只读句柄）、模型、上传端点和 **API Key 的单向指纹**（域分隔 SHA-256，取前 16 位十六进制，不可还原 Key）。因此换 Key 或改内容都不会复用旧对象；缓存文件本身不含 Key、上传凭证或可还原它们的材料。**残余风险（独立类别，与请求内的 TOCTOU 竞态不同）：** 若文件仅中段被就地改写且大小与 mtime 都不变，指纹不会变化，两次调用之间可能复用上一次的 `oss://`，于是模型分析的是旧内容——这是**跨请求的陈旧内容**问题（用户得到的内容分析可能不是当前文件），不是请求内的检查/使用竞态。进一步收窄的候选方案（全文件哈希、加入 inode/ctime、缩短缓存有效期）各有代价（整 file 读、平台差异、牺牲上传复用），尚未采用，待与审核者讨论后决定。
 
 ## stdout 与日志
 

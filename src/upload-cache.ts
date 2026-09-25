@@ -57,10 +57,10 @@ export function localUploadCacheKey(
   uploadUrl: string,
   credential: string,
 ): string | undefined {
-  if (media.identityKey.length === 0) {
+  if (media.identityKey.length === 0 || media.contentFingerprint.length === 0) {
     return undefined;
   }
-  return `${media.identityKey}\0${model}\0${uploadUrl}\0${credential}`;
+  return `${media.identityKey}\0${media.contentFingerprint}\0${model}\0${uploadUrl}\0${credential}`;
 }
 
 async function readDiskEntries(

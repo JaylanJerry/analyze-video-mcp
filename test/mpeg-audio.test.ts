@@ -19,7 +19,7 @@ function probe(buffer: Buffer): ReturnType<typeof probeMpegAudio> {
 }
 
 describe("probeMpegAudio", () => {
-  it("accepts constant-bitrate MPEG1 Layer III audio and reports a byte-derived duration", async () => {
+  it("accepts constant-bitrate MPEG1 Layer III audio and leaves the duration unknown", async () => {
     const buffer = mp3File({ frames: 6 });
     const result = await probe(buffer);
     expect(result.status).toBe("ok");
@@ -28,7 +28,9 @@ describe("probeMpegAudio", () => {
     expect(result.facts.sampleRate).toBe(44100);
     expect(result.facts.bitrateKbps).toBe(128);
     expect(result.facts.audioStartOffset).toBe(0);
-    expect(result.facts.durationSeconds).toBeCloseTo((6 * 417 * 8) / 128000, 6);
+    // No declared frame count and no verifiable whole-file constant bitrate: the
+    // duration is unknown rather than estimated from the opening frames.
+    expect(result.facts.durationSeconds).toBeUndefined();
   });
 
   it("skips an ID3v2 tag and reports the frame offset behind it", async () => {
@@ -56,16 +58,12 @@ describe("probeMpegAudio", () => {
   });
 
   it("accepts MPEG2 audio and uses its smaller frames", async () => {
-    const frameOptions = { frames: 5, bitrateKbps: 64, sampleRate: 22050 };
-    const buffer = mp3File(frameOptions);
+    const buffer = mp3File({ frames: 5, bitrateKbps: 64, sampleRate: 22050 });
     const result = await probe(buffer);
     expect(result.status).toBe("ok");
     if (result.status !== "ok") return;
     expect(result.facts.sampleRate).toBe(22050);
-    expect(result.facts.durationSeconds).toBeCloseTo(
-      (5 * frameLengthBytes(frameOptions) * 8) / 64000,
-      5,
-    );
+    expect(result.facts.durationSeconds).toBeUndefined();
   });
 
   it("keeps the read budget bounded on a large sparse file", async () => {
@@ -92,8 +90,8 @@ describe("probeMpegAudio", () => {
   });
 
   it("reports no duration when only the opening frames are constant", async () => {
-    // 16 frames at 128 kbps followed by 100 at 32 kbps: a start-only sample would
-    // claim constant bitrate and under-report the duration by ~3x.
+    // 16 frames at 128 kbps followed by 100 at 32 kbps: an estimate from the opening
+    // frames would under-report this stream by roughly 3x.
     const buffer = Buffer.concat([
       mp3File({ frames: 16, bitrateKbps: 128 }),
       mp3File({ frames: 100, bitrateKbps: 32 }),
@@ -104,10 +102,13 @@ describe("probeMpegAudio", () => {
     expect(result.facts.durationSeconds).toBeUndefined();
   });
 
-  it("reports no duration when a late region changes bitrate", async () => {
+  it("reports no duration when a region between samples changes bitrate", async () => {
+    // Constant at the start, variable in the middle, constant again at the end: no
+    // sampling scheme can prove this file is constant bitrate.
     const buffer = Buffer.concat([
-      mp3File({ frames: 180 }),
-      mp3File({ frames: 20, bitrateKbps: 32 }),
+      mp3File({ frames: 500 }),
+      mp3File({ frames: 1000, bitrateKbps: 32 }),
+      mp3File({ frames: 1000 }),
     ]);
     const result = await probe(buffer);
     expect(result.status).toBe("ok");
@@ -115,12 +116,12 @@ describe("probeMpegAudio", () => {
     expect(result.facts.durationSeconds).toBeUndefined();
   });
 
-  it("still reports a duration when a constant stream carries trailing metadata", async () => {
+  it("leaves the duration unknown for a constant stream with trailing metadata", async () => {
     const buffer = Buffer.concat([mp3File({ frames: 50 }), Buffer.alloc(5000, 0x00)]);
     const result = await probe(buffer);
     expect(result.status).toBe("ok");
     if (result.status !== "ok") return;
-    expect(result.facts.durationSeconds).toBeCloseTo((buffer.length * 8) / 128000, 4);
+    expect(result.facts.durationSeconds).toBeUndefined();
   });
 
   it("reports a changing bitrate stream as having no reliable duration", async () => {

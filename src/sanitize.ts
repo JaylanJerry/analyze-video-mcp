@@ -4,11 +4,11 @@
  * credential-shaped tokens and local absolute paths. It never changes what the
  * model said about the media.
  *
- * Path shapes are covered in both slash styles: a model that echoes the Agent's
- * prompt commonly normalises `C:\dir\clip.mp4` to `C:/dir/clip.mp4`, and POSIX
- * paths appear on every platform. Ordinary URLs (https://host/a/b) must survive,
- * which is why the generic POSIX rule requires a non-URL character before the
- * leading slash and refuses to start at `//`.
+ * Path shapes covered: Windows drive paths and UNC paths in both slash styles,
+ * forward-slash UNC (`//server/share/...`), and POSIX absolute paths with one or
+ * more segments. Ordinary URLs (`https://host/a/b`) must survive, which is why a
+ * match may not start after a URL-ish character (`:`, `/`, `.`, `-`, or an
+ * alphanumeric), and why a root-level POSIX path needs a file extension.
  */
 export function sanitizeSensitiveText(text: string): string {
   return text
@@ -26,11 +26,11 @@ export function sanitizeSensitiveText(text: string): string {
       "[本地路径已隐藏]",
     )
     .replace(
-      /(?<![A-Za-z0-9:/._-])\/(?!\/)(?:[A-Za-z0-9._-]+\/)+[A-Za-z0-9._-]+/g,
+      /(?<![A-Za-z0-9:/._-])\/{1,2}(?:[A-Za-z0-9._-]+\/)+[A-Za-z0-9._-]+/g,
       "[本地路径已隐藏]",
     )
     .replace(
-      /(?<![A-Za-z0-9:/.])\/(?:Users|home|mnt|private|Volumes)\/[^\s<>"']+/g,
+      /(?<![A-Za-z0-9:/._-])\/(?!\/)[A-Za-z0-9._-]+\.[A-Za-z0-9]{1,8}(?=$|[\s，。；！？<>"'])/g,
       "[本地路径已隐藏]",
     );
 }
