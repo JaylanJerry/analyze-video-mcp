@@ -69,7 +69,10 @@
     | MOV，同码流 `-c copy` 转封装                           | 成功：画面 `24` + 语音 `3.1415926`；`usage` 784/223/1007、75 事件；`container=mov`                 |
     | 音频-only MP4（`ftyp isom`，无视频轨，890 秒）         | **服务商 HTTP 400**（复现 2 次，无 SSE 事件与用量）：见 PROVIDER_PROTOCOL §3b 负例与原因未定位说明 |
   - **Codex 宿主补验（2026-09-25，当前任务，一次真实调用）：** 当前 Tool 列表含 `mcp__analyze_video_mcp__analyze_media`；用仓库公开 `test/fixtures/live-av.mp4`（30,988 bytes，3 秒；前后 SHA-256 均为 `2193544187DCCFEBBE68CF377FEE063DC599300D27D5447A05CD63E984B98A76`）提问“分别报告画面数字和音轨语音数字，不互相推断”。返回 `isError=false`、`media.kind=video`、`audio_track_present=true`、`request.model=qwen3.5-omni-plus`、`upload_reused=false`、`usage=770/26/796`；`content[0].text` 与 `structuredContent.answer` 一致，分别报告看到 `24`、听到 `3.1415926`，与夹具说明一致。仅核对了 Agent 可见结果；没有检查该次服务端 stderr 或账单。此项证明当前 Codex 任务的 Tool 挂载与真实调用，未验证新会话的手动拖入流程。
-  - 仍未做：Codex 新会话手动拖入与宿主 MOV/MP3 调用、ZCode 宿主调用、费用金额（不记录账单）、内容检查拒绝的真实触发（仅 mock 覆盖）。
+  - **ZCode 重装与同款启动测试（2026-09-25）：** ZCode `~/.zcode/cli/config.json` 里原本那条 `analyze_video_mcp`（指向已删除的 `Documents\Codex\Video MCP`）已**整条删除并重新注册**为当前仓库：`command=C:\Program Files
+odejs
+ode.exe`、`args=[<repo>\dist\index.js]`、`cwd=<repo>`、`timeoutMs=3600000`、`enabled=true`、env 为 `QWEN_MODEL` / `MEDIA_ALLOWED_ROOTS` / `MEDIA_ALLOW_ANY_LOCAL_FILE=on`（键均在 ZCode 严格 schema 内；备份 `.bak-before-reinstall`）。用**与 ZCode 完全相同的启动方式**（同一 node 可执行文件、同 args/cwd/env）完成真实调用：公开 MP4 夹具 → 画面 `24` + 语音 `3.1415926`、`usage` 786/181/967、64 事件、`upload_reused=true`；合成 MP3 同一进程两次 → 均正确（三段、低→中→高）、`usage` 178/536/714 与 178/384/562。这验证的是**ZCode 的启动接线**，不等于 GUI 会话已验收（宿主在会话启动时挂载工具）。
+  - 仍未做：Codex 新会话手动拖入与宿主 MOV/MP3 调用、**ZCode GUI 新会话一次确认**、费用金额（不记录账单）、内容检查拒绝的真实触发（仅 mock 覆盖）。
   - 样本处理：用户原文件未被修改；派生的 MP3 副本与临时重命名副本位于系统临时目录且已回收，未进入仓库。
   - **宿主配置迁移（2026-09-25，本机，已备份 `.bak-20260925`）**：Codex `~/.codex/config.toml` 的 env 已由 `QWEN_ALLOWED_ROOTS` / `QWEN_ALLOW_ANY_LOCAL_VIDEO` 改为 `MEDIA_ALLOWED_ROOTS` / `MEDIA_ALLOW_ANY_LOCAL_FILE`（值不变，权限不变），`QWEN_AUDIO_SILENCE_CHECK` 行已注释；ZCode `~/.zcode/cli/config.json` 的 `args`/`cwd` 从已不存在的 `Documents\Codex\Video MCP` 改指本仓库 `dist/index.js`，env 同样改名为 `MEDIA_*`。两处都用迁移后的授权跑过 `--doctor`：`local_media_policy.mode=any_local_file`、`handshake.registered=true`、无旧变量警告。
   - **宿主后续验收**：当前 Codex 任务已实际调用 `analyze_media`；新会话手动拖入及 ZCode 新会话仍需分别验证，不能由本次调用推定均已通过。
