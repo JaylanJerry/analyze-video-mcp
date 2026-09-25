@@ -18,8 +18,34 @@ describe("sanitizeSensitiveText", () => {
     }
   });
 
+  it("hides POSIX paths whose segments are non-ASCII", () => {
+    for (const raw of [
+      "/home/张三/视频.mp4",
+      "/tmp/误时铺.mp4",
+      "/视频.mp4",
+      "/资料/视频/中文.mp4",
+    ]) {
+      const out = sanitizeSensitiveText(`见 ${raw} 处`);
+      expect(out).not.toContain(raw);
+      expect(out).toContain("[本地路径已隐藏]");
+    }
+  });
+
+  it("keeps prose that merely uses a slash, and keeps URLs with non-ASCII paths", () => {
+    const prose = "见 00:30 处，画面/声音与对白/旁白/音效";
+    expect(sanitizeSensitiveText(prose)).toBe(prose);
+    expect(sanitizeSensitiveText("公开 https://cdn.example/视频.mp4 可用")).toContain(
+      "https://cdn.example/视频.mp4",
+    );
+  });
+
   it("hides a forward-slash UNC path and a bare root-level file", () => {
-    for (const raw of ["//server/share/clip.mp4", "/clip.mp4", "/media.mov"]) {
+    for (const raw of [
+      "//server/share/clip.mp4",
+      "//fileserver/media/中文.mp4",
+      "/clip.mp4",
+      "/media.mov",
+    ]) {
       const out = sanitizeSensitiveText(`见 ${raw} 处`);
       expect(out).not.toContain(raw);
       expect(out).toContain("[本地路径已隐藏]");
