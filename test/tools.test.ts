@@ -507,6 +507,20 @@ ${formatted}
     });
   });
 
+  it("hides the supplied path after punctuation adjoining a public link", async () => {
+    const file = join(dir, "我的 视频.mp4");
+    await writeFile(file, mp4WithAudio(3));
+    const publicLink = "https://cdn.example/a.mp4";
+    const rec = recordingAnalyzer(`参考 ${publicLink}，${file} 有海浪声。`);
+    const up = recordingUploader();
+    const cfg = { ...baseCfg, allowedRoots: [dir] };
+    await withClient(cfg, { analyzer: rec.analyzer, uploader: up.uploader }, async (client) => {
+      const result = await call(client, { media: file, prompt: "q" });
+      expect(result.text).toBe(`参考 ${publicLink}，[本地路径已隐藏] 有海浪声。`);
+      expect(result.structured.answer).toBe(result.text);
+    });
+  });
+
   it("redacts the exact supplied path when the model echoes it", async () => {
     const file = join(dir, "我的 视频.mp4");
     await writeFile(file, mp4WithAudio(3));

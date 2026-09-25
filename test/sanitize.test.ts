@@ -32,6 +32,19 @@ describe("redactKnownPaths", () => {
     expect(out).toContain("本地 [本地路径已隐藏]");
   });
 
+  it("ends a public link at sentence punctuation followed by the supplied path", () => {
+    const path = "/tmp/剪辑 视频.mp4";
+    const link = "https://cdn.example/a.mp4";
+    for (const punctuation of ["，", "。", "；", ",", ";", "."]) {
+      const text = `参考 ${link}${punctuation}${path}`;
+      const out = sanitizeSensitiveText(redactKnownPaths(text, [path]));
+      expect(out).toBe(`参考 ${link}${punctuation}[本地路径已隐藏]`);
+    }
+    expect(redactKnownPaths("公开 https://cdn.example/a,b.mp4 可用", [path])).toBe(
+      "公开 https://cdn.example/a,b.mp4 可用",
+    );
+  });
+
   it("still hides an internal oss link that contains the path", () => {
     const text = "地址 oss://bucket/tmp/x.mp4 与本地 /tmp/x.mp4";
     const out = sanitizeSensitiveText(redactKnownPaths(text, ["/tmp/x.mp4"]));

@@ -37,6 +37,7 @@ export function pathVariants(raw: string): string[] {
 
 /** Public links are preserved, so the deterministic layer must not rewrite inside one. */
 const PUBLIC_URL_SPAN = /\bhttps?:\/\/[^\s"'<>]+/gi;
+const URL_PATH_SEPARATORS = new Set(["，", "。", "；", "！", "？", "、", ",", ";", ".", "!", "?"]);
 
 function replaceInGaps(segment: string, variants: readonly string[]): string {
   let out = segment;
@@ -54,8 +55,9 @@ function replaceInGaps(segment: string, variants: readonly string[]): string {
  * kana, punctuation) are covered.
  *
  * Public `http(s)` spans are left untouched: a local path can be a substring of an
- * unrelated public link (local `/tmp/x.mp4` inside `https://cdn.example/tmp/x.mp4`),
- * and rewriting that would corrupt the link, which the contract preserves. An
+ * unrelated public link (local `/tmp/x.mp4` inside `https://cdn.example/tmp/x.mp4`).
+ * A sentence separator followed immediately by a known path ends the public link;
+ * the path then belongs to the replaceable gap, even when it contains spaces. An
  * `oss://` link needs no special case here because the generic rules hide the whole
  * token on the next pass.
  */
@@ -68,11 +70,23 @@ export function redactKnownPaths(text: string, knownPaths: readonly string[]): s
   }
   let out = "";
   let cursor = 0;
-  for (const match of text.matchAll(PUBLIC_URL_SPAN)) {
+  const urlMatcher = new RegExp(PUBLIC_URL_SPAN);
+  for (let match = urlMatcher.exec(text); match !== null; match = urlMatcher.exec(text)) {
     const start = match.index;
+    let end = start + match[0].length;
+    for (let index = start; index < end; index += 1) {
+      if (
+        URL_PATH_SEPARATORS.has(text[index] ?? "") &&
+        variants.some((variant) => text.startsWith(variant, index + 1))
+      ) {
+        end = index;
+        break;
+      }
+    }
     out += replaceInGaps(text.slice(cursor, start), variants);
-    out += match[0];
-    cursor = start + match[0].length;
+    out += text.slice(start, end);
+    cursor = end;
+    urlMatcher.lastIndex = end;
   }
   return out + replaceInGaps(text.slice(cursor), variants);
 }
