@@ -63,6 +63,10 @@ export function localUploadCacheKey(
   return `${media.identityKey}\0${media.contentFingerprint}\0${model}\0${uploadUrl}\0${credential}`;
 }
 
+function isAborted(signal: AbortSignal): boolean {
+  return signal.aborted;
+}
+
 async function readDiskEntries(
   path: string,
   now: number,
@@ -167,10 +171,19 @@ export function createCachedUploader(
         }
       }
       const uploaded = await inner.upload(media, signal);
+      // The underlying upload may settle successfully at the same time the caller
+      // cancels. A cancelled call must not create a reusable cache entry.
+      if (isAborted(signal)) {
+        return uploaded;
+      }
       if (key !== undefined) {
         memory.set(key, { url: uploaded.url, expiresAt: clock.now() + ttlMs });
         if (persistPath !== undefined) {
           await writeDiskEntries(persistPath, memory, clock.now()).catch(() => undefined);
+          if (isAborted(signal)) {
+            memory.delete(key);
+            await writeDiskEntries(persistPath, memory, clock.now()).catch(() => undefined);
+          }
         }
       }
       return uploaded;

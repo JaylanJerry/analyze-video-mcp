@@ -156,6 +156,29 @@ describe("local upload cache", () => {
     expect(state.calls).toBe(2);
   });
 
+  it("does not cache a successful upload when cancellation wins the race", async () => {
+    const controller = new AbortController();
+    let calls = 0;
+    const inner: MediaUploader = {
+      upload(): Promise<UploadedMedia> {
+        calls += 1;
+        if (calls === 1) {
+          controller.abort();
+        }
+        return Promise.resolve({
+          url: `oss://tmp/${String(calls)}.mp4`,
+          requiresOssResolve: true,
+          reused: false,
+        });
+      },
+    };
+    const cached = createCachedUploader({ model: MODEL, apiKey: KEY }, inner);
+    await cached.upload(video("p|8|1"), controller.signal);
+    const next = await cached.upload(video("p|8|1"), signal);
+    expect(calls).toBe(2);
+    expect(next.reused).toBe(false);
+  });
+
   it("always uploads when identity is empty", async () => {
     const inner = countingUploader();
     const cached = createCachedUploader({ model: MODEL, apiKey: KEY }, inner.uploader);
@@ -274,5 +297,33 @@ describe("persistent upload cache", () => {
     await cached.upload(video("p|8|1"), signal);
     expect(inner.calls).toBe(2);
     expect(existsSync(path)).toBe(false);
+  });
+
+  it("removes a disk entry when cancellation happens during persistence", async () => {
+    const path = await cacheFile();
+    const controller = new AbortController();
+    let clockReads = 0;
+    const inner = countingUploader();
+    const cfg = {
+      model: MODEL,
+      apiKey: KEY,
+      uploadCache: true as const,
+      uploadCachePath: path,
+    };
+    const first = createCachedUploader(cfg, inner.uploader, {
+      now: () => {
+        clockReads += 1;
+        if (clockReads === 2) {
+          controller.abort();
+        }
+        return 1_000;
+      },
+    });
+    await first.upload(video("p|8|1"), controller.signal);
+    const second = createCachedUploader(cfg, inner.uploader, { now: () => 1_000 });
+    const next = await second.upload(video("p|8|1"), signal);
+    expect(controller.signal.aborted).toBe(true);
+    expect(inner.calls).toBe(2);
+    expect(next.reused).toBe(false);
   });
 });
