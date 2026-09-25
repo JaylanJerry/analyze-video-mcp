@@ -43,6 +43,15 @@ const LOW_VOLUME_ORIGIN_UNCERTAINTY =
   "不确定之处在于：无法排除存在极低音量或压缩丢失的音频成分，亦无法确认该静音是否为创作意图。";
 const GLOBAL_SILENCE_INVALID_TIME_UNCERTAINTY =
   "整个视频片段中未检测到任何可辨识的声音，包括背景音乐、对白、环境噪音或音效。音轨处于静音状态。";
+const FULL_SILENCE_INVALID_TIME_UNCERTAINTY =
+  "整个视频音轨为完全静音，未检测到任何可辨识的声音内容，包括对白、背景音乐、环境噪音或音效。";
+const UNSUPPORTED_AUDIO_ORIGIN_INFERENCE =
+  "由于音轨完全无声，所有与声音相关的元素（如枪声、爆炸声、音乐节奏等）均为后期添加的视觉特效所对应，实际并未录制或混入音频。";
+const AUDIO_ORIGIN_UNKNOWN_INFERENCE =
+  "画面可能表现枪声、爆炸声或音乐节奏等声音相关元素；当前文件已探测音轨的完整解码 PCM 样本全零，但这些声音是否曾被录制或后期混入仍未知。";
+const AUDIO_TRACK_LOSS_UNCERTAINTY =
+  "无法判断该视频是否原本设计为有声版本，或因技术原因导致音轨丢失。";
+const SILENT_TRACK_CAUSE_UNCERTAINTY = "无法判断该视频是否原本设计为有声版本，或现有音轨为何全零。";
 
 const baseCfg: AppConfig = {
   apiKey: SECRET_KEY,
@@ -1282,9 +1291,24 @@ describe("local authorized video", () => {
             description: GLOBAL_SILENCE_INVALID_TIME_UNCERTAINTY,
             confidence: 0.2,
           },
+          {
+            time: "00:25",
+            evidence: "uncertain",
+            description: FULL_SILENCE_INVALID_TIME_UNCERTAINTY,
+            confidence: 0.2,
+          },
+          {
+            time: "00:25",
+            evidence: "uncertain",
+            description: "局部环境噪音",
+            confidence: 0.2,
+          },
         ],
-        inferences: [],
-        uncertainties: [],
+        inferences: [
+          { description: UNSUPPORTED_AUDIO_ORIGIN_INFERENCE },
+          { description: "画面中人物抬手，可能是在推开一扇门。" },
+        ],
+        uncertainties: [{ description: AUDIO_TRACK_LOSS_UNCERTAINTY }],
         answer: LOW_VOLUME_ORIGIN_UNCERTAINTY,
       }),
     );
@@ -1310,7 +1334,16 @@ describe("local authorized video", () => {
         expect(uncertainties).not.toContain(
           `无效时间码：${GLOBAL_SILENCE_INVALID_TIME_UNCERTAINTY}`,
         );
+        expect(uncertainties).not.toContain(`无效时间码：${FULL_SILENCE_INVALID_TIME_UNCERTAINTY}`);
         expect(uncertainties).toContain("无效时间码：入口处有人走过");
+        expect(uncertainties).toContain("无效时间码：局部环境噪音");
+        const inferences = structured?.inferences as { description: string }[];
+        expect(inferences[0]?.description).toBe(AUDIO_ORIGIN_UNKNOWN_INFERENCE);
+        expect(inferences[0]?.description).not.toContain("后期添加的视觉特效");
+        expect(inferences[1]?.description).toBe("画面中人物抬手，可能是在推开一扇门。");
+        expect(structured?.uncertainties).toContainEqual({
+          description: SILENT_TRACK_CAUSE_UNCERTAINTY,
+        });
         expect(coverage.audio_track_present).toBe(true);
         expect(coverage.audio_observed).toBe(false);
       },
@@ -1542,8 +1575,11 @@ describe("local authorized video", () => {
       JSON.stringify({
         visual_observations: [],
         audio_observations: [],
-        inferences: [],
-        uncertainties: [{ description: GLOBAL_SILENCE_INVALID_TIME_UNCERTAINTY }],
+        inferences: [{ description: UNSUPPORTED_AUDIO_ORIGIN_INFERENCE }],
+        uncertainties: [
+          { description: GLOBAL_SILENCE_INVALID_TIME_UNCERTAINTY },
+          { description: AUDIO_TRACK_LOSS_UNCERTAINTY },
+        ],
         answer: LOW_VOLUME_ORIGIN_UNCERTAINTY,
       }),
     );
@@ -1563,6 +1599,10 @@ describe("local authorized video", () => {
         expect(text).toContain("本地数字静音核对未执行");
         expect(structured?.uncertainties).toEqual([
           { description: GLOBAL_SILENCE_INVALID_TIME_UNCERTAINTY },
+          { description: AUDIO_TRACK_LOSS_UNCERTAINTY },
+        ]);
+        expect(structured?.inferences).toEqual([
+          { description: UNSUPPORTED_AUDIO_ORIGIN_INFERENCE },
         ]);
         expect(coverage.audio_track_present).toBeUndefined();
       },
@@ -1584,8 +1624,11 @@ describe("local authorized video", () => {
             confidence: 0.9,
           },
         ],
-        inferences: [],
-        uncertainties: [{ description: GLOBAL_SILENCE_INVALID_TIME_UNCERTAINTY }],
+        inferences: [{ description: UNSUPPORTED_AUDIO_ORIGIN_INFERENCE }],
+        uncertainties: [
+          { description: GLOBAL_SILENCE_INVALID_TIME_UNCERTAINTY },
+          { description: AUDIO_TRACK_LOSS_UNCERTAINTY },
+        ],
         answer: LOW_VOLUME_ORIGIN_UNCERTAINTY,
       }),
     );
@@ -1607,6 +1650,10 @@ describe("local authorized video", () => {
         expect(text).not.toContain("当前解码 PCM 样本全零");
         expect(structured?.uncertainties).toEqual([
           { description: GLOBAL_SILENCE_INVALID_TIME_UNCERTAINTY },
+          { description: AUDIO_TRACK_LOSS_UNCERTAINTY },
+        ]);
+        expect(structured?.inferences).toEqual([
+          { description: UNSUPPORTED_AUDIO_ORIGIN_INFERENCE },
         ]);
         expect(text).toContain("本地数字静音核对未能完成");
         expect(coverage.audio_track_present).toBe(true);
@@ -1707,8 +1754,11 @@ describe("local authorized video", () => {
       JSON.stringify({
         visual_observations: [],
         audio_observations: [],
-        inferences: [],
-        uncertainties: [{ description: GLOBAL_SILENCE_INVALID_TIME_UNCERTAINTY }],
+        inferences: [{ description: UNSUPPORTED_AUDIO_ORIGIN_INFERENCE }],
+        uncertainties: [
+          { description: GLOBAL_SILENCE_INVALID_TIME_UNCERTAINTY },
+          { description: AUDIO_TRACK_LOSS_UNCERTAINTY },
+        ],
         answer: LOW_VOLUME_ORIGIN_UNCERTAINTY,
       }),
     );
@@ -1723,6 +1773,10 @@ describe("local authorized video", () => {
         expect(text).not.toContain("当前解码结果没有低音量");
         expect(structured?.uncertainties).toEqual([
           { description: GLOBAL_SILENCE_INVALID_TIME_UNCERTAINTY },
+          { description: AUDIO_TRACK_LOSS_UNCERTAINTY },
+        ]);
+        expect(structured?.inferences).toEqual([
+          { description: UNSUPPORTED_AUDIO_ORIGIN_INFERENCE },
         ]);
       },
     );
@@ -1736,8 +1790,11 @@ describe("local authorized video", () => {
       JSON.stringify({
         visual_observations: [],
         audio_observations: [],
-        inferences: [],
-        uncertainties: [{ description: GLOBAL_SILENCE_INVALID_TIME_UNCERTAINTY }],
+        inferences: [{ description: UNSUPPORTED_AUDIO_ORIGIN_INFERENCE }],
+        uncertainties: [
+          { description: GLOBAL_SILENCE_INVALID_TIME_UNCERTAINTY },
+          { description: AUDIO_TRACK_LOSS_UNCERTAINTY },
+        ],
         answer: LOW_VOLUME_ORIGIN_UNCERTAINTY,
       }),
     );
@@ -1756,6 +1813,10 @@ describe("local authorized video", () => {
         expect(text).toContain(LOW_VOLUME_ORIGIN_UNCERTAINTY);
         expect(structured?.uncertainties).toEqual([
           { description: GLOBAL_SILENCE_INVALID_TIME_UNCERTAINTY },
+          { description: AUDIO_TRACK_LOSS_UNCERTAINTY },
+        ]);
+        expect(structured?.inferences).toEqual([
+          { description: UNSUPPORTED_AUDIO_ORIGIN_INFERENCE },
         ]);
         expect(coverage.audio_track_present).toBe(true);
         expect((coverage.coverage_limitations as string[]).join(" ")).toContain("非零 PCM 样本");

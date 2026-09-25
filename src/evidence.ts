@@ -201,7 +201,14 @@ const LOW_VOLUME_AND_ORIGIN_UNCERTAINTY =
 const DIGITAL_SILENCE_AND_ORIGIN_UNCERTAINTY =
   "不确定之处在于：当前解码结果没有低音量的非零音频成分；编码前素材是否曾有声音、具体声音语义及静音是否为创作意图，仍无法确认。";
 const REDUNDANT_GLOBAL_AUDIO_ABSENCE_TIME_UNCERTAINTY =
-  /^无效时间码：整个视频片段中未检测到任何可辨识的声音，包括背景音乐、对白、环境噪音或音效。音轨处于静音状态。$/;
+  /^无效时间码：(?:整个视频片段中未检测到任何可辨识的声音，包括背景音乐、对白、环境噪音或音效。音轨处于静音状态。|整个视频音轨为完全静音，未检测到任何可辨识的声音内容，包括对白、背景音乐、环境噪音或音效。)$/;
+const UNSUPPORTED_AUDIO_ORIGIN_INFERENCE =
+  "由于音轨完全无声，所有与声音相关的元素（如枪声、爆炸声、音乐节奏等）均为后期添加的视觉特效所对应，实际并未录制或混入音频。";
+const AUDIO_ORIGIN_UNKNOWN_INFERENCE =
+  "画面可能表现枪声、爆炸声或音乐节奏等声音相关元素；当前文件已探测音轨的完整解码 PCM 样本全零，但这些声音是否曾被录制或后期混入仍未知。";
+const AUDIO_TRACK_LOSS_UNCERTAINTY =
+  "无法判断该视频是否原本设计为有声版本，或因技术原因导致音轨丢失。";
+const SILENT_TRACK_CAUSE_UNCERTAINTY = "无法判断该视频是否原本设计为有声版本，或现有音轨为何全零。";
 
 function removeKnownNegativeHeardMarker(answer: string): string {
   return answer.replace(
@@ -236,25 +243,26 @@ export function reconcileKnownSilentTrackReport(report: EvidenceReport): Evidenc
     answer: reconcileKnownSilentTrackText(report.answer),
     inferences: report.inferences.map((item) => ({
       ...item,
-      description: item.description.replace(
-        /(?:当前|实际)?音轨缺失/g,
-        "本地确认存在音轨，且完整解码后的 PCM 样本全零，",
-      ),
+      description: item.description
+        .replaceAll(UNSUPPORTED_AUDIO_ORIGIN_INFERENCE, AUDIO_ORIGIN_UNKNOWN_INFERENCE)
+        .replace(/(?:当前|实际)?音轨缺失/g, "本地确认存在音轨，且完整解码后的 PCM 样本全零，"),
     })),
     uncertainties: report.uncertainties
       .filter((item) => !REDUNDANT_GLOBAL_AUDIO_ABSENCE_TIME_UNCERTAINTY.test(item.description))
       .map((item) =>
-        item.description.includes(TRACK_EXISTENCE_UNCERTAINTY)
-          ? {
-              ...item,
-              description: item.description.replace(
-                TRACK_EXISTENCE_UNCERTAINTY,
-                containsEmptyTrackClaim
-                  ? TRACK_SEMANTIC_UNCERTAINTY
-                  : `${KNOWN_TRACK_PCM_FACT}；${TRACK_SEMANTIC_UNCERTAINTY}`,
-              ),
-            }
-          : item,
+        item.description === AUDIO_TRACK_LOSS_UNCERTAINTY
+          ? { ...item, description: SILENT_TRACK_CAUSE_UNCERTAINTY }
+          : item.description.includes(TRACK_EXISTENCE_UNCERTAINTY)
+            ? {
+                ...item,
+                description: item.description.replace(
+                  TRACK_EXISTENCE_UNCERTAINTY,
+                  containsEmptyTrackClaim
+                    ? TRACK_SEMANTIC_UNCERTAINTY
+                    : `${KNOWN_TRACK_PCM_FACT}；${TRACK_SEMANTIC_UNCERTAINTY}`,
+                ),
+              }
+            : item,
       ),
   };
 }
