@@ -1,4 +1,4 @@
-import { mkdtemp, realpath, rm, writeFile, stat as realStat } from "node:fs/promises";
+import { mkdtemp, realpath, rm, utimes, writeFile, stat as realStat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -67,6 +67,32 @@ describe("local media identity recheck", () => {
       code: "MEDIA_NOT_FOUND",
       stage: "authorized",
     });
+  });
+
+  it("changes the content fingerprint when bytes change while size and mtime stay put", async () => {
+    const target = join(dir, "clip.mp4");
+    const original = mp4(2048);
+    const fixed = new Date("2026-01-01T00:00:00.000Z");
+    await writeFile(target, original);
+    await utimes(target, fixed, fixed);
+    const first = await resolveMedia(target, cfg(dir));
+    expect(first.kind).toBe("local");
+    if (first.kind !== "local") return;
+    await first.handle.close();
+
+    // Same path, same size, restored mtime, different bytes: the upload cache must not
+    // treat this as the same media.
+    const mutated = Buffer.from(original);
+    mutated[mutated.length - 1] = (mutated[mutated.length - 1] ?? 0) ^ 0xff;
+    await writeFile(target, mutated);
+    await utimes(target, fixed, fixed);
+    const second = await resolveMedia(target, cfg(dir));
+    expect(second.kind).toBe("local");
+    if (second.kind !== "local") return;
+    await second.handle.close();
+
+    expect(second.identityKey).toBe(first.identityKey);
+    expect(second.contentFingerprint).not.toBe(first.contentFingerprint);
   });
 
   it("still authorizes a file that is unchanged between the check and the open", async () => {

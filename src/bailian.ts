@@ -359,7 +359,16 @@ export async function analyzeMedia(
         throw attempt.error;
       }
       retriesLeft -= 1;
-      await sleep(attempt.retryAfterMs, controller.signal);
+      try {
+        await sleep(attempt.retryAfterMs, controller.signal);
+      } catch (err) {
+        // The backoff wait is a cancellation point: an abort here is the caller
+        // cancelling, not the provider timing out.
+        if (external?.aborted) {
+          throw new MediaError({ code: "MEDIA_ANALYSIS_CANCELLED", stage: "aborted" });
+        }
+        throw err;
+      }
     }
   } finally {
     clearTimeout(timer);

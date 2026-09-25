@@ -82,7 +82,7 @@ MEDIA_ALLOWED_ROOTS="<某个允许目录>" npx tsx scripts/t09-e2e.ts "<媒体�
 **契约**
 
 1. `listTools()` 恰好一个 `analyze_media`，schema 只有 `media`/`prompt` 且都必需，无 provider/model/预算字段。
-2. `prompt` 原样送达（宽泛、具体、中文、时间码各一次断言），每次调用只请求一次，无二次纠错请求。
+2. `prompt` 的问题本身原样送达、只去首尾空白（宽泛、具体、中文、时间码、内部换行与缩进各一次断言），每次调用只请求一次，无二次纠错请求。
 3. `content[0].text === structuredContent.answer`，且不含固定报告/分项/模型名/耗时。
 4. 成功元数据字段的出现条件：`container`/`duration_seconds`/`audio_track_present` 只在本地确实建立时出现，未知不填 `false`；HTTPS 不伪造本地事实；`upload_reused` 仅本地文件且有缓存命中语义。
 
@@ -120,6 +120,6 @@ MEDIA_ALLOWED_ROOTS="<某个允许目录>" npx tsx scripts/t09-e2e.ts "<媒体�
 
 ## 9. 仓库状态与产出形式
 
-- 分支 `codex/optimization-prep`，HEAD `40987f5`；工作区干净；领先 `origin/main` 22 个提交，其中本会话 6 个：`381da84`（实现，66 文件 +3475/−6094）、`b03654b`/`24d8d52`（状态行）、`43584e1`（ZCode 重装）、`a4e6dab`（ZCode 探针报告）、`40987f5`（8 文件回归与用量规模）。
+- **本简报记录写作时的快照**（HEAD `40987f5`、领先 22）；后续提交不在此更新，请以 `git log` 为准。写作时工作区干净，本会话 6 个提交：`381da84`（实现，66 文件 +3475/−6094）、`b03654b`/`24d8d52`（状态行）、`43584e1`（ZCode 重装）、`a4e6dab`（ZCode 探针报告）、`40987f5`（8 文件回归与用量规模）。
 - `dist/`、`coverage/` 等构建产物未提交（`.gitignore`），审核前请自行 `npm run build`。
 - 建议把审核结论写成 `tasks/codex-review-findings-<date>.md`：逐项「通过 / 不通过 / 存疑」+ 证据（`file:line`、命令与关键输出、commit hash），并对每个不通过项给出最小修复建议；不要直接改代码或提交。

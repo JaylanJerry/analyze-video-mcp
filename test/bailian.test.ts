@@ -405,6 +405,39 @@ describe("analyzeMedia", () => {
     ).rejects.toMatchObject({ code: "PROVIDER_TIMEOUT" });
   });
 
+  it("reports a cancellation during the retry backoff as cancelled, not as a timeout", async () => {
+    server.use(
+      http.post(
+        endpoint,
+        () => new HttpResponse(null, { status: 429, headers: { "Retry-After": "1" } }),
+      ),
+    );
+    const controller = new AbortController();
+    const pending = analyzeMedia(videoCfg, httpsVideo, videoReq, controller.signal);
+    setTimeout(() => {
+      controller.abort();
+    }, 120);
+    await expect(pending).rejects.toMatchObject({
+      code: "MEDIA_ANALYSIS_CANCELLED",
+      stage: "aborted",
+      retryable: false,
+    });
+  });
+
+  it("keeps a genuine analysis timeout as a timeout", async () => {
+    server.use(
+      http.post(endpoint, async () => {
+        await new Promise((resolve) => {
+          setTimeout(resolve, 1000);
+        });
+        return sseResponse([deltaEvent("late")]);
+      }),
+    );
+    await expect(
+      analyzeMedia({ ...videoCfg, analysisTimeoutMs: 40 }, httpsVideo, videoReq),
+    ).rejects.toMatchObject({ code: "PROVIDER_TIMEOUT" });
+  });
+
   it("retries a connection failure before any content", async () => {
     let calls = 0;
     server.use(

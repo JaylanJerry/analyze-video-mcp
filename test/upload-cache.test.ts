@@ -16,13 +16,14 @@ import type { MediaUploader, UploadedMedia } from "../src/upload.js";
 const MODEL = "qwen3.5-omni-flash";
 const KEY = "sk-test-upload-cache-key";
 
-function video(identityKey: string): AuthorizedLocalMedia {
+function video(identityKey: string, contentFingerprint = "fingerprint"): AuthorizedLocalMedia {
   return {
     kind: "local",
     mediaKind: "video",
     handle: {} as AuthorizedLocalMedia["handle"],
     sizeBytes: 8,
     identityKey,
+    contentFingerprint,
     durationSeconds: undefined,
     container: "mp4",
     videoCodecs: ["avc1"],

@@ -629,6 +629,17 @@ describe("local MP4 duration probe", () => {
   });
 });
 
+/** Xing frame count states the duration; the body is sized so the implied bitrate
+ *  stays plausible (an impossible claim is rejected rather than trusted). */
+function mp3WithDeclaredDuration(durationSeconds: number): Buffer {
+  const sampleRate = 8000;
+  const bitrateKbps = 8;
+  const frames = Math.round((durationSeconds * sampleRate) / 576);
+  const head = mp3File({ frames: 3, bitrateKbps, sampleRate, xingFrames: frames });
+  const total = frames * 72;
+  return Buffer.concat([head, Buffer.alloc(Math.max(0, total - head.length))]);
+}
+
 describe("local MP3 support", () => {
   it("authorizes an MP3 inside an allowed root with audio upload metadata", async () => {
     const path = join(dir, "clip.mp3");
@@ -696,13 +707,25 @@ describe("local MP3 support", () => {
     });
   });
 
-  it("refuses an MP3 longer than one hour when the duration is reliable", async () => {
+  it("refuses an MP3 longer than one hour when a declared duration is reliable", async () => {
     const path = join(dir, "long.mp3");
-    const head = mp3File({ frames: 3, bitrateKbps: 8, sampleRate: 8000 });
-    await writeFile(path, Buffer.concat([head, Buffer.alloc(3_610_000)]));
+    await writeFile(path, mp3WithDeclaredDuration(3607.2));
     await expect(resolveMedia(path, videoCfg([dir]))).rejects.toMatchObject({
       code: "MEDIA_TOO_LONG",
     });
+  });
+
+  it("allows an MP3 declared at exactly one hour", async () => {
+    const path = join(dir, "exactly-one-hour.mp3");
+    await writeFile(path, mp3WithDeclaredDuration(3600));
+    const resolved = await resolveMedia(path, videoCfg([dir]));
+    try {
+      expect(resolved.kind).toBe("local");
+      if (resolved.kind !== "local") return;
+      expect(resolved.durationSeconds).toBeCloseTo(3600, 3);
+    } finally {
+      await closeResolvedMedia(resolved);
+    }
   });
 
   it("refuses an MP3 outside every allowed root", async () => {

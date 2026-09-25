@@ -285,6 +285,20 @@ describe("MCP analyze_media contract", () => {
     );
   });
 
+  it("drops only the surrounding whitespace and keeps interior formatting", async () => {
+    const rec = recordingAnalyzer("ok");
+    const formatted = "第一行：00:30 的 画面\n    第二行保留缩进 与  双空格";
+    await withClient(baseCfg, { analyzer: rec.analyzer }, async (client) => {
+      await call(client, {
+        media: "https://example.com/a.mp4",
+        prompt: `  
+${formatted}
+  `,
+      });
+    });
+    expect(rec.calls[0]?.request.prompt).toBe(formatted);
+  });
+
   it("asks the provider exactly once and never for a correction rewrite", async () => {
     const rec = recordingAnalyzer("这是一段没有任何 JSON 的散文回答。");
     await withClient(baseCfg, { analyzer: rec.analyzer }, async (client) => {
@@ -655,6 +669,43 @@ describe("MCP analyze_media contract", () => {
         retryable: false,
       });
       release?.();
+    });
+  });
+
+  it("reports a cancellation during upload as cancelled, not as an upload failure", async () => {
+    // The real uploader raises a stage-specific failure when its signal aborts; the
+    // tool boundary must still report the caller's cancellation.
+    const uploader: MediaUploader = {
+      upload(_media, signal) {
+        return new Promise<UploadedMedia>((_resolve, reject) => {
+          signal.addEventListener(
+            "abort",
+            () => {
+              reject(new MediaError({ code: "MEDIA_UPLOAD_FAILED", stage: "uploaded" }));
+            },
+            { once: true },
+          );
+        });
+      },
+    };
+    const file = join(dir, "clip.mp4");
+    await writeFile(file, mp4WithAudio(3));
+    const cfg = { ...baseCfg, allowedRoots: [dir] };
+    await withClient(cfg, { uploader }, async (client, mcp) => {
+      const inFlight = client.callTool({
+        name: "analyze_media",
+        arguments: { media: file, prompt: "q" },
+      });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      abortActiveAnalysis(mcp);
+      const result = await inFlight;
+      expect(result.isError).toBe(true);
+      expect(structuredOf(result)).toMatchObject({
+        ok: false,
+        code: "MEDIA_ANALYSIS_CANCELLED",
+        stage: "aborted",
+        retryable: false,
+      });
     });
   });
 

@@ -1,6 +1,6 @@
 # 下一大版本规格：Agent 主导的媒体分析网关
 
-状态：**产品方向已获用户确认，当前工作区分支已按本规格实现核心路径，尚未提交或发布。** 目标为下一破坏性大版本，版本号在发布准备时确定。工作区实现与尚未完成的验收见 [`API_CONTRACT.md`](API_CONTRACT.md) 和 [`../tasks/todo-next-major-media-gateway.md`](../tasks/todo-next-major-media-gateway.md)；npm 已发布的 `0.6.1` 仍提供旧 Tool。架构取舍见 [ADR 0024](decisions/0024-agent-directed-media-gateway.md)，实施顺序见 [`../tasks/plan-next-major-media-gateway.md`](../tasks/plan-next-major-media-gateway.md)。
+状态：**产品方向已获用户确认，当前工作区分支已按本规格实现核心路径并**本地提交**（未推送、未发布；提交见 `git log`）。** 目标为下一破坏性大版本，版本号在发布准备时确定。工作区实现与尚未完成的验收见 [`API_CONTRACT.md`](API_CONTRACT.md) 和 [`../tasks/todo-next-major-media-gateway.md`](../tasks/todo-next-major-media-gateway.md)；npm 已发布的 `0.6.1` 仍提供旧 Tool。架构取舍见 [ADR 0024](decisions/0024-agent-directed-media-gateway.md)，实施顺序见 [`../tasks/plan-next-major-media-gateway.md`](../tasks/plan-next-major-media-gateway.md)。
 
 ## 目标与非目标
 
@@ -101,7 +101,7 @@
 
 ## 服务商能力与发布门
 
-首发只用百炼。内部协议分开处理视频 `video_url` 与 MP3 `input_audio`，共享鉴权、SSE、错误与资源边界。Chat Completions 音频请求的目标形状为 `{"type":"input_audio","input_audio":{"data":"oss://…","format":"mp3"}}`，本地临时上传 URL 的模型调用还需 `X-DashScope-OssResourceResolve: enable`。这两项分别有官方文档依据，但 **它们在本项目目标模型、地域和 MP3 上组合可用仍是未验证假设**。先用 mock 冻结字段与 Header，再在大规模 MP3 实现前做无私密小样本协议探针；真实调用及上传须另获用户明确授权，不能借用过去对某个具体视频的授权。若暂未获得授权，视频薄路径和 MP3 mock 可继续，但 MP3 实际可用与整版发布门不能打勾。若该组合不受支持，带证据提出最小替代方案供审阅；不得悄悄引入整文件 Base64、另一家云或新生产依赖。安装时选用的模型应明确支持所请求的音频或视频输入；已知不支持或服务商明确拒绝时返回 `MEDIA_MODEL_UNSUPPORTED`，不能把未读到音频包装成成功分析。
+首发只用百炼。内部协议分开处理视频 `video_url` 与 MP3 `input_audio`，共享鉴权、SSE、错误与资源边界。Chat Completions 音频请求的目标形状为 `{"type":"input_audio","input_audio":{"data":"oss://…","format":"mp3"}}`，本地临时上传 URL 的模型调用还需 `X-DashScope-OssResourceResolve: enable`。这两项分别有官方文档依据，且 **2026-09-25 已用非私密小样本完成真实探针**（默认地域、`qwen3.8-omni-flash`：9 秒合成音频两次调用都正确、890 秒真实音频概括正确、`upload_reused` 由 `false` 变 `true`；证据见 [`PROVIDER_PROTOCOL.md`](PROVIDER_PROTOCOL.md) §3b）。该结论只覆盖该模型与地域，**跨模型不外推**——实测纯文本模型会静默忽略音频块而不报错。真实调用及上传仍须逐次获得用户明确授权。若该组合不受支持，带证据提出最小替代方案供审阅；不得悄悄引入整文件 Base64、另一家云或新生产依赖。安装时选用的模型应明确支持所请求的音频或视频输入；已知不支持或服务商明确拒绝时返回 `MEDIA_MODEL_UNSUPPORTED`，不能把未读到音频包装成成功分析。
 
 协议参考：[百炼 Chat Completions 媒体输入字段](https://www.alibabacloud.com/help/en/model-studio/qwen-api-via-openai-chat-completions)、[Qwen-Omni 格式与上限](https://docs.modelstudio.console.alibabacloud.com/en/model-studio/qwen-omni)、[临时上传 URL 与地域/过期约束](https://docs.modelstudio.console.alibabacloud.com/en/model-studio/get-temporary-file-url)。这些文档说明接口可能性，不替代本仓库针对目标模型、地域和上传方式的实测。
 

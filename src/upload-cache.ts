@@ -33,6 +33,12 @@ function isDiskCacheFile(value: unknown): value is DiskCacheFile {
 }
 
 /**
+ * Cache entries therefore depend on: the file's identity (path, size, mtime), a bounded
+ * content fingerprint of that file, the model, the upload endpoint and a one-way
+ * fingerprint of the credential.
+ */
+
+/**
  * One-way fingerprint of the configured credential. Bailian temporary URLs are
  * bound to the uploading account, so a cached URL must not be reused after the
  * API key changes. The fingerprint is a domain-separated SHA-256 prefix: it cannot

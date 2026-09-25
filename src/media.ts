@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { open, realpath, stat, type FileHandle } from "node:fs/promises";
 import type { Stats } from "node:fs";
 import { extname, isAbsolute, relative } from "node:path";
@@ -15,6 +16,12 @@ export interface AuthorizedLocalMedia {
   handle: FileHandle;
   sizeBytes: number;
   identityKey: string;
+  /**
+   * Bounded content marker (size + first/last 64 KiB) read from the same handle. The
+   * upload cache keys on it so a file whose path, size and mtime were all preserved
+   * but whose bytes changed is not served a stale temporary URL.
+   */
+  contentFingerprint: string;
   durationSeconds: number | undefined;
   container: LocalContainer;
   /** Sample-format fourccs found in the container (validated allowlist). */
@@ -93,6 +100,37 @@ function durationSecondsFromProbe(
     return undefined;
   }
   return Number(seconds);
+}
+
+const CONTENT_FINGERPRINT_BYTES = 64 * 1024;
+
+async function readFingerprintPart(
+  handle: FileHandle,
+  position: number,
+  length: number,
+): Promise<Uint8Array> {
+  const buffer = Buffer.alloc(length);
+  const { bytesRead } = await handle.read(buffer, 0, length, position);
+  return new Uint8Array(buffer.subarray(0, bytesRead));
+}
+
+/**
+ * Content marker over a bounded head and tail. It is deliberately not a full-file hash:
+ * the probe budget stays small on large media, while any change to the head or tail — the
+ * regions a re-encode or re-export always touches — changes the key.
+ */
+async function contentFingerprint(handle: FileHandle, sizeBytes: number): Promise<string> {
+  const partLength = Math.min(CONTENT_FINGERPRINT_BYTES, sizeBytes);
+  const parts: Uint8Array[] = [Buffer.from(`${String(sizeBytes)}|`, "utf8")];
+  parts.push(await readFingerprintPart(handle, 0, partLength));
+  if (sizeBytes > partLength) {
+    parts.push(await readFingerprintPart(handle, sizeBytes - partLength, partLength));
+  }
+  const hash = createHash("sha256");
+  for (const part of parts) {
+    hash.update(new Uint8Array(part));
+  }
+  return hash.digest("hex").slice(0, 32);
 }
 
 function uploadIdentityKey(realPath: string, sizeBytes: number, mtimeMs: number): string {
@@ -648,6 +686,7 @@ async function authorizeLocalMedia(raw: string, cfg: AppConfig): Promise<Resolve
 
     return {
       ...shared,
+      contentFingerprint: await contentFingerprint(handle, opened.size),
       mediaKind,
       durationSeconds,
       videoCodecs,

@@ -208,8 +208,9 @@ function fail(err: unknown): CallToolResult {
 }
 
 /**
- * The prompt is the Agent's question, passed through as-is. An empty or oversized
- * prompt is an input error: it is never replaced by a default or silently cut.
+ * The Agent's question is never rewritten, expanded or cut; only the surrounding
+ * whitespace is dropped before the length check. An empty or oversized prompt is an
+ * input error, not something the server substitutes or truncates.
  */
 function readPrompt(raw: string): string {
   const trimmed = raw.trim();
@@ -347,7 +348,15 @@ export function createServer(cfg?: AppConfig, deps: ServerDeps = {}): McpServer 
           await closeResolvedMedia(resolved);
         }
       } catch (err) {
-        return fail(err);
+        // Cancellation can surface from any stage — policy fetch, multipart upload,
+        // retry backoff — as whatever failure that layer raises. If this run's
+        // controller is aborted, the caller cancelled; report that instead of the
+        // stage-specific error the layer below produced.
+        return fail(
+          controller.signal.aborted
+            ? new MediaError({ code: "MEDIA_ANALYSIS_CANCELLED", stage: "aborted" })
+            : err,
+        );
       } finally {
         hostSignal.removeEventListener("abort", onHostAbort);
         if (active === controller) {
