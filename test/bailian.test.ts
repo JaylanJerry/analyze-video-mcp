@@ -100,17 +100,25 @@ describe("buildVideoPayload", () => {
 describe("analyzeVideo", () => {
   it("aggregates SSE text and records the request id", async () => {
     server.use(
-      http.post(endpoint, () =>
-        sseResponse([
-          deltaEvent("画面是"),
-          deltaEvent("24"),
-          `data: ${JSON.stringify({ choices: [{ finish_reason: "stop" }] })}\n\n`,
-        ]),
+      http.post(
+        endpoint,
+        () =>
+          new HttpResponse(
+            sseBody([
+              deltaEvent("画面是"),
+              deltaEvent("24"),
+              `data: ${JSON.stringify({ choices: [{ finish_reason: "stop" }] })}\n\n`,
+            ]),
+            {
+              status: 200,
+              headers: { "Content-Type": "text/event-stream", "X-Request-Id": "req-success-1" },
+            },
+          ),
       ),
     );
     const result = await analyzeVideo(videoCfg, httpsVideo, videoReq);
     expect(result.answer).toBe("画面是24");
-    expect(result.requestId).toBe("chatcmpl-1");
+    expect(result.requestId).toBe("req-success-1");
     expect(result.receivedEvents).toBeGreaterThan(0);
   });
 

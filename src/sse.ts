@@ -20,6 +20,7 @@ const choiceSchema = z.looseObject({
 
 const eventSchema = z.looseObject({
   id: z.string().optional(),
+  request_id: z.string().optional(),
   choices: z.array(choiceSchema).optional(),
   usage: usageSchema.nullish(),
 });
@@ -234,9 +235,11 @@ export class SseParser {
   private finishReason: string | undefined;
   private usage: SseUsage | undefined;
   private requestId: string | undefined;
+  private readonly providerRequestId: string | undefined;
 
   constructor(requestId?: string) {
-    this.requestId = safeProviderRequestId(requestId);
+    this.providerRequestId = safeProviderRequestId(requestId);
+    this.requestId = this.providerRequestId;
   }
 
   get sawText(): boolean {
@@ -314,7 +317,7 @@ export class SseParser {
       throw (
         mapProviderError(json, {
           receivedEvents: this.receivedEvents,
-          ...(this.requestId === undefined ? {} : { requestId: this.requestId }),
+          ...(this.providerRequestId === undefined ? {} : { requestId: this.providerRequestId }),
         }) ?? invalid("provider_error", { received_sse_events: this.receivedEvents })
       );
     }
@@ -325,8 +328,8 @@ export class SseParser {
         event_shape: eventShape(json),
       });
     }
-    if (parsed.data.id !== undefined && this.requestId === undefined) {
-      this.requestId = printableRequestId(parsed.data.id);
+    if (parsed.data.request_id !== undefined && this.requestId === undefined) {
+      this.requestId = safeProviderRequestId(parsed.data.request_id);
     }
     if (parsed.data.usage != null) {
       this.usage = {

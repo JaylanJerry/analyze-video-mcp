@@ -41,7 +41,6 @@ export function mapProviderError(
   const requestId =
     safeProviderRequestId(error.request_id) ??
     safeProviderRequestId(root.request_id) ??
-    safeProviderRequestId(root.id) ??
     safeProviderRequestId(options.requestId);
   const inspection =
     errorCode !== undefined && /^(?:data_inspection_failed|DataInspectionFailed)$/i.test(errorCode);

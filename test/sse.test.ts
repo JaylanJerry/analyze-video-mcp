@@ -94,7 +94,7 @@ describe("SseParser", () => {
       ),
     );
     expect(result.text).toBe("可见");
-    expect(result.requestId).toBe("chatcmpl-1");
+    expect(result.requestId).toBeUndefined();
   });
 
   it("treats null delta.content as an empty role chunk", async () => {
@@ -174,6 +174,21 @@ describe("SseParser", () => {
     expect(JSON.stringify(err)).not.toContain("sk-secret-key-123");
   });
 
+  it("does not present a chat completion id as a provider request id", async () => {
+    let err: unknown;
+    try {
+      await aggregateSse(
+        chunksOf(
+          event({ id: "chatcmpl-ordinary", choices: [{ delta: { role: "assistant" } }] }),
+          `data: ${JSON.stringify({ id: "chatcmpl-error", error: { code: "data_inspection_failed" } })}\n\n`,
+        ),
+      );
+    } catch (error: unknown) {
+      err = error;
+    }
+    expect(err).toMatchObject({ code: "PROVIDER_CONTENT_REJECTED", requestId: undefined });
+  });
+
   it("ignores role-only, empty delta, finish-only, and usage-only events", async () => {
     const result = await aggregateSse(
       chunksOf(
@@ -210,15 +225,19 @@ describe("SseParser", () => {
     expect(result.finishReason).toBe("length");
   });
 
-  it("records the first event id as request id", async () => {
+  it("records an explicit request_id without treating the completion id as one", async () => {
     const result = await aggregateSse(
       chunksOf(
-        event({ id: "chatcmpl-1", choices: [{ delta: { content: "x" } }] }),
-        event({ id: "chatcmpl-2", choices: [{ finish_reason: "stop" }] }),
+        event({
+          id: "chatcmpl-1",
+          request_id: "req-real-1",
+          choices: [{ delta: { content: "x" } }],
+        }),
+        event({ id: "chatcmpl-2", request_id: "req-real-2", choices: [{ finish_reason: "stop" }] }),
         "data: [DONE]\n\n",
       ),
     );
-    expect(result.requestId).toBe("chatcmpl-1");
+    expect(result.requestId).toBe("req-real-1");
   });
 
   it("rejects a mid-stream EOF without a terminal", async () => {
@@ -357,16 +376,15 @@ describe("SseParser", () => {
     expect(result.text).toBe(content);
   });
 
-  it("keeps a newline request id from splitting stderr", async () => {
+  it("discards a request_id with a newline instead of exposing it", async () => {
     const result = await aggregateSse(
       chunksOf(
-        event({ id: "chatcmpl-1\nINJECT", choices: [{ delta: { content: "x" } }] }),
+        event({ request_id: "req-1\nINJECT", choices: [{ delta: { content: "x" } }] }),
         event({ choices: [{ finish_reason: "stop" }] }),
         "data: [DONE]\n\n",
       ),
     );
-    expect(result.requestId).toBe("chatcmpl-1INJECT");
-    expect(result.requestId).not.toMatch(/[\r\n]/);
+    expect(result.requestId).toBeUndefined();
   });
 });
 

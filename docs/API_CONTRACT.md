@@ -132,7 +132,7 @@ MCP `CallToolResult`：
 | `VIDEO_ANALYSIS_FAILED`     | 其他已脱敏错误                                                                                                                                                                                                           | 视情况              |
 | `CONFIG_MISSING`            | 启动后调用时仍缺 Key 等配置；`missing` 列出变量名                                                                                                                                                                        | 否                  |
 
-当服务商在 SSE 错误事件或 HTTP 错误正文中返回内容检查错误时，结果会给出 `PROVIDER_CONTENT_REJECTED`、`retryable:false`，不会把它误报为无效 SSE。`diagnostics.error_code` 保留经过形状校验的服务商错误码，`diagnostics.inspection_side` 仅为 `input` / `output` / `unknown`：只从已知固定错误措辞判断，无法判断时用 `unknown`。如响应正文或 Header 提供符合安全格式的 Request ID，错误 `structuredContent.request_id` 会带上它；原始错误消息、路径、密钥和 OSS URL 不透传。其他明确的 SSE 服务商错误归为不可直接重试的 `VIDEO_ANALYSIS_FAILED`，保留安全错误码；HTTP 429/502/503 的既有重试策略不变。内容检查拒绝不自动触发重复上传或分析调用。参见 [ADR 0023](decisions/0023-provider-inspection-errors.md)。
+当服务商在 SSE 错误事件或 HTTP 错误正文中返回内容检查错误时，结果会给出 `PROVIDER_CONTENT_REJECTED`、`retryable:false`，不会把它误报为无效 SSE。`diagnostics.error_code` 保留经过形状校验的服务商错误码，`diagnostics.inspection_side` 仅为 `input` / `output` / `unknown`：只从已知固定错误措辞判断，无法判断时用 `unknown`。如响应正文的显式 `request_id` 或 Header 提供符合安全格式的 Request ID，错误 `structuredContent.request_id` 会带上它；SSE 的 `id`（如 `chatcmpl-…`）是补全 ID，不当作 Request ID。原始错误消息、路径、密钥和 OSS URL 不透传。其他明确的 SSE 服务商错误归为不可直接重试的 `VIDEO_ANALYSIS_FAILED`，保留安全错误码；HTTP 429/502/503 的既有重试策略不变。内容检查拒绝不自动触发重复上传或分析调用。参见 [ADR 0023](decisions/0023-provider-inspection-errors.md)。
 
 `coverage` 字段分三组语义，不要混用：
 
