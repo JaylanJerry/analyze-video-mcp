@@ -129,7 +129,7 @@ function limitationsFor(media: ResolvedMedia): string[] {
   }
   if (media.mediaKind === "audio") {
     return [
-      "音频由模型分析，本机未做逐字转写核验；本地帧校验只证明文件含可解码的 MPEG 音频，不代表模型确认听到或听准了内容。",
+      "音频由模型分析，本机未逐句转写，也未核对模型自报的段数与时间点；本地帧校验只证明文件含可解码的 MPEG 音频，不代表模型确认听到或听准了内容。",
     ];
   }
   if (media.trackProbeComplete !== true) {

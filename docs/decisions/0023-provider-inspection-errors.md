@@ -17,4 +17,6 @@
 
 ## 验证边界
 
-单元与模拟 HTTP/SSE 测试覆盖两种错误形态、输入/输出/未知归纳、Request ID 脱敏与补全 ID 区分、429 仍重试，以及内容检查不重试。2026-09-25 重启后的同一视频真实调用确认 `PROVIDER_CONTENT_REJECTED` / `retryable:false` / `inspection_side:unknown`，服务商仍在首个 SSE 事件拒绝，未提供视频分析内容；这次调用也暴露了 `chatcmpl-…` 被误标为 Request ID 的问题，本 ADR 的来源限制是之后的修正。修正后的 Request ID 来源尚未再做付费 live 验证。服务商若改变错误结构或措辞，侧别会保守地显示 `unknown`。
+单元与模拟 HTTP/SSE 测试覆盖两种错误形态、输入/输出/未知归纳、Request ID 脱敏与补全 ID 区分、429 仍重试，以及内容检查不重试。2026-09-25 重启后的同一视频真实调用确认 `PROVIDER_CONTENT_REJECTED` / `retryable:false` / `inspection_side:unknown`，服务商仍在首个 SSE 事件拒绝，未提供视频分析内容；这次调用也暴露了 `chatcmpl-…` 被误标为 Request ID 的问题，本 ADR 的来源限制是之后的修正。修正后的 Request ID 来源此后在 HTTP 错误正文路径上取得了首次真实样本（见下），SSE 事件路径在修正后仍未复验。服务商若改变错误结构或措辞，侧别会保守地显示 `unknown`。
+
+**2026-09-25 追加真实现场（修复后）：** 用户在同一 ZCode 宿主会话再次要求分析同一部 14 分 50 秒视频（112,544,441 bytes、889.95 秒、HEVC `hvc1` 1280×720 + AAC，本地门禁放行），返回 `PROVIDER_CONTENT_REJECTED`、`retryable=false`、`stage=analyzing`、`http_status=400`、`inspection_side=unknown`、`request_id=41ba2c43-28b3-95b2-8dfd-ce5655b61ab4`、`diagnostics={parse_reason:provider_error, error_code:data_inspection_failed}`，没有分析内容也没有用量。这是本 ADR 之后该错误的首次真实样本，也是 **HTTP 400 错误正文**形态的首次真实样本——此前真实样本都在首个 SSE 事件里，而正文在修复前被直接丢弃，所以“正文路径”此前只有模拟覆盖。本次带回的 Request ID 是 UUID 形态而非 `chatcmpl-…` 补全 ID，说明修正后的来源规则在正文路径上生效；但它来自响应头还是 JSON 字段无法从 Agent 可见结果区分，SSE 路径在修正后仍未复验。按实现与提示未重试同一媒体。

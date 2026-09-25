@@ -196,11 +196,11 @@ X-DashScope-OssResourceResolve: enable   # 仅 oss:// 输入需要
 
 **验证状态（2026-09-25，已 live 验证组合可用）：** `input_audio` + 临时 `oss://` + `X-DashScope-OssResourceResolve: enable` 已在默认地域用 `qwen3.8-omni-flash` 完成真实调用：
 
-- 非私密合成样本（9.04 秒、440 / 880 / 1760 Hz 三段递增音调、72,559 B）同一进程内连续两次调用都成功（`is_error:false`），模型准确回答“三段、依次升高、每段约 3 秒”；`usage` 188/474/662 与 188/725/913，SSE 事件 179 与 239，request id `2da18856-09e4-9afd-9e0e-1e1546dc3f2f` 与 `d52ed864-89d8-967d-9184-b23bbcfc7b01`；第二次返回 `upload_reused:true` 且仍完成了一次新的分析。
+- 非私密合成样本（9.04 秒、440 / 880 / 1760 Hz 三段递增音调、72,559 B）同一进程内连续两次调用都成功（`is_error:false`），模型准确回答“三段、依次升高、每段约 3 秒”；`usage` 188/474/662 与 188/725/913，SSE 事件 179 与 239，request id `2da18856-09e4-9afd-9e0e-1e1546dc3f2f` 与 `d52ed864-89d8-967d-9184-b23bbcfc7b01`；第二次返回 `upload_reused:true` 且仍完成了一次新的分析。**同一份 72,559 B 样本的第三次调用（2026-09-25，ZCode 宿主会话，`usage` 274/1522/1796、`upload_reused:true`——大小一致且缓存键为 `路径|大小|mtime`，说明该文件先前已上传过）把段数报成 4 段、切换点报成 2/5/8 秒。** 本机独立测量（`ffprobe` 的 `aspectralstats=measure=centroid`、8192 窗，纯本地测量，不经过服务端）显示这份文件只有 **3 个平台区 ≈461 / 900 / 1778 Hz**（即上述 440 / 880 / 1760 Hz，centroid 略高于基频），各约 2.79 秒，切换点在 ≈2.9 秒与 ≈5.9 秒。因此模型对“纯正弦音、无人声、依次升高”的判断正确，**但段数与切换时间不可靠**：同一文件先前两次的“三段”结论只是当时的单次结果，不能当作模型的稳定行为。
 - 另一份 890 秒真实 MP3（7.12 MiB）成功：`usage` 6350/1541/7891、575 个 SSE 事件、约 22 秒，`media.kind=audio`、`duration_seconds=889.99`，回答与音频内容一致。
 - 脱敏核验：这些运行的 stderr 与回答正文都不含 `oss://`、密钥或本地路径；`text_has_path=false`、`stderr_has_oss=false`、`stderr_has_sk=false`。
 
-**仍未验证：** `MEDIA_MODEL_UNSUPPORTED` 的服务商真实错误码措辞（allowlist 目前只有 mock 证据）；新会话手动拖入、Codex 宿主 MOV/MP3 与 ZCode 宿主调用；费用金额（按服务商计费，本项目不记录账单）。当前 Codex 任务已另用公开 MP4 夹具通过一次 `analyze_media` 真实调用，见 [`../tasks/todo-next-major-media-gateway.md`](../tasks/todo-next-major-media-gateway.md) D4；这不能替代上述宿主路径验收。
+**仍未验证：** `MEDIA_MODEL_UNSUPPORTED` 的服务商真实错误码措辞（allowlist 目前只有 mock 证据）；Codex 新会话手动拖入与 Codex 宿主 MOV/MP3 调用；费用金额（按服务商计费，本项目不记录账单）。Codex 当前任务已用公开 MP4 夹具、ZCode 宿主会话已用同码流 MOV 与本节这份 72,559 B MP3 各完成过真实 `analyze_media` 调用，见 [`../tasks/todo-next-major-media-gateway.md`](../tasks/todo-next-major-media-gateway.md) D4；这些都不能推定 Codex 侧路径已验收。
 
 **模型能力实测（2026-09-25，同一 MP3 样本，3 次调用）：**
 
@@ -210,9 +210,9 @@ X-DashScope-OssResourceResolve: enable   # 仅 oss:// 输入需要
 | `qwen-plus`（纯文本）                | **不报错**：`prompt_tokens=78`、`completion_tokens=3`、回答仅「听不清。」。**对照测量（2026-09-25）**：同一模型、同一 system 说明与问题、**去掉媒体块**的请求得到完全相同的 `prompt_tokens=78`、`completion_tokens=3` 与同一句回答，即该音频块对这个模型/端点**没有贡献任何输入 token**（同模型同问题对照，不是跨模型推断） |
 | `qwen-vl-max-latest`（本账号未开通） | HTTP **403** → `PROVIDER_UNAUTHORIZED`（不是模态拒绝；已把该错误文本改为同时提示“模型是否已开通”）                                                                                                                                                                                                                          |
 
-结论：本次 `qwen-plus` 没有产生可用的模态拒绝错误码，因此 `MEDIA_MODEL_UNSUPPORTED` 仍只在服务商明确给出 allowlist 中的措辞时触发（目前尚无真实样本命中）。**有/无媒体块的同模型对照**证明该音频块对 `qwen-plus` 没有贡献输入 token（78 对 78、回答相同），但**跨模型**的 `prompt_tokens` 差异仍不能作为“媒体是否被读取”的通用判据（tokenizer 与提示模板不同）。因此本项目目前的做法是：**不**根据用量猜测模型是否读了媒体，而是把 `request.model` 与 `usage` 如实暴露给调用方，并在 `limitations` 里声明本地校验不证明模型听到；安装者需要自行确认所选模型支持该模态。
+结论：本次 `qwen-plus` 没有产生可用的模态拒绝错误码，因此 `MEDIA_MODEL_UNSUPPORTED` 仍只在服务商明确给出 allowlist 中的措辞时触发（目前尚无真实样本命中）。**有/无媒体块的同模型对照**证明该音频块对 `qwen-plus` 没有贡献输入 token（78 对 78、回答相同），但**跨模型**的 `prompt_tokens` 差异仍不能作为“媒体是否被读取”的通用判据（tokenizer 与提示模板不同）。因此本项目目前的做法是：**不**根据用量猜测模型是否读了媒体，而是把 `request.model` 与 `usage` 如实暴露给调用方，并在 `limitations` 里声明本地校验不证明模型听到；安装者需要自行确认所选模型支持该模态。**补充证据（2026-09-25）：** 同一 72,559 B 样本的第三次调用说明，模型即使确实读到了音频，它的**计数与时间戳仍可能出错**（把 3 段报成 4 段、切换点整体偏移并多报一个）。所以服务端既不能把“模型答出了音频内容”当作已核验事实，也不能把模型给出的段数/时间点当作真值去做纠正或过滤——保持如实透传并声明局限。
 
-**已记录的负例（2026-09-25）：** 只有音频轨、没有视频轨的 MP4（`ftyp isom` + 单个 `soun` trak、890 秒、6.9 MiB）经 `video_url` 提交时，服务商返回 **HTTP 400**，没有 SSE 事件也没有用量（两次复现：request id `0a7e3482-0744-9183-8cc3-5b928c4f91dc`、`2832b8e7-9235-9818-b89b-c186c6a5c0f4`）。同一协议对含视频轨的 MP4 与 MOV 正常（见下），因此该 400 与“音频-only 容器”有关，但**具体原因未定位**（缺视频轨、文件其它属性或服务商策略都可能）。当前实现不会预先拒绝音频-only MP4，使用者会看到 `MEDIA_ANALYSIS_FAILED` + `http_status=400`；若要把“音频-only MP4 自动改走音频路径”做成产品行为，需要另立规格（涉及本地转封装，属于禁止的自动转码范畴，须单独批准）。
+**已记录的负例（2026-09-25）：** 只有音频轨、没有视频轨的 MP4（`ftyp isom` + 单个 `soun` trak、890 秒、6.9 MiB）经 `video_url` 提交时，服务商返回 **HTTP 400**，没有 SSE 事件也没有用量（两次复现：request id `0a7e3482-0744-9183-8cc3-5b928c4f91dc`、`2832b8e7-9235-9818-b89b-c186c6a5c0f4`）。同一协议对含视频轨的 MP4 与 MOV 正常（见下），因此该 400 与“音频-only 容器”有关，但**具体原因未定位**（缺视频轨、文件其它属性或服务商策略都可能）。当前实现不会预先拒绝音频-only MP4，使用者会看到 `MEDIA_ANALYSIS_FAILED` + `http_status=400`；若要把“音频-only MP4 自动改走音频路径”做成产品行为，需要另立规格（涉及本地转封装，属于禁止的自动转码范畴，须单独批准）。**关联观察（2026-09-25，未证实）：** 同一部 890 秒源视频的完整音视频版本随后返回了明确带 `data_inspection_failed` 的 HTTP 400（见 [ADR 0023](decisions/0023-provider-inspection-errors.md)），而上面这两次裸 400 的响应正文被旧实现丢弃，原因已不可回溯；内容检查因此是那些 400 的候选原因之一，不要把它们当作“音频-only 容器被拒”的既证事实。
 
 **2026-09-25 其它格式 live 对照（同一模型、默认地域、公开合成夹具）：**
 
