@@ -35,22 +35,46 @@ export function pathVariants(raw: string): string[] {
   return [...variants];
 }
 
-/**
- * Exact, deterministic redaction of the media paths supplied for this call. Applied
- * before the generic rules so characters a heuristic would have to enumerate (spaces,
- * kana, punctuation) are covered.
- */
-export function redactKnownPaths(text: string, knownPaths: readonly string[]): string {
-  let out = text;
-  for (const raw of knownPaths) {
-    for (const variant of pathVariants(raw)) {
-      if (variant.length < 3 || !out.includes(variant)) {
-        continue;
-      }
+/** Public links are preserved, so the deterministic layer must not rewrite inside one. */
+const PUBLIC_URL_SPAN = /\bhttps?:\/\/[^\s"'<>]+/gi;
+
+function replaceInGaps(segment: string, variants: readonly string[]): string {
+  let out = segment;
+  for (const variant of variants) {
+    if (out.includes(variant)) {
       out = out.split(variant).join("[本地路径已隐藏]");
     }
   }
   return out;
+}
+
+/**
+ * Exact, deterministic redaction of the media paths supplied for this call. Applied
+ * before the generic rules so characters a heuristic would have to enumerate (spaces,
+ * kana, punctuation) are covered.
+ *
+ * Public `http(s)` spans are left untouched: a local path can be a substring of an
+ * unrelated public link (local `/tmp/x.mp4` inside `https://cdn.example/tmp/x.mp4`),
+ * and rewriting that would corrupt the link, which the contract preserves. An
+ * `oss://` link needs no special case here because the generic rules hide the whole
+ * token on the next pass.
+ */
+export function redactKnownPaths(text: string, knownPaths: readonly string[]): string {
+  const variants = knownPaths
+    .flatMap((raw) => pathVariants(raw))
+    .filter((variant) => variant.length >= 3);
+  if (variants.length === 0) {
+    return text;
+  }
+  let out = "";
+  let cursor = 0;
+  for (const match of text.matchAll(PUBLIC_URL_SPAN)) {
+    const start = match.index;
+    out += replaceInGaps(text.slice(cursor, start), variants);
+    out += match[0];
+    cursor = start + match[0].length;
+  }
+  return out + replaceInGaps(text.slice(cursor), variants);
 }
 
 export function sanitizeSensitiveText(text: string): string {

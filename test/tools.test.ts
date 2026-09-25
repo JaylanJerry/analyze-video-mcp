@@ -492,6 +492,21 @@ ${formatted}
     expect(rec.calls[0]?.media.url.startsWith("oss://")).toBe(true);
   });
 
+  it("keeps a public link intact while hiding the supplied path in the same answer", async () => {
+    const file = join(dir, "x.mp4");
+    await writeFile(file, mp4WithAudio(3));
+    const publicLink = `https://cdn.example${file.replaceAll("\\", "/")}`;
+    const rec = recordingAnalyzer(`本地 ${file} 是海浪声；参考 ${publicLink} 公开可查。`);
+    const up = recordingUploader();
+    const cfg = { ...baseCfg, allowedRoots: [dir] };
+    await withClient(cfg, { analyzer: rec.analyzer, uploader: up.uploader }, async (client) => {
+      const result = await call(client, { media: file, prompt: "q" });
+      expect(result.text).toContain(publicLink);
+      expect(result.text).not.toContain(file);
+      expect(result.structured.answer).toBe(result.text);
+    });
+  });
+
   it("redacts the exact supplied path when the model echoes it", async () => {
     const file = join(dir, "我的 视频.mp4");
     await writeFile(file, mp4WithAudio(3));

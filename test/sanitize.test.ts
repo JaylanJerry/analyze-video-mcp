@@ -25,6 +25,22 @@ describe("redactKnownPaths", () => {
     }
   });
 
+  it("keeps a public link intact when the local path is a substring of it", () => {
+    const text = "本地 /tmp/x.mp4 与公开 https://cdn.example/tmp/x.mp4 都提到了";
+    const out = redactKnownPaths(text, ["/tmp/x.mp4"]);
+    expect(out).toContain("https://cdn.example/tmp/x.mp4");
+    expect(out).toContain("本地 [本地路径已隐藏]");
+  });
+
+  it("still hides an internal oss link that contains the path", () => {
+    const text = "地址 oss://bucket/tmp/x.mp4 与本地 /tmp/x.mp4";
+    const out = sanitizeSensitiveText(redactKnownPaths(text, ["/tmp/x.mp4"]));
+    expect(out).not.toContain("oss://");
+    expect(out).not.toContain("/tmp/x.mp4");
+    expect(out).toContain("[内部媒体地址已隐藏]");
+    expect(out).toContain("[本地路径已隐藏]");
+  });
+
   it("leaves URLs, time codes and unrelated text alone", () => {
     const text = "公开 https://cdn.example/a/b.mp4 与 00:30 处，画面/声音";
     expect(redactKnownPaths(text, ["C:/x/y.mp4"])).toBe(text);
