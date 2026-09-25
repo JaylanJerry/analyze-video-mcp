@@ -200,6 +200,8 @@ X-DashScope-OssResourceResolve: enable   # 仅 oss:// 输入需要
 - 另一份 890 秒真实 MP3（7.12 MiB）成功：`usage` 6350/1541/7891、575 个 SSE 事件、约 22 秒，`media.kind=audio`、`duration_seconds=889.99`，回答与音频内容一致。
 - 脱敏核验：这些运行的 stderr 与回答正文都不含 `oss://`、密钥或本地路径；`text_has_path=false`、`stderr_has_oss=false`、`stderr_has_sk=false`。
 
+**实测用量规模（2026-09-25，`qwen3.8-omni-flash`）：** 9 秒音频 ≈ 0.2k prompt tokens；317 秒音频 ≈ 2.3k；317 秒视频 ≈ 17.4 万；1455 秒视频 ≈ 16.7 万（视频帧与音频都计入，按抽样而非线性增长），1455 秒那次 10,400 个 SSE 事件、端到端 432 秒。工具按设计不提供费用或预算旋钮，长媒体的费用与宿主超时需安装者自行评估。
+
 **仍未验证：** `MEDIA_MODEL_UNSUPPORTED` 的服务商真实错误码措辞（allowlist 目前只有 mock 证据）；Codex 新会话手动拖入与 Codex 宿主 MOV/MP3 调用；费用金额（按服务商计费，本项目不记录账单）。Codex 当前任务已用公开 MP4 夹具、ZCode 宿主会话已用同码流 MOV 与本节这份 72,559 B MP3 各完成过真实 `analyze_media` 调用，见 [`../tasks/todo-next-major-media-gateway.md`](../tasks/todo-next-major-media-gateway.md) D4；这些都不能推定 Codex 侧路径已验收。
 
 **模型能力实测（2026-09-25，同一 MP3 样本，3 次调用）：**
