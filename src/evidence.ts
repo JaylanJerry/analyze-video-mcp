@@ -196,6 +196,12 @@ const TRACK_EXISTENCE_UNCERTAINTY =
   "无法确定视频中是否真的存在音轨，因为提供的分析工具没有检测到任何声音信号";
 const KNOWN_TRACK_PCM_FACT = "本地探测确认存在音轨，且完整解码后 PCM 样本为零";
 const TRACK_SEMANTIC_UNCERTAINTY = "仍无法确认视频原本是否应有可听声音或具体声音语义";
+const LOW_VOLUME_AND_ORIGIN_UNCERTAINTY =
+  "不确定之处在于：无法排除存在极低音量或压缩丢失的音频成分，亦无法确认该静音是否为创作意图。";
+const DIGITAL_SILENCE_AND_ORIGIN_UNCERTAINTY =
+  "不确定之处在于：当前解码结果没有低音量的非零音频成分；编码前素材是否曾有声音、具体声音语义及静音是否为创作意图，仍无法确认。";
+const REDUNDANT_GLOBAL_AUDIO_ABSENCE_TIME_UNCERTAINTY =
+  /^无效时间码：整个视频片段中未检测到任何可辨识的声音，包括背景音乐、对白、环境噪音或音效。音轨处于静音状态。$/;
 
 function removeKnownNegativeHeardMarker(answer: string): string {
   return answer.replace(
@@ -207,6 +213,7 @@ function removeKnownNegativeHeardMarker(answer: string): string {
 function reconcileKnownSilentTrackText(answer: string): string {
   const containsTrackExistenceUncertainty = answer.includes(TRACK_EXISTENCE_UNCERTAINTY);
   return answer
+    .replaceAll(LOW_VOLUME_AND_ORIGIN_UNCERTAINTY, DIGITAL_SILENCE_AND_ORIGIN_UNCERTAINTY)
     .replaceAll(
       EMPTY_SILENT_TRACK_CLAIM,
       containsTrackExistenceUncertainty
@@ -234,19 +241,21 @@ export function reconcileKnownSilentTrackReport(report: EvidenceReport): Evidenc
         "本地确认存在音轨，且完整解码后的 PCM 样本全零，",
       ),
     })),
-    uncertainties: report.uncertainties.map((item) =>
-      item.description.includes(TRACK_EXISTENCE_UNCERTAINTY)
-        ? {
-            ...item,
-            description: item.description.replace(
-              TRACK_EXISTENCE_UNCERTAINTY,
-              containsEmptyTrackClaim
-                ? TRACK_SEMANTIC_UNCERTAINTY
-                : `${KNOWN_TRACK_PCM_FACT}；${TRACK_SEMANTIC_UNCERTAINTY}`,
-            ),
-          }
-        : item,
-    ),
+    uncertainties: report.uncertainties
+      .filter((item) => !REDUNDANT_GLOBAL_AUDIO_ABSENCE_TIME_UNCERTAINTY.test(item.description))
+      .map((item) =>
+        item.description.includes(TRACK_EXISTENCE_UNCERTAINTY)
+          ? {
+              ...item,
+              description: item.description.replace(
+                TRACK_EXISTENCE_UNCERTAINTY,
+                containsEmptyTrackClaim
+                  ? TRACK_SEMANTIC_UNCERTAINTY
+                  : `${KNOWN_TRACK_PCM_FACT}；${TRACK_SEMANTIC_UNCERTAINTY}`,
+              ),
+            }
+          : item,
+      ),
   };
 }
 

@@ -42,3 +42,5 @@
 2026-09-25 后续独立 live 验证：从重新全局安装的 `dist/index.js` 启动独立 stdio MCP 进程，对同一 20 秒已验证全零 AAC 对照用 `qwen3.5-omni-plus` 成功完成 1 次真实 provider 调用（约 27.3 秒）；结果为 `audio_observed=false`、`audio_observations=[]`、`video_observed=true`、`isError=false`。模型本次未返回前两次出现的阴性 `heard` 措辞，因此这只验证了新安装包的独立 live 路径，没有 live 复现或验证阴性 `heard` 规范化与正向 heard 冲突；相关分支仍由 mock 回归覆盖。上段“本轮没有真实 provider 调用”指定向修复质量门阶段；本段记录其后的 1 次 live 调用。
 
 2026-09-25 桌面 MCP 后续验证：同一 20 秒全零 AAC 对照的 SHA256 前后不变，重启后桌面内 MCP 以 `qwen3.5-omni-plus` 成功完成 1 次真实调用。结果 `isError=false`，coverage 显示 `audio_track_present=true`、`audio_observed=false`、`video_observed=true`，`audio_observations=[]`、无 `evidence_conflicts`，并明确给出 PCM 全零；正文与结构化推断没有再称当前/实际音轨缺失。模型没有返回 `heard` 否定项，故未 live 验证该具体规范化，也未触发正向冲突路径。仍待评估的输出文字是“无法排除存在极低音量或压缩丢失的音频成分”（“极低音量”与全零 PCM 可能造成语义混淆）以及把“整个视频片段中未检测到任何可辨识的声音”列为“无效时间码”的冗余不确定项；本 ADR 不把这两项记为已修复。
+
+2026-09-25 本地窄范围文案修复：仅在 `audio_track_present=true` 且已确认 `digital_silence` 时，改写“无法排除存在极低音量或压缩丢失的音频成分，亦无法确认该静音是否为创作意图。”为明确当前解码 PCM 全零、不存在低幅非零样本，同时保留有损压缩前内容、具体声音语义和创作意图未知；过滤与全段声音缺失文本完全匹配的误标 `无效时间码` uncertainty。其他真实无效时间码仍保留。mock 回归覆盖原始完整短样本及默认关闭、非静音、HTTPS、不完整测量分支不改写。未进行新 live。

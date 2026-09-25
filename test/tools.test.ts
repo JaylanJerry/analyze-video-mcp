@@ -39,6 +39,10 @@ const SECRET_KEY = "sk-secret-key-1234567890"; // gitleaks:allow — dummy test 
 const CANARY_PATH = "C:\\Users\\secret\\Videos\\private.mp4";
 const MISSING_LOCAL = join(tmpdir(), "missing-private.mp4");
 const CANARY_OSS = "oss://dashscope-tmp/abcdef/video.mp4";
+const LOW_VOLUME_ORIGIN_UNCERTAINTY =
+  "不确定之处在于：无法排除存在极低音量或压缩丢失的音频成分，亦无法确认该静音是否为创作意图。";
+const GLOBAL_SILENCE_INVALID_TIME_UNCERTAINTY =
+  "整个视频片段中未检测到任何可辨识的声音，包括背景音乐、对白、环境噪音或音效。音轨处于静音状态。";
 
 const baseCfg: AppConfig = {
   apiKey: SECRET_KEY,
@@ -1263,6 +1267,57 @@ describe("local authorized video", () => {
     expect(rec.calls).toHaveLength(1);
   });
 
+  it("reconciles the observed silence wording but keeps genuine invalid timecodes", async () => {
+    const p = join(dir, "silence-wording-reconciliation.mp4");
+    await copyFile(new URL("./fixtures/synthetic-silence-aac.mp4", import.meta.url), p);
+    const rec = recordingAnalyzer(
+      JSON.stringify({
+        visual_observations: [
+          { time: "00:25", evidence: "seen", description: "入口处有人走过", confidence: 0.9 },
+        ],
+        audio_observations: [
+          {
+            time: "00:25",
+            evidence: "uncertain",
+            description: GLOBAL_SILENCE_INVALID_TIME_UNCERTAINTY,
+            confidence: 0.2,
+          },
+        ],
+        inferences: [],
+        uncertainties: [],
+        answer: LOW_VOLUME_ORIGIN_UNCERTAINTY,
+      }),
+    );
+    await withClient(
+      { ...baseCfg, allowedRoots: [await realpath(dir)], audioSilenceCheck: true },
+      {
+        analyzer: rec.analyzer,
+        uploader: recordingUploader().uploader,
+        measureAudioSilence: () => Promise.resolve({ status: "digital_silence" }),
+      },
+      async (client) => {
+        const result = await client.callTool({ name: "analyze_video", arguments: { video: p } });
+        const text = textOf(result);
+        const structured = structuredOf(result);
+        const coverage = structured?.coverage as Record<string, unknown>;
+        const uncertainties = (structured?.uncertainties as { description: string }[]).map(
+          (item) => item.description,
+        );
+        expect(text).toContain(
+          "不确定之处在于：当前解码结果没有低音量的非零音频成分；编码前素材是否曾有声音、具体声音语义及静音是否为创作意图，仍无法确认。",
+        );
+        expect(text).not.toContain("无法排除存在极低音量");
+        expect(uncertainties).not.toContain(
+          `无效时间码：${GLOBAL_SILENCE_INVALID_TIME_UNCERTAINTY}`,
+        );
+        expect(uncertainties).toContain("无效时间码：入口处有人走过");
+        expect(coverage.audio_track_present).toBe(true);
+        expect(coverage.audio_observed).toBe(false);
+      },
+    );
+    expect(rec.calls).toHaveLength(2);
+  });
+
   it("does not treat an explicitly negative heard report as a silence conflict", async () => {
     const p = join(dir, "silence-negative-heard.mp4");
     await copyFile(new URL("./fixtures/synthetic-silence-aac.mp4", import.meta.url), p);
@@ -1464,6 +1519,39 @@ describe("local authorized video", () => {
     expect(rec.calls).toHaveLength(1);
   });
 
+  it("keeps the new silence wording unchanged for unprobed HTTPS", async () => {
+    const rec = recordingAnalyzer(
+      JSON.stringify({
+        visual_observations: [],
+        audio_observations: [],
+        inferences: [],
+        uncertainties: [{ description: GLOBAL_SILENCE_INVALID_TIME_UNCERTAINTY }],
+        answer: LOW_VOLUME_ORIGIN_UNCERTAINTY,
+      }),
+    );
+    await withClient(
+      { ...baseCfg, audioSilenceCheck: true },
+      { analyzer: rec.analyzer },
+      async (client) => {
+        const result = await client.callTool({
+          name: "analyze_video",
+          arguments: { video: "https://cdn.example/video.mp4" },
+        });
+        const text = textOf(result);
+        const structured = structuredOf(result);
+        const coverage = structured?.coverage as Record<string, unknown>;
+        expect(text).toContain(LOW_VOLUME_ORIGIN_UNCERTAINTY);
+        expect(text).not.toContain("当前解码 PCM 样本全零");
+        expect(text).toContain("本地数字静音核对未执行");
+        expect(structured?.uncertainties).toEqual([
+          { description: GLOBAL_SILENCE_INVALID_TIME_UNCERTAINTY },
+        ]);
+        expect(coverage.audio_track_present).toBeUndefined();
+      },
+    );
+    expect(rec.calls).toHaveLength(1);
+  });
+
   it("does not normalize a negative heard label when silence measurement is incomplete", async () => {
     const p = join(dir, "silence-measurement-incomplete.mp4");
     await copyFile(new URL("./fixtures/synthetic-silence-aac.mp4", import.meta.url), p);
@@ -1479,8 +1567,8 @@ describe("local authorized video", () => {
           },
         ],
         inferences: [],
-        uncertainties: [],
-        answer: "未检测到背景音乐。",
+        uncertainties: [{ description: GLOBAL_SILENCE_INVALID_TIME_UNCERTAINTY }],
+        answer: LOW_VOLUME_ORIGIN_UNCERTAINTY,
       }),
     );
     await withClient(
@@ -1497,6 +1585,11 @@ describe("local authorized video", () => {
         const coverage = structured?.coverage as Record<string, unknown>;
         const audio = structured?.audio_observations as { evidence: string }[];
         expect(audio[0]?.evidence).toBe("heard");
+        expect(text).toContain(LOW_VOLUME_ORIGIN_UNCERTAINTY);
+        expect(text).not.toContain("当前解码 PCM 样本全零");
+        expect(structured?.uncertainties).toEqual([
+          { description: GLOBAL_SILENCE_INVALID_TIME_UNCERTAINTY },
+        ]);
         expect(text).toContain("本地数字静音核对未能完成");
         expect(coverage.audio_track_present).toBe(true);
         expect(coverage.evidence_conflicts).toBeUndefined();
@@ -1586,6 +1679,70 @@ describe("local authorized video", () => {
       },
     );
     expect(measureCalls).toBe(0);
+    expect(rec.calls).toHaveLength(1);
+  });
+
+  it("keeps the new silence wording unchanged when the default opt-in is off", async () => {
+    const p = join(dir, "default-off-wording.mp4");
+    await copyFile(new URL("./fixtures/synthetic-silence-aac.mp4", import.meta.url), p);
+    const rec = recordingAnalyzer(
+      JSON.stringify({
+        visual_observations: [],
+        audio_observations: [],
+        inferences: [],
+        uncertainties: [{ description: GLOBAL_SILENCE_INVALID_TIME_UNCERTAINTY }],
+        answer: LOW_VOLUME_ORIGIN_UNCERTAINTY,
+      }),
+    );
+    await withClient(
+      { ...baseCfg, allowedRoots: [await realpath(dir)] },
+      { analyzer: rec.analyzer, uploader: recordingUploader().uploader },
+      async (client) => {
+        const result = await client.callTool({ name: "analyze_video", arguments: { video: p } });
+        const text = textOf(result);
+        const structured = structuredOf(result);
+        expect(text).toContain(LOW_VOLUME_ORIGIN_UNCERTAINTY);
+        expect(text).not.toContain("当前解码结果没有低音量");
+        expect(structured?.uncertainties).toEqual([
+          { description: GLOBAL_SILENCE_INVALID_TIME_UNCERTAINTY },
+        ]);
+      },
+    );
+    expect(rec.calls).toHaveLength(1);
+  });
+
+  it("leaves silence wording unchanged when PCM is measured as non-silent", async () => {
+    const p = join(dir, "not-digital-silence.mp4");
+    await copyFile(new URL("./fixtures/synthetic-silence-aac.mp4", import.meta.url), p);
+    const rec = recordingAnalyzer(
+      JSON.stringify({
+        visual_observations: [],
+        audio_observations: [],
+        inferences: [],
+        uncertainties: [{ description: GLOBAL_SILENCE_INVALID_TIME_UNCERTAINTY }],
+        answer: LOW_VOLUME_ORIGIN_UNCERTAINTY,
+      }),
+    );
+    await withClient(
+      { ...baseCfg, allowedRoots: [await realpath(dir)], audioSilenceCheck: true },
+      {
+        analyzer: rec.analyzer,
+        uploader: recordingUploader().uploader,
+        measureAudioSilence: () => Promise.resolve({ status: "non_silent" }),
+      },
+      async (client) => {
+        const result = await client.callTool({ name: "analyze_video", arguments: { video: p } });
+        const text = textOf(result);
+        const structured = structuredOf(result);
+        const coverage = structured?.coverage as Record<string, unknown>;
+        expect(text).toContain(LOW_VOLUME_ORIGIN_UNCERTAINTY);
+        expect(structured?.uncertainties).toEqual([
+          { description: GLOBAL_SILENCE_INVALID_TIME_UNCERTAINTY },
+        ]);
+        expect(coverage.audio_track_present).toBe(true);
+        expect((coverage.coverage_limitations as string[]).join(" ")).toContain("非零 PCM 样本");
+      },
+    );
     expect(rec.calls).toHaveLength(1);
   });
 
