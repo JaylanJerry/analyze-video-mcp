@@ -16,7 +16,7 @@ import {
   MediaError,
 } from "./errors.js";
 import { closeResolvedMedia, resolveMedia, type ResolvedMedia } from "./media.js";
-import { sanitizeSensitiveText } from "./sanitize.js";
+import { pathVariants, redactKnownPaths, sanitizeSensitiveText } from "./sanitize.js";
 import { printableRequestId } from "./sse.js";
 import { createCachedUploader } from "./upload-cache.js";
 import { createTemporaryUploader, type MediaUploader } from "./upload.js";
@@ -168,8 +168,12 @@ function okResult(args: {
   model: string;
   uploadReused: boolean | undefined;
   usage: AnalyzeResult["usage"];
+  /** Exact path strings the Agent supplied for this call, in their slash variants. */
+  redactPaths: readonly string[];
 }): CallToolResult {
-  const answer = sanitizeSensitiveText(args.answer);
+  // Deterministic first (the Agent's own path, whatever its characters), then the
+  // generic rules for paths this call never saw.
+  const answer = sanitizeSensitiveText(redactKnownPaths(args.answer, args.redactPaths));
   const request: Record<string, unknown> = { provider: "dashscope", model: args.model };
   if (args.uploadReused !== undefined) {
     request.upload_reused = args.uploadReused;
@@ -343,6 +347,7 @@ export function createServer(cfg?: AppConfig, deps: ServerDeps = {}): McpServer 
             model: rt.model,
             uploadReused,
             usage: result.usage,
+            redactPaths: resolved.kind === "local" ? pathVariants(args.media) : [],
           });
         } finally {
           await closeResolvedMedia(resolved);

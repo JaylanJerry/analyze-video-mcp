@@ -78,7 +78,7 @@ Server-level instructions 与 Tool 描述保持同义，第一句表达“仅在
 规则：
 
 - `content[0].text` 与 `structuredContent.answer` 必须是**同一份**脱敏文本，即模型回答本身；不附加固定审核报告、分项观察、模型名、request id 或耗时。
-- 脱敏只在单一出口移除内部 `oss://` 地址、凭证形态与本地绝对路径（含空格的 Windows 路径）；`普通 HTTPS 链接与媒体语义保留`，不做句子删除、重排、纠错或结论升级。
+- 脱敏只在单一出口移除内部 `oss://` 地址、凭证形态与本地绝对路径：先按本次 Agent 传入的确切路径（含两种斜杠与 Windows 大小写变体）做字面替换，再用通用规则补充未传入的路径形状；`普通 HTTPS 链接与媒体语义保留`，不做句子删除、重排、纠错或结论升级。
 - 空白回答是错误（`PROVIDER_RESPONSE_INVALID`）。
 - **本地 MP3 协议已于 2026-09-25 用真实百炼调用验证**（非私密合成 9 秒样本 + 890 秒真实 MP3，均为 `qwen3.8-omni-flash`；证据见 [`PROVIDER_PROTOCOL.md`](PROVIDER_PROTOCOL.md) §3b）。仍未验证：`MEDIA_MODEL_UNSUPPORTED` 的服务商真实错误码措辞、宿主 GUI、费用金额。
 - **已知限制（2026-09-25 实测）：** 只有音频轨、没有视频轨的 MP4 经视频路径提交会被服务商以 **HTTP 400** 拒绝（`MEDIA_ANALYSIS_FAILED` + `http_status=400`，无 SSE 事件与用量）。请为纯音频使用 `.mp3`；不要把它当视频提交。服务端不做自动转封装。

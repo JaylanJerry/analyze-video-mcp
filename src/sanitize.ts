@@ -1,19 +1,57 @@
 /**
- * Agent-visible answer redaction. This is the only text rewriting the media
- * gateway performs on a model answer: it removes internal upload locations,
- * credential-shaped tokens and local absolute paths. It never changes what the
- * model said about the media.
+ * Agent-visible answer redaction. This is the only text rewriting the media gateway
+ * performs on a model answer: it removes internal upload locations, credential-shaped
+ * tokens and local absolute paths. It never changes what the model said about the media.
  *
- * Path shapes covered: Windows drive paths and UNC paths in both slash styles,
- * forward-slash UNC (`//server/share/...`), and POSIX absolute paths — including
- * non-ASCII (CJK) directory and file names, which is why path segments allow
- * ideographs. Ordinary URLs (`https://host/a/b`) must survive, so a match may not
- * start after a URL-ish character (`:`, `/`, `.`, `-`, or an alphanumeric), and
- * prose that merely uses a slash (`画面/声音`) must not be mistaken for a path:
- * a path needs a known POSIX root or a file extension.
+ * Two layers, in this order:
+ *
+ * 1. `redactKnownPaths` — the exact path strings the Agent passed for this call, in both
+ *    slash styles (and lowercase for Windows). A model echoing the prompt's path is the
+ *    realistic leak, and this layer is exact: it does not depend on guessing which
+ *    characters a file name may contain (spaces, kana, punctuation all work).
+ * 2. The generic rules below — a supplement for paths this call never saw. They cover
+ *    Windows drive and UNC paths in both slash styles, forward-slash UNC, and POSIX
+ *    paths with non-ASCII segments. A generic match cannot cross whitespace, so a path
+ *    that was never supplied and contains a space may be only partially redacted.
+ *    Public URLs, time codes and prose that merely uses a slash (`画面/声音`) stay intact.
  */
-const PATH_SEGMENT = "[A-Za-z0-9._\\-\\u4e00-\\u9fff]";
+const PATH_SEGMENT = "[^\\s/<>\"'，。；！？|?*]";
 const KNOWN_POSIX_ROOTS = "home|tmp|Users|var|mnt|private|Volumes|media|srv|opt|etc|root|data";
+
+/** Slash-style (and, for Windows paths, case) variants a model may echo. */
+export function pathVariants(raw: string): string[] {
+  const trimmed = raw.trim();
+  if (trimmed.length < 3) {
+    return [];
+  }
+  const forward = trimmed.replaceAll("\\", "/");
+  const backward = trimmed.replaceAll("/", "\\");
+  const variants = new Set([trimmed, forward, backward]);
+  if (/^[A-Za-z]:/.test(trimmed) || trimmed.startsWith("\\\\") || forward.startsWith("//")) {
+    for (const variant of [...variants]) {
+      variants.add(variant.toLowerCase());
+    }
+  }
+  return [...variants];
+}
+
+/**
+ * Exact, deterministic redaction of the media paths supplied for this call. Applied
+ * before the generic rules so characters a heuristic would have to enumerate (spaces,
+ * kana, punctuation) are covered.
+ */
+export function redactKnownPaths(text: string, knownPaths: readonly string[]): string {
+  let out = text;
+  for (const raw of knownPaths) {
+    for (const variant of pathVariants(raw)) {
+      if (variant.length < 3 || !out.includes(variant)) {
+        continue;
+      }
+      out = out.split(variant).join("[本地路径已隐藏]");
+    }
+  }
+  return out;
+}
 
 export function sanitizeSensitiveText(text: string): string {
   return (

@@ -1,9 +1,43 @@
 import { describe, expect, it } from "vitest";
-import { sanitizeSensitiveText } from "../src/sanitize.js";
+import { redactKnownPaths, sanitizeSensitiveText } from "../src/sanitize.js";
 
 const CANARY_KEY = "sk-demo-canary-abcdefghijklmnop";
 
+describe("redactKnownPaths", () => {
+  it("hides the exact supplied path even when it has spaces or non-ASCII letters", () => {
+    const text = "模型说：文件 /tmp/剪辑 视频.mp4 与 /tmp/かな.mp4 都听不清";
+    const out = redactKnownPaths(text, ["/tmp/剪辑 视频.mp4", "/tmp/かな.mp4"]);
+    expect(out).not.toContain("剪辑 视频.mp4");
+    expect(out).not.toContain("かな.mp4");
+    expect(out).toBe("模型说：文件 [本地路径已隐藏] 与 [本地路径已隐藏] 都听不清");
+  });
+
+  it("matches slash-style and case variants of a Windows path", () => {
+    const path = String.raw`C:\Users\张三\我的 视频.mp4`;
+    for (const echoed of [
+      path,
+      "C:/Users/张三/我的 视频.mp4",
+      String.raw`c:\users\张三\我的 视频.mp4`,
+    ]) {
+      const out = redactKnownPaths(`见 ${echoed} 处`, [path]);
+      expect(out).not.toContain("我的 视频.mp4");
+      expect(out).toContain("[本地路径已隐藏]");
+    }
+  });
+
+  it("leaves URLs, time codes and unrelated text alone", () => {
+    const text = "公开 https://cdn.example/a/b.mp4 与 00:30 处，画面/声音";
+    expect(redactKnownPaths(text, ["C:/x/y.mp4"])).toBe(text);
+  });
+});
+
 describe("sanitizeSensitiveText", () => {
+  it("hides non-ASCII segments in a generic POSIX path", () => {
+    const out = sanitizeSensitiveText("模型说：/tmp/かな.mp4 听不清");
+    expect(out).not.toContain("かな.mp4");
+    expect(out).toContain("[本地路径已隐藏]");
+  });
+
   it("hides Windows paths in both slash styles and UNC paths", () => {
     for (const raw of [
       String.raw`C:\Users\demo\Videos\clip.mp4`,

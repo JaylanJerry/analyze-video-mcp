@@ -492,6 +492,21 @@ ${formatted}
     expect(rec.calls[0]?.media.url.startsWith("oss://")).toBe(true);
   });
 
+  it("redacts the exact supplied path when the model echoes it", async () => {
+    const file = join(dir, "我的 视频.mp4");
+    await writeFile(file, mp4WithAudio(3));
+    const rec = recordingAnalyzer(`文件 ${file} 里有海浪声，另外 C:/none/other.mp4 不存在。`);
+    const up = recordingUploader();
+    const cfg = { ...baseCfg, allowedRoots: [dir] };
+    await withClient(cfg, { analyzer: rec.analyzer, uploader: up.uploader }, async (client) => {
+      const result = await call(client, { media: file, prompt: "q" });
+      expect(result.text).not.toContain(file);
+      expect(result.text).not.toContain("我的 视频.mp4");
+      expect(result.text).toContain("[本地路径已隐藏]");
+      expect(result.structured.answer).toBe(result.text);
+    });
+  });
+
   it("reports a local video with no audio track and leaves the model wording alone", async () => {
     const rec = recordingAnalyzer("模型仍声称听到了枪声。");
     const up = recordingUploader();
