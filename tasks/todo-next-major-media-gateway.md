@@ -1,6 +1,6 @@
 # 下一大版本媒体网关任务清单
 
-状态：**A、B、C、D1、D2、D3 已实现并通过本地门禁；A-P 与 D4 的服务商格式矩阵已完成真实验证；Codex 当前任务的 MCP Tool 调用已用公开 MP4 夹具通过。** 新会话的手动拖入体验、Codex 宿主中的 MOV/MP3、ZCode 宿主、费用金额和 Node 22 CI 仍未验证。尚未提交、未推送、未发布；npm 上的 `0.6.1` 仍是 `analyze_video`。总计划见 [`plan-next-major-media-gateway.md`](plan-next-major-media-gateway.md)。
+状态：**A、B、C、D1、D2、D3 已实现并通过本地门禁；A-P 与 D4 的服务商格式矩阵已完成真实验证；Codex 当前任务的 MCP Tool 调用已用公开 MP4 夹具通过。** 新会话的手动拖入体验、Codex 宿主中的 MOV/MP3、ZCode 宿主、费用金额和 Node 22 CI 仍未验证。**已本地提交 `381da84`**（未推送、未发布）；npm 上的 `0.6.1` 仍是 `analyze_video`。总计划见 [`plan-next-major-media-gateway.md`](plan-next-major-media-gateway.md)。
 
 **本轮本地门禁（2026-09-25，Windows / Node 24.18.0）：** `npm run typecheck`、`npm run lint`、`npm run format:check`、`npm test`（258 passed / 1 skipped / 16 files）、`npm run coverage`（All files 88.18% stmts / 81.84% branch / 90.47% funcs）、`npm run build` 全部通过；`node dist/index.js --doctor` 报告 `handshake.registered=true` 且只注册 `analyze_media`。**Node 22 未在本机验证**（CI 会在 22 与 24 上跑，但本轮没有推送）。所有测试均为 msw 模拟，零真实请求、零费用。
 

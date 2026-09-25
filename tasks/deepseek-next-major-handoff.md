@@ -1,6 +1,6 @@
 # DeepSeek 接手：下一大版本媒体网关
 
-状态：**A/B/C/D1/D2/D3 已在工作区分支实现并通过本地门禁（2026-09-25，Node 24）；A-P 与 D4 的服务商格式矩阵已获授权并完成真实验证；当前 Codex 任务的 MP4 MCP 调用已通过。** 新会话手动拖入、Codex 宿主 MOV/MP3、ZCode 宿主、费用金额及 Node 22 CI 仍未验证。未提交、未推送、未发布；npm 上的 `0.6.1` 仍是 `analyze_video`。逐项证据与未验证项见 [`todo-next-major-media-gateway.md`](todo-next-major-media-gateway.md)。接手时先读根目录 `AGENTS.md`、`DEVELOPMENT_HANDOFF.md`，再按以下顺序阅读：
+状态：**A/B/C/D1/D2/D3 已在工作区分支实现并通过本地门禁（2026-09-25，Node 24）；A-P 与 D4 的服务商格式矩阵已获授权并完成真实验证；当前 Codex 任务的 MP4 MCP 调用已通过。** 新会话手动拖入、Codex 宿主 MOV/MP3、ZCode 宿主、费用金额及 Node 22 CI 仍未验证。**已本地提交 `381da84`**（未推送、未发布）；npm 上的 `0.6.1` 仍是 `analyze_video`。逐项证据与未验证项见 [`todo-next-major-media-gateway.md`](todo-next-major-media-gateway.md)。接手时先读根目录 `AGENTS.md`、`DEVELOPMENT_HANDOFF.md`，再按以下顺序阅读：
 
 1. [`../docs/SPEC_NEXT_MAJOR_MEDIA_GATEWAY.md`](../docs/SPEC_NEXT_MAJOR_MEDIA_GATEWAY.md)：目标、公开契约、验收与未验证事实。
 2. [ADR 0024](../docs/decisions/0024-agent-directed-media-gateway.md)：为什么停止旧三 Tool/审核主线。
