@@ -1344,6 +1344,12 @@ describe("local authorized video", () => {
               "音轨全程未检测到任何声音（包括背景音乐、对白、音效或环境噪音），处于静音状态。",
             confidence: 0.9,
           },
+          {
+            time: "00:01",
+            evidence: "heard",
+            description: "音轨全程为静音状态，未检测到任何背景音乐、对白或音效。",
+            confidence: 0.9,
+          },
         ],
         inferences: [
           { description: "当前音轨缺失可能导致叙事张力削弱。" },
@@ -1373,7 +1379,7 @@ describe("local authorized video", () => {
           description: string;
         }[];
         const inferences = structured?.inferences as { description: string }[];
-        expect(audio).toHaveLength(3);
+        expect(audio).toHaveLength(4);
         expect(audio.every((item) => item.evidence === "uncertain")).toBe(true);
         expect(audio.every((item) => !item.description.includes("数字静音冲突"))).toBe(true);
         expect(text).toContain("实际未听到任何背景音乐、对白或音效。");
@@ -1422,6 +1428,18 @@ describe("local authorized video", () => {
             description: "没听到音乐，但车辆轰鸣持续。",
             confidence: 0.9,
           },
+          {
+            time: "00:01",
+            evidence: "heard",
+            description: "音轨全程为静音状态，但仍听到枪声。",
+            confidence: 0.9,
+          },
+          {
+            time: "00:01",
+            evidence: "heard",
+            description: "音轨不为静音状态，车辆轰鸣持续。",
+            confidence: 0.9,
+          },
         ],
         inferences: [],
         uncertainties: [],
@@ -1440,7 +1458,7 @@ describe("local authorized video", () => {
         const structured = structuredOf(result);
         const coverage = structured?.coverage as Record<string, unknown>;
         const audio = structured?.audio_observations as { evidence: string; description: string }[];
-        expect(audio).toHaveLength(3);
+        expect(audio).toHaveLength(5);
         expect(audio.every((item) => item.evidence === "uncertain")).toBe(true);
         expect(audio.every((item) => item.description.includes("与本地数字静音冲突"))).toBe(true);
         expect(coverage.audio_observed).toBe(false);

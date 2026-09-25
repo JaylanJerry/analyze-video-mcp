@@ -32,6 +32,8 @@ P0（0.6.1）已发布。ADR 0019 的 v0.7 新 Tool 方向仍见 [`docs/SPEC_V07
 
 2026-09-25 本地文案修复：只在本地已确认音轨且完整解码 PCM 全零时，把“无法排除存在极低音量或压缩丢失的音频成分”改为当前解码 PCM 无低幅非零样本、但有损压缩前音频内容、具体声音语义和静音是否为创作意图仍未知；只移除与整段无声说明完全匹配的误标 `无效时间码` 项，真实时间码格式错误/越界项仍保留。默认 off、non_silent、测量不完整、HTTPS 和无音轨分支维持原文。该行为由 MCP mock 回归覆盖；五项质量门通过（`npm test`: 309 passed / 12 skipped），pack-install smoke 通过。已本地提交 `bee12d1`，重新打包并覆盖全局安装；安装的 `dist/evidence.js` 与本地构建 SHA256 一致，安装版 `--doctor --json` 正常，独立 stdio 握手仅注册 `analyze_video`。未做额外 live，也未推送或发布。
 
+2026-09-25 桌面后续真实调用再次暴露阴性 heard 误报：同一 20 秒全零 AAC（SHA256 `8DA8D6D432C246686324977C96D70FE591C60E598554C7D88BBA65E3796E768E`）以 `qwen3.5-omni-plus` 完成 1 次调用，模型将“音轨全程为静音状态，未检测到任何背景音乐、对白或音效。”标为 `heard`，当时造成 1 项 `evidence_conflicts`，而本地事实仍为音轨存在、PCM 全零、`audio_observed=false`。本轮仅在已确认数字静音分支，把精确的“音轨全程为静音状态”分句识别为明确否定；若同句另有任何未明确否定分句（包括词表外声音或“但仍听到枪声”），仍按正向 `heard` 冲突处理。相关测试覆盖真实原句、混合正向与“音轨不为静音状态”反例，以及先前默认关闭/非静音/未测/HTTPS 不变边界。未再次付费 live；该修正仍待桌面新会话复核，不把 mock 结果描述成已验证 live 修复。
+
 2026-09-22 后续优化交接：用户指定先处理 Codex 中“手动拖入任意文件夹视频”的体验，再按音频和综合审核路线开发。接手步骤、无付费 Codex 探针与分阶段验收见 [`tasks/deepseek-v07-handoff.md`](tasks/deepseek-v07-handoff.md)。A 批代码已落地（默认行为未变），B 批按“先复现再修”进行。
 
 2026-09-22 拖入体验结论：A1 探针证明 Codex 只把拖入视频写成模型可读的路径文本，MCP 边界拿不到可验证附件，用户据此否决确认弹窗，选定安装级开关 `QWEN_ALLOW_ANY_LOCAL_VIDEO`（默认 `off`；`on` 时任意本地受支持视频路径直接上传，路径即授权）。决策与代价见 [ADR 0021](docs/decisions/0021-allow-any-local-video-opt-in.md)。状态分层见 [`tasks/todo-v07-proposal.md`](tasks/todo-v07-proposal.md) 与 [`tasks/deepseek-v07-handoff.md`](tasks/deepseek-v07-handoff.md)：代码与 CLI 开关验证已完成；用户授权后的真实 MOV 脚本调用、MP4 MCP 工具调用已成功。**2026-09-23 Codex 桌面 GUI 已用公开 3 秒夹具完成一次拖入 → MCP 调用 → 画面及语音数字正确返回，用户报告未出现批准或风险审查提示**；较大文件和其它目录的 GUI 情形未验证。一次真实 MOV 调用在取凭证阶段返回 `request_failed`、重试成功，失败原因仍未知；《AE海-通义.mp4》模型回答未确认音频，本地与受控替换音轨的对照证据见协议文档。该分支尚未进入已发布版本。
