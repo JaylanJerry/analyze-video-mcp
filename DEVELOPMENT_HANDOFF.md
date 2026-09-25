@@ -22,6 +22,8 @@ P0（0.6.1）已发布。ADR 0019 的 v0.7 新 Tool 方向仍见 [`docs/SPEC_V07
 
 2026-09-25 后续实测：重启后原片 MCP 回答报告背景音乐，本地核对为非零 PCM；20 秒静音对照的本地 `astats` 显示 960512 个样本全零，MCP coverage 报 `audio_track_present=true`、`audio_observed=false`，音频 observations 为空。模型散文却称音轨“似乎是空的或静音的”，并称因未检测到信号而无法确定音轨是否存在。该样本暴露的是 track fact 与散文/uncertainties 的矛盾；本轮已在完整数字静音且本地已确认音轨存在时，窄范围改写这两类确定措辞，并保留声音语义及视频原本是否应有可听声音的不确定性。该 live 样本没有触发 `heard` 冲突分支（`audio_observations=[]`）；该分支仍由 mock 与合成 FFmpeg 集成测试覆盖，不能把本轮 live 记录描述成已验证真实 `heard` 冲突。
 
+2026-09-25 后续定向修正：另一个静音 MCP 返回在 `audio_observations` 中把“未检测到任何可辨识的声音内容（无对白、无音乐、无效应音）”标成 `heard`，正文也明确说未听到声音。只在本地音轨存在且完整测得数字静音时，明确否定项现规范为 `uncertain`，不创建 silence conflict；同一描述中若出现“没听到音乐，但听到枪声”，正向子句仍触发冲突，未命中词表的正向描述也按模型 `heard` 声明处理。静音已确认且轨道存在时，结构化推断中的“当前音轨缺失”现改写为已确认数字静音，并保留对叙事影响的推测。以上新分支由 mock 回归验证；五项门禁通过，`npm test` 304 passed / 12 skipped，独立 tarball 安装和 stdio smoke 通过。没有再次付费 live 调用，先前两次桌面实测均未观察到真实 `heard` 冲突路径。
+
 2026-09-22 后续优化交接：用户指定先处理 Codex 中“手动拖入任意文件夹视频”的体验，再按音频和综合审核路线开发。接手步骤、无付费 Codex 探针与分阶段验收见 [`tasks/deepseek-v07-handoff.md`](tasks/deepseek-v07-handoff.md)。A 批代码已落地（默认行为未变），B 批按“先复现再修”进行。
 
 2026-09-22 拖入体验结论：A1 探针证明 Codex 只把拖入视频写成模型可读的路径文本，MCP 边界拿不到可验证附件，用户据此否决确认弹窗，选定安装级开关 `QWEN_ALLOW_ANY_LOCAL_VIDEO`（默认 `off`；`on` 时任意本地受支持视频路径直接上传，路径即授权）。决策与代价见 [ADR 0021](docs/decisions/0021-allow-any-local-video-opt-in.md)。状态分层见 [`tasks/todo-v07-proposal.md`](tasks/todo-v07-proposal.md) 与 [`tasks/deepseek-v07-handoff.md`](tasks/deepseek-v07-handoff.md)：代码与 CLI 开关验证已完成；用户授权后的真实 MOV 脚本调用、MP4 MCP 工具调用已成功。**2026-09-23 Codex 桌面 GUI 已用公开 3 秒夹具完成一次拖入 → MCP 调用 → 画面及语音数字正确返回，用户报告未出现批准或风险审查提示**；较大文件和其它目录的 GUI 情形未验证。一次真实 MOV 调用在取凭证阶段返回 `request_failed`、重试成功，失败原因仍未知；《AE海-通义.mp4》模型回答未确认音频，本地与受控替换音轨的对照证据见协议文档。该分支尚未进入已发布版本。

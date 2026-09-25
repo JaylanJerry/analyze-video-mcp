@@ -25,6 +25,7 @@ import {
   demoteAudioForDigitalSilence,
   filterAudioClausesForDigitalSilence,
   hasDirectAudioClaim,
+  normalizeNegativeHeardOnDigitalSilence,
   reconcileKnownSilentTrackProse,
   reconcileKnownSilentTrackReport,
   sanitizeProseAnswer,
@@ -208,6 +209,7 @@ function ok(
   if (measuredSilence && facts?.audioTrackPresent === true) {
     if (report !== undefined) report = reconcileKnownSilentTrackReport(report);
     text = reconcileKnownSilentTrackProse(text);
+    if (report !== undefined) report = normalizeNegativeHeardOnDigitalSilence(report);
   }
   const silenceConflict =
     measuredSilence &&

@@ -259,6 +259,18 @@ describe("evidence parse", () => {
     expect(sanitizeEvidenceReport(parsed.report).answer).not.toContain("电子舞曲");
   });
 
+  it("preserves the general prose cleaner behavior for unmatched track negatives", () => {
+    const cleaned = sanitizeEvidenceReport({
+      visual_observations: [],
+      audio_observations: [],
+      inferences: [],
+      uncertainties: [],
+      answer: "未检测到背景音乐。",
+    });
+    expect(cleaned.answer).not.toContain("未检测到背景音乐");
+    expect(cleaned.answer).toContain("本次未能确认音轨中的具体声音");
+  });
+
   it("does not let a negative sound clause mask a later unsupported positive one", () => {
     const parsed = parseEvidence(
       JSON.stringify({

@@ -63,6 +63,8 @@ const AUDIO_CLAIM =
   /听到|听见|可听见|伴随着|背景音乐|配乐|人声|对白|旁白|歌声|演唱|歌词|男声|女声|音乐(?!会)|歌曲|旋律|舞曲|音效|脚步声|枪声|风声|响起|传来/;
 const AUDIO_NEGATION =
   /没有听到|没听到|未听到|听不到|无法听清|不能确认|未能确认|无法确认|难以确认|不能证实|无法证实|不能证明|无法证明|不能断言|无法断言|不确定|仅属推断|可能|疑似/;
+const EXPLICIT_AUDIO_NEGATION =
+  /没有听到|没听到|未听到|听不到|未检测到|没有(?:任何)?(?:背景音乐|音乐|对白|人声|歌声|音效|声音)|无(?:任何)?(?:可辨识的)?(?:对白|音乐|人声|歌声|音效|效应音|声音内容)/;
 const AUDIO_DETAILS = [
   "电子乐",
   "电子舞曲",
@@ -161,8 +163,32 @@ export function filterAudioClausesForDigitalSilence(answer: string): string {
 
 export function hasDirectAudioClaim(answer: string): boolean {
   return answer
-    .split(/[。！？；，,\n]/)
-    .some((clause) => AUDIO_CLAIM.test(clause) && !AUDIO_NEGATION.test(clause));
+    .split(/[。！？；，,\n]|但是|但|不过|然而/)
+    .some(
+      (clause) =>
+        AUDIO_CLAIM.test(clause) &&
+        !AUDIO_NEGATION.test(clause) &&
+        !EXPLICIT_AUDIO_NEGATION.test(clause),
+    );
+}
+
+export function isExplicitlyNegativeAudioDescription(description: string): boolean {
+  const clauses = description
+    .split(/[。！？；，,\n]|但是|但|不过|然而/)
+    .map((clause) => clause.trim())
+    .filter((clause) => clause.length > 0);
+  return clauses.length > 0 && clauses.every((clause) => EXPLICIT_AUDIO_NEGATION.test(clause));
+}
+
+export function normalizeNegativeHeardOnDigitalSilence(report: EvidenceReport): EvidenceReport {
+  return {
+    ...report,
+    audio_observations: report.audio_observations.map((item) =>
+      item.evidence === "heard" && isExplicitlyNegativeAudioDescription(item.description)
+        ? { ...item, evidence: "uncertain" as const, confidence: Math.min(item.confidence, 0.5) }
+        : item,
+    ),
+  };
 }
 
 const EMPTY_SILENT_TRACK_CLAIM = "音频轨道似乎是空的或静音的";
@@ -170,6 +196,13 @@ const TRACK_EXISTENCE_UNCERTAINTY =
   "无法确定视频中是否真的存在音轨，因为提供的分析工具没有检测到任何声音信号";
 const KNOWN_TRACK_PCM_FACT = "本地探测确认存在音轨，且完整解码后 PCM 样本为零";
 const TRACK_SEMANTIC_UNCERTAINTY = "仍无法确认视频原本是否应有可听声音或具体声音语义";
+
+function removeKnownNegativeHeardMarker(answer: string): string {
+  return answer.replace(
+    /(实际未听到任何背景音乐、对白或音效)[。！？]?\s*[（(]evidence\s*=\s*heard[)）][。！？]?/gi,
+    "$1。",
+  );
+}
 
 function reconcileKnownSilentTrackText(answer: string): string {
   const containsTrackExistenceUncertainty = answer.includes(TRACK_EXISTENCE_UNCERTAINTY);
@@ -194,6 +227,13 @@ export function reconcileKnownSilentTrackReport(report: EvidenceReport): Evidenc
   return {
     ...report,
     answer: reconcileKnownSilentTrackText(report.answer),
+    inferences: report.inferences.map((item) => ({
+      ...item,
+      description: item.description.replace(
+        /当前音轨缺失/g,
+        "当前音轨存在，但本地确认完整解码后的 PCM 样本全零，",
+      ),
+    })),
     uncertainties: report.uncertainties.map((item) =>
       item.description.includes(TRACK_EXISTENCE_UNCERTAINTY)
         ? {
@@ -212,7 +252,7 @@ export function reconcileKnownSilentTrackReport(report: EvidenceReport): Evidenc
 
 /** Apply the same narrowly scoped correction to a prose-only model answer. */
 export function reconcileKnownSilentTrackProse(answer: string): string {
-  return reconcileKnownSilentTrackText(answer);
+  return removeKnownNegativeHeardMarker(reconcileKnownSilentTrackText(answer));
 }
 
 export function demoteAudioForDigitalSilence(report: EvidenceReport): EvidenceReport {

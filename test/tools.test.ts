@@ -1263,6 +1263,121 @@ describe("local authorized video", () => {
     expect(rec.calls).toHaveLength(1);
   });
 
+  it("does not treat an explicitly negative heard report as a silence conflict", async () => {
+    const p = join(dir, "silence-negative-heard.mp4");
+    await copyFile(new URL("./fixtures/synthetic-silence-aac.mp4", import.meta.url), p);
+    const rec = recordingAnalyzer(
+      JSON.stringify({
+        visual_observations: [],
+        audio_observations: [
+          {
+            time: "00:01",
+            evidence: "heard",
+            description: "未检测到任何可辨识的声音内容（无对白、无音乐、无效应音）。",
+            confidence: 0.9,
+          },
+          {
+            time: "00:01",
+            evidence: "heard",
+            description: "未检测到背景音乐。",
+            confidence: 0.9,
+          },
+        ],
+        inferences: [{ description: "当前音轨缺失可能导致叙事张力削弱。" }],
+        uncertainties: [],
+        answer: "实际未听到任何背景音乐、对白或音效（evidence=heard）。",
+      }),
+    );
+    await withClient(
+      { ...baseCfg, allowedRoots: [await realpath(dir)], audioSilenceCheck: true },
+      {
+        analyzer: rec.analyzer,
+        uploader: recordingUploader().uploader,
+        measureAudioSilence: () => Promise.resolve({ status: "digital_silence" }),
+      },
+      async (client) => {
+        const result = await client.callTool({ name: "analyze_video", arguments: { video: p } });
+        const text = textOf(result);
+        const structured = structuredOf(result);
+        const coverage = structured?.coverage as Record<string, unknown>;
+        const audio = structured?.audio_observations as {
+          evidence: string;
+          description: string;
+        }[];
+        const inferences = structured?.inferences as { description: string }[];
+        expect(audio).toHaveLength(2);
+        expect(audio.every((item) => item.evidence === "uncertain")).toBe(true);
+        expect(audio.every((item) => !item.description.includes("数字静音冲突"))).toBe(true);
+        expect(text).toContain("实际未听到任何背景音乐、对白或音效。");
+        expect(text).not.toContain("(evidence=heard)");
+        expect(text).not.toContain("（evidence=heard）");
+        expect(text).not.toContain("模型原报的声音内容与本地数字静音冲突");
+        expect(coverage.audio_track_present).toBe(true);
+        expect(coverage.audio_observed).toBe(false);
+        expect(coverage.evidence_conflicts).toBeUndefined();
+        expect(inferences[0]?.description).toContain(
+          "当前音轨存在，但本地确认完整解码后的 PCM 样本全零，可能导致叙事张力削弱",
+        );
+        expect(inferences[0]?.description).not.toContain("当前音轨缺失");
+        expect(rec.calls).toHaveLength(1);
+      },
+    );
+    expect(rec.calls).toHaveLength(1);
+  });
+
+  it("still flags a positive heard clause after a negative clause on digital silence", async () => {
+    const p = join(dir, "silence-mixed-heard.mp4");
+    await copyFile(new URL("./fixtures/synthetic-silence-aac.mp4", import.meta.url), p);
+    const rec = recordingAnalyzer(
+      JSON.stringify({
+        visual_observations: [],
+        audio_observations: [
+          {
+            time: "00:01",
+            evidence: "heard",
+            description: "没听到音乐，但听到枪声。",
+            confidence: 0.9,
+          },
+          {
+            time: "00:01",
+            evidence: "heard",
+            description: "车辆轰鸣持续。",
+            confidence: 0.9,
+          },
+          {
+            time: "00:01",
+            evidence: "heard",
+            description: "没听到音乐，但车辆轰鸣持续。",
+            confidence: 0.9,
+          },
+        ],
+        inferences: [],
+        uncertainties: [],
+        answer: "没听到音乐，但听到枪声。",
+      }),
+    );
+    await withClient(
+      { ...baseCfg, allowedRoots: [await realpath(dir)], audioSilenceCheck: true },
+      {
+        analyzer: rec.analyzer,
+        uploader: recordingUploader().uploader,
+        measureAudioSilence: () => Promise.resolve({ status: "digital_silence" }),
+      },
+      async (client) => {
+        const result = await client.callTool({ name: "analyze_video", arguments: { video: p } });
+        const structured = structuredOf(result);
+        const coverage = structured?.coverage as Record<string, unknown>;
+        const audio = structured?.audio_observations as { evidence: string; description: string }[];
+        expect(audio).toHaveLength(3);
+        expect(audio.every((item) => item.evidence === "uncertain")).toBe(true);
+        expect(audio.every((item) => item.description.includes("与本地数字静音冲突"))).toBe(true);
+        expect(coverage.audio_observed).toBe(false);
+        expect(coverage.evidence_conflicts).toHaveLength(1);
+      },
+    );
+    expect(rec.calls).toHaveLength(1);
+  });
+
   it("rewrites the same track contradiction in a prose-only answer", async () => {
     const p = join(dir, "silence-track-fact-prose.mp4");
     await copyFile(new URL("./fixtures/synthetic-silence-aac.mp4", import.meta.url), p);
@@ -1327,6 +1442,47 @@ describe("local authorized video", () => {
         expect(text).toContain(answer);
         expect(text).toContain("本地数字静音核对未执行");
         expect(coverage.audio_track_present).toBeUndefined();
+      },
+    );
+    expect(rec.calls).toHaveLength(1);
+  });
+
+  it("does not normalize a negative heard label when silence measurement is incomplete", async () => {
+    const p = join(dir, "silence-measurement-incomplete.mp4");
+    await copyFile(new URL("./fixtures/synthetic-silence-aac.mp4", import.meta.url), p);
+    const rec = recordingAnalyzer(
+      JSON.stringify({
+        visual_observations: [],
+        audio_observations: [
+          {
+            time: "00:01",
+            evidence: "heard",
+            description: "未检测到背景音乐。",
+            confidence: 0.9,
+          },
+        ],
+        inferences: [],
+        uncertainties: [],
+        answer: "未检测到背景音乐。",
+      }),
+    );
+    await withClient(
+      { ...baseCfg, allowedRoots: [await realpath(dir)], audioSilenceCheck: true },
+      {
+        analyzer: rec.analyzer,
+        uploader: recordingUploader().uploader,
+        measureAudioSilence: () => Promise.resolve({ status: "incomplete" }),
+      },
+      async (client) => {
+        const result = await client.callTool({ name: "analyze_video", arguments: { video: p } });
+        const text = textOf(result);
+        const structured = structuredOf(result);
+        const coverage = structured?.coverage as Record<string, unknown>;
+        const audio = structured?.audio_observations as { evidence: string }[];
+        expect(audio[0]?.evidence).toBe("heard");
+        expect(text).toContain("本地数字静音核对未能完成");
+        expect(coverage.audio_track_present).toBe(true);
+        expect(coverage.evidence_conflicts).toBeUndefined();
       },
     );
     expect(rec.calls).toHaveLength(1);
