@@ -40,3 +40,5 @@
 2026-09-25 否定 heard 定向修复验证：新增本地合成静音/模拟 provider 回归覆盖整句否定、无括号的“未检测到背景音乐”、否定后接正向声音声明、词表外正向声音描述，以及本地测量不完整时不改写。五项门禁通过，`npm test` 为 304 passed / 12 skipped；`npm run test:pack-install` 通过，stdio 仅注册 `analyze_video(video, question?)`。本轮没有真实 provider 或付费调用；桌面 live `heard` 冲突路径仍未触发验证。
 
 2026-09-25 后续独立 live 验证：从重新全局安装的 `dist/index.js` 启动独立 stdio MCP 进程，对同一 20 秒已验证全零 AAC 对照用 `qwen3.5-omni-plus` 成功完成 1 次真实 provider 调用（约 27.3 秒）；结果为 `audio_observed=false`、`audio_observations=[]`、`video_observed=true`、`isError=false`。模型本次未返回前两次出现的阴性 `heard` 措辞，因此这只验证了新安装包的独立 live 路径，没有 live 复现或验证阴性 `heard` 规范化与正向 heard 冲突；相关分支仍由 mock 回归覆盖。上段“本轮没有真实 provider 调用”指定向修复质量门阶段；本段记录其后的 1 次 live 调用。
+
+2026-09-25 桌面 MCP 后续验证：同一 20 秒全零 AAC 对照的 SHA256 前后不变，重启后桌面内 MCP 以 `qwen3.5-omni-plus` 成功完成 1 次真实调用。结果 `isError=false`，coverage 显示 `audio_track_present=true`、`audio_observed=false`、`video_observed=true`，`audio_observations=[]`、无 `evidence_conflicts`，并明确给出 PCM 全零；正文与结构化推断没有再称当前/实际音轨缺失。模型没有返回 `heard` 否定项，故未 live 验证该具体规范化，也未触发正向冲突路径。仍待评估的输出文字是“无法排除存在极低音量或压缩丢失的音频成分”（“极低音量”与全零 PCM 可能造成语义混淆）以及把“整个视频片段中未检测到任何可辨识的声音”列为“无效时间码”的冗余不确定项；本 ADR 不把这两项记为已修复。
