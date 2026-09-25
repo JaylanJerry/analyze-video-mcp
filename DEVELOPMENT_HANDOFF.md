@@ -1,5 +1,7 @@
 # Video MCP 开发交接
 
+> **给独立审核者的入口（2026-09-25）：** 先读 [`tasks/codex-review-brief-20260925.md`](tasks/codex-review-brief-20260925.md)——它自带来审核目标、代码地图、复现命令、逐项检查清单、已知边界与「不要做」红线，并区分 mock / 真实百炼 / 宿主 GUI / 打包安装 / npm 发布五种状态。
+>
 > **2026-09-25 下一大版本接手入口：** 用户已确认“一个媒体分析 Tool、Agent 决定问题、本地 MP4/MOV/MP3、首发百炼”的大版本重构方向。DeepSeek 开发请先读 [`docs/SPEC_NEXT_MAJOR_MEDIA_GATEWAY.md`](docs/SPEC_NEXT_MAJOR_MEDIA_GATEWAY.md)、[ADR 0024](docs/decisions/0024-agent-directed-media-gateway.md)、[`tasks/plan-next-major-media-gateway.md`](tasks/plan-next-major-media-gateway.md)、[`tasks/todo-next-major-media-gateway.md`](tasks/todo-next-major-media-gateway.md) 和 [`tasks/deepseek-next-major-handoff.md`](tasks/deepseek-next-major-handoff.md)。以下 v0.7 三 Tool/综合审核计划是历史基线，**不再作为下一大版本实施指令**。当前工作区分支已实现 `analyze_media` 并**本地提交 `381da84`**（未推送、未发布）；npm 上的 `0.6.1` 仍使用 `analyze_video`。
 
 状态：v0.6.1 已在 npm（[`docs/SPEC_V061.md`](docs/SPEC_V061.md)、[ADR 0016](docs/decisions/0016-config-sources-and-evidence-audit.md)）。v0.6.0 基线见 [`docs/SPEC_V06.md`](docs/SPEC_V06.md)，未单独打 tag。推已授权的 `v*` tag 时，`release.yml` 用 Trusted Publishing 发 npm 并建 GitHub Release（[ADR 0014](docs/decisions/0014-npm-trusted-publishing.md)）。人须在 npm 包设置里点一次 Trusted Publisher。不要添加 `NPM_TOKEN`。不要补打已发 npm 的 `v0.5.1` / `v0.5.2`，也不要补打 `v0.6.0`。

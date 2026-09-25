@@ -97,6 +97,10 @@ ode.exe`、`args=[<repo>\dist\index.js]`、`cwd=<repo>`、`timeoutMs=3600000`、
 
 **最终检查点：** 变更清单见下方「本轮变更文件」；推送、tag 与 npm 发布仍须单独指令。 ⏳
 
+## 独立审核入口
+
+给 Codex 的审核简报：[`codex-review-brief-20260925.md`](codex-review-brief-20260925.md)（含审核目标、代码地图、复现命令、逐项清单、已知边界与红线）。
+
 ## 规格完成标准逐条审计（`docs/SPEC_NEXT_MAJOR_MEDIA_GATEWAY.md` §测试与完成标准）
 
 1. **单 Tool 契约** ✅ 已验证：`test/tools.test.ts` 断言恰好一个 `analyze_media`、schema 只有 `media`/`prompt` 且都必需、无 provider/model/预算字段；宽泛、具体、中文与时间码 prompt 都逐字送达（两次断言原文相等）；每次调用只发一次请求（无二次提问）；旧码到新码的迁移由 `docs/API_CONTRACT.md` 的迁移表逐项列出，并有对应测试断言新码。
