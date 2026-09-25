@@ -22,10 +22,17 @@ import {
   salvageJsonAnswer,
   sampledSubtitleAudit,
   sanitizeEvidenceReport,
+  demoteAudioForDigitalSilence,
+  filterAudioClausesForDigitalSilence,
+  hasDirectAudioClaim,
+  reconcileKnownSilentTrackProse,
+  reconcileKnownSilentTrackReport,
   sanitizeProseAnswer,
+  sanitizeSensitiveText,
   type EvidenceReport,
 } from "./evidence.js";
 import { closeResolvedVideo, MACRO_ANALYSIS_SECONDS, resolveVideo } from "./media.js";
+import { measureAudioSilence, type SilenceMeasurement } from "./audio-silence.js";
 import { printableRequestId } from "./sse.js";
 import { createCachedUploader } from "./upload-cache.js";
 import { createTemporaryUploader, type MediaUploader } from "./upload.js";
@@ -92,9 +99,16 @@ export async function notifyProgress(
 
 const aborters = new WeakMap<McpServer, () => void>();
 
+function throwIfAnalysisAborted(signal: AbortSignal): void {
+  if (signal.aborted) {
+    throw new VideoError({ code: "VIDEO_ANALYSIS_FAILED", stage: "aborted" });
+  }
+}
+
 export interface ServerDeps {
   analyzer?: VideoAnalyzer;
   uploader?: MediaUploader;
+  measureAudioSilence?: typeof measureAudioSilence;
 }
 
 /**
@@ -148,12 +162,12 @@ function localMediaFactsLine(facts: LocalMediaFacts | undefined): string {
   const audio =
     facts.audioCodecs.length > 0
       ? facts.audioCodecs.join("/")
-      : facts.audioTrackPresent
-        ? "存在但编码未知"
-        : "无音轨";
+      : facts.audioTrackPresent === false
+        ? "未发现音轨"
+        : "存在性未确认";
   return `
 
-（本地已确认的文件事实，可作为判断基准：容器 ${facts.container.toUpperCase()}；视频轨 ${video}；音轨 ${audio}。如果音轨存在却没有听到任何声音，请明确说明是「音轨近似静音」还是「无法判断」，不要把存在的音轨写成没有声音。）`;
+（本地轻量探测的文件事实：容器 ${facts.container.toUpperCase()}；视频轨 ${video}；音轨 ${audio}。轻量探测不证明整条音轨可解码；如果没有听到任何声音，请区分「近似静音」与「无法判断」。）`;
 }
 
 export function buildUserQuestion(
@@ -186,15 +200,78 @@ function ok(
   durationSeconds: number | undefined,
   facts: LocalMediaFacts | undefined,
   model: string,
+  silenceMeasurement?: SilenceMeasurement,
 ): CallToolResult {
-  const coverage = buildCoverage(durationSeconds, facts, report);
+  if (report !== undefined) report = sanitizeEvidenceReport(report, durationSeconds);
+  text = sanitizeProseAnswer(text);
+  const measuredSilence = silenceMeasurement?.status === "digital_silence";
+  if (measuredSilence && facts?.audioTrackPresent === true) {
+    if (report !== undefined) report = reconcileKnownSilentTrackReport(report);
+    text = reconcileKnownSilentTrackProse(text);
+  }
+  const silenceConflict =
+    measuredSilence &&
+    (report?.audio_observations.some((item) => item.evidence === "heard") ??
+      hasDirectAudioClaim(text));
+  let coverageFacts = facts;
+  if (measuredSilence && facts !== undefined && silenceConflict) {
+    coverageFacts = { ...facts, digitalSilenceConflict: true };
+  }
+  if (measuredSilence) {
+    if (report !== undefined && silenceConflict) {
+      report = demoteAudioForDigitalSilence(report);
+      text = report.answer;
+    } else if (report === undefined && silenceConflict) {
+      text = `${filterAudioClausesForDigitalSilence(text)}\n模型原报的声音内容与本地数字静音冲突，声音说法待确认；画面观察仍保留。`;
+    } else {
+      text = `${text}\n本地完整解码确认所有已探测音轨的 PCM 样本为零；这不判断声音语义。`;
+    }
+  } else if (silenceMeasurement?.status === "incomplete") {
+    text = `${text}\n本地数字静音核对未能完成，因此没有据此判断静音或非静音。`;
+  } else if (silenceMeasurement?.status === "not_run") {
+    text = `${text}\n本地数字静音核对未执行（输入为 HTTPS 或未发现音轨）。`;
+  } else if (silenceMeasurement?.status === "invalid_config") {
+    text = `${text}\nQWEN_AUDIO_SILENCE_CHECK 配置值无效，本地静音核对已跳过。`;
+  }
+  const coverage = buildCoverage(
+    durationSeconds,
+    coverageFacts,
+    report,
+    silenceMeasurement?.status,
+  );
+  if (report !== undefined && coverage.evidence_conflicts.length > 0) {
+    if (!measuredSilence) {
+      const conflictAnswer =
+        "模型的直接观察与本地完整轨道探测冲突；冲突条目已标为待确认，本次不能据此确认相应声画内容。";
+      report = {
+        ...report,
+        visual_observations: report.visual_observations.map((item) =>
+          facts?.videoTrackPresent === false && item.evidence === "seen"
+            ? { ...item, evidence: "uncertain" as const }
+            : item,
+        ),
+        audio_observations: report.audio_observations.map((item) =>
+          facts?.audioTrackPresent === false && item.evidence === "heard"
+            ? { ...item, evidence: "uncertain" as const }
+            : item,
+        ),
+        answer: conflictAnswer,
+      };
+      text = conflictAnswer;
+    }
+  }
   const structured = evidenceStructuredContent(report, coverage, sampledSubtitleAudit());
   const audioNote =
-    facts?.audioTrackPresent === true && !coverage.audio_observed
-      ? "\n\n音轨提示：本地检测到音轨并随请求提交，但本次回答没有直接确认听到的内容；这不表示静音。画面字幕不能证明听到对白。请截取目标位置 5–30 秒并针对声音复核。"
+    facts?.audioTrackPresent === true && !coverage.audio_observed && !measuredSilence
+      ? "\n\n音轨提示：本地轨道探测报告存在音轨并随请求提交，但本次回答没有直接确认听到的内容；这不表示静音。画面字幕不能证明听到对白。请截取目标位置 5–30 秒并针对声音复核。"
       : "";
   return {
-    content: [{ type: "text", text: `${composeAnswerText(text, report)}${audioNote}` }],
+    content: [
+      {
+        type: "text",
+        text: sanitizeSensitiveText(`${composeAnswerText(text, report)}${audioNote}`),
+      },
+    ],
     isError: false,
     structuredContent: { ...structured, model },
   };
@@ -205,7 +282,7 @@ function fail(err: unknown): CallToolResult {
   if (mapped instanceof VideoError) {
     const requestId = printableRequestId(mapped.requestId ?? "") ?? "";
     process.stderr.write(
-      `analyze_video code=${mapped.code} stage=${mapped.stage} http=${String(mapped.httpStatus ?? "")} request_id=${requestId}\n`,
+      `analyze_video code=${mapped.code} stage=${mapped.stage} http=${String(mapped.httpStatus ?? "")} request_id=${requestId} parse_reason=${String(mapped.diagnostic.parse_reason ?? "")} events=${String(mapped.diagnostic.received_sse_events ?? "unknown")} usage_prompt=${String(mapped.diagnostic.prompt_tokens ?? "unknown")} usage_completion=${String(mapped.diagnostic.completion_tokens ?? "unknown")} usage_total=${String(mapped.diagnostic.total_tokens ?? "unknown")}\n`,
     );
   }
   return {
@@ -235,13 +312,39 @@ async function applyEvidenceGate(
   question: string,
   first: Awaited<ReturnType<VideoAnalyzer["analyze"]>>,
   signal: AbortSignal,
-): Promise<{ answer: string; report: EvidenceReport | undefined; result: typeof first }> {
-  const parsed = parseEvidence(first.answer);
+  durationSeconds?: number,
+): Promise<{
+  answer: string;
+  report: EvidenceReport | undefined;
+  result: typeof first;
+  calls: number;
+  usage: typeof first.usage;
+}> {
+  const parsed = parseEvidence(first.answer, durationSeconds);
   if (parsed.kind === "prose" && !proseNeedsCorrection(parsed.answer)) {
-    return { answer: parsed.answer, report: undefined, result: first };
+    return {
+      answer: parsed.answer,
+      report: undefined,
+      result: first,
+      calls: 1,
+      usage: first.usage,
+    };
   }
   if (parsed.kind === "report" && parsed.violations.length === 0) {
-    return { answer: parsed.report.answer, report: parsed.report, result: first };
+    return {
+      answer: parsed.report.answer,
+      report: parsed.report,
+      result: first,
+      calls: 1,
+      usage: first.usage,
+    };
+  }
+  if (
+    parsed.kind === "report" &&
+    parsed.violations.every((violation) => violation === "audio_answer")
+  ) {
+    const report = sanitizeEvidenceReport(parsed.report, durationSeconds);
+    return { answer: report.answer, report, result: first, calls: 1, usage: first.usage };
   }
 
   const retry = await analyzer.analyze(
@@ -249,26 +352,52 @@ async function applyEvidenceGate(
     { question: `${EVIDENCE_CORRECTION}\n\n用户问题：${question}` },
     signal,
   );
-  const second = parseEvidence(retry.answer);
+  const usage =
+    first.usage === undefined && retry.usage === undefined
+      ? undefined
+      : {
+          prompt_tokens:
+            first.usage?.prompt_tokens === undefined && retry.usage?.prompt_tokens === undefined
+              ? undefined
+              : (first.usage?.prompt_tokens ?? 0) + (retry.usage?.prompt_tokens ?? 0),
+          completion_tokens:
+            first.usage?.completion_tokens === undefined &&
+            retry.usage?.completion_tokens === undefined
+              ? undefined
+              : (first.usage?.completion_tokens ?? 0) + (retry.usage?.completion_tokens ?? 0),
+          total_tokens:
+            first.usage?.total_tokens === undefined && retry.usage?.total_tokens === undefined
+              ? undefined
+              : (first.usage?.total_tokens ?? 0) + (retry.usage?.total_tokens ?? 0),
+        };
+  const second = parseEvidence(retry.answer, durationSeconds);
   if (second.kind === "report") {
     const report =
-      second.violations.length > 0 ? sanitizeEvidenceReport(second.report) : second.report;
-    return { answer: report.answer, report, result: retry };
+      second.violations.length > 0
+        ? sanitizeEvidenceReport(second.report, durationSeconds)
+        : second.report;
+    return { answer: report.answer, report, result: retry, calls: 2, usage };
   }
   if (parsed.kind === "report") {
-    const report = sanitizeEvidenceReport(parsed.report);
-    return { answer: report.answer, report, result: first };
+    const report = sanitizeEvidenceReport(parsed.report, durationSeconds);
+    return { answer: report.answer, report, result: first, calls: 2, usage };
   }
   // JSON-looking but incomplete: keep the answer text and any salvageable items
   // instead of handing raw JSON to the Agent as the user-facing answer.
   const salvaged = salvageJsonAnswer(retry.answer) ?? salvageJsonAnswer(first.answer);
   if (salvaged !== undefined) {
-    return { answer: salvaged.answer, report: salvaged.report, result: retry };
+    return { answer: salvaged.answer, report: salvaged.report, result: retry, calls: 2, usage };
   }
   for (const candidate of [retry.answer, first.answer]) {
     const text = candidate.trim();
     if (text.length > 0 && !looksLikeJson(text)) {
-      return { answer: sanitizeProseAnswer(text), report: undefined, result: retry };
+      return {
+        answer: sanitizeProseAnswer(text),
+        report: undefined,
+        result: retry,
+        calls: 2,
+        usage,
+      };
     }
   }
   throw new VideoError({
@@ -356,21 +485,52 @@ export function createServer(cfg?: AppConfig, deps: ServerDeps = {}): McpServer 
         const question = readQuestion(args.question);
         const resolved = await resolveVideo(args.video, rt);
         try {
-          if (controller.signal.aborted) {
-            throw new VideoError({ code: "VIDEO_ANALYSIS_FAILED", stage: "aborted" });
-          }
+          throwIfAnalysisAborted(controller.signal);
           const durationSeconds = resolved.kind === "local" ? resolved.durationSeconds : undefined;
           const facts: LocalMediaFacts | undefined =
             resolved.kind === "local"
               ? {
                   container: resolved.container,
-                  videoTrackPresent: resolved.videoCodecs.length > 0,
-                  audioTrackPresent: resolved.audioCodecs.length > 0,
+                  videoTrackPresent:
+                    resolved.videoCodecs.length > 0
+                      ? true
+                      : resolved.trackProbeComplete === false
+                        ? undefined
+                        : false,
+                  audioTrackPresent:
+                    resolved.audioCodecs.length > 0
+                      ? true
+                      : resolved.trackProbeComplete === false
+                        ? undefined
+                        : false,
                   videoCodecs: resolved.videoCodecs,
                   audioCodecs: resolved.audioCodecs,
                 }
               : undefined;
           const userQuestion = buildUserQuestion(question, durationSeconds, facts);
+          let silenceMeasurement: SilenceMeasurement | undefined;
+          let answerFacts: LocalMediaFacts | undefined = facts;
+          if (rt.audioSilenceCheckInvalid) {
+            silenceMeasurement = { status: "invalid_config" };
+          } else if (rt.audioSilenceCheck && resolved.kind === "local") {
+            if (resolved.trackProbeComplete === false || facts?.audioTrackPresent === undefined) {
+              silenceMeasurement = { status: "incomplete" };
+            } else if ((resolved.audioTrackCount ?? resolved.audioCodecs.length) > 0) {
+              silenceMeasurement = await (deps.measureAudioSilence ?? measureAudioSilence)(
+                resolved.handle,
+                resolved.audioTrackCount ?? resolved.audioCodecs.length,
+                { signal: controller.signal },
+              );
+            } else {
+              silenceMeasurement = { status: "not_run" };
+            }
+            if (facts !== undefined && silenceMeasurement.status === "digital_silence") {
+              answerFacts = { ...facts, digitalSilenceConfirmed: true };
+            }
+          } else if (rt.audioSilenceCheck && resolved.kind === "https") {
+            silenceMeasurement = { status: "not_run" };
+          }
+          throwIfAnalysisAborted(controller.signal);
           const input =
             resolved.kind === "https"
               ? { url: resolved.url, requiresOssResolve: false }
@@ -387,6 +547,7 @@ export function createServer(cfg?: AppConfig, deps: ServerDeps = {}): McpServer 
             analyzeTotal,
             PROGRESS_ANALYZE_START,
           );
+          const analysisStarted = performance.now();
           const first = await activeAnalyzer.analyze(
             input,
             { question: userQuestion },
@@ -398,6 +559,10 @@ export function createServer(cfg?: AppConfig, deps: ServerDeps = {}): McpServer 
             question,
             first,
             controller.signal,
+            durationSeconds,
+          );
+          process.stderr.write(
+            `analyze_video_diag requests=${String(gated.calls)} correction_retry=${String(gated.calls - 1)} elapsed_ms=${String(Math.max(0, Math.round(performance.now() - analysisStarted)))} request_id=${printableRequestId(gated.result.requestId ?? "") ?? ""} finish_reason=${gated.result.finishReason ?? "unknown"} usage_prompt=${String(gated.usage?.prompt_tokens ?? "unknown")} usage_completion=${String(gated.usage?.completion_tokens ?? "unknown")} usage_total=${String(gated.usage?.total_tokens ?? "unknown")}\n`,
           );
           if (gated.answer.trim().length === 0) {
             throw new VideoError({ code: "PROVIDER_RESPONSE_INVALID", stage: "analyzing" });
@@ -406,7 +571,14 @@ export function createServer(cfg?: AppConfig, deps: ServerDeps = {}): McpServer 
           process.stderr.write(
             `analyze_video ok request_id=${printableRequestId(gated.result.requestId ?? "") ?? ""} events=${String(gated.result.receivedEvents)}\n`,
           );
-          return ok(gated.answer, gated.report, durationSeconds, facts, rt.model);
+          return ok(
+            gated.answer,
+            gated.report,
+            durationSeconds,
+            answerFacts,
+            rt.model,
+            silenceMeasurement,
+          );
         } finally {
           await closeResolvedVideo(resolved);
         }

@@ -8,12 +8,17 @@ import {
   hasAbsoluteClaim,
   parseEvidence,
   sanitizeEvidenceReport,
+  sanitizeSensitiveText,
   stripAbsoluteClaims,
 } from "../src/evidence.js";
 
 const valid = {
-  visual_observations: [{ time: "00:01", evidence: "seen", description: "人群站在广场" }],
-  audio_observations: [{ time: "00:01", evidence: "heard", description: "短促脚步" }],
+  visual_observations: [
+    { time: "00:01", evidence: "seen" as const, description: "人群站在广场", confidence: 0.9 },
+  ],
+  audio_observations: [
+    { time: "00:01", evidence: "heard" as const, description: "短促脚步", confidence: 0.9 },
+  ],
   inferences: [{ description: "可能是集会" }],
   uncertainties: [],
   answer: "画面是人群，音轨里听到脚步。",
@@ -53,6 +58,218 @@ describe("evidence parse", () => {
       kind: "prose",
       answer: "画面是24，音频是3.1415926",
     });
+  });
+
+  it("rejects malformed and out-of-range timecodes and answer-only sound certainty", () => {
+    const parsed = parseEvidence(
+      JSON.stringify({
+        ...valid,
+        audio_observations: [{ time: "99:99", evidence: "uncertain", description: "声音未确认" }],
+        answer: "背景音乐是电子乐。",
+      }),
+      62,
+    );
+    expect(parsed.kind).toBe("report");
+    if (parsed.kind !== "report") return;
+    expect(parsed.violations).toContain("audio_answer");
+    expect(parsed.violations).toContain("audio");
+    const cleaned = sanitizeEvidenceReport(parsed.report, 62);
+    expect(cleaned.answer).not.toContain("背景音乐是电子乐");
+    expect(cleaned.answer).toContain("未能确认音轨");
+    expect(cleaned.uncertainties.some((item) => item.description.includes("时间码"))).toBe(true);
+  });
+
+  it("demotes observations whose timestamps move backward", () => {
+    const report = {
+      ...valid,
+      visual_observations: [
+        { time: "00:08", evidence: "seen", description: "后段画面", confidence: 0.8 },
+        { time: "00:03", evidence: "seen", description: "更早画面", confidence: 0.8 },
+      ],
+      answer: "画面含两个抽样片段。",
+    } as const;
+    const parsed = parseEvidence(JSON.stringify(report), 10);
+    expect(parsed.kind).toBe("report");
+    if (parsed.kind !== "report") return;
+    expect(parsed.violations).toContain("visual_order");
+    const cleaned = sanitizeEvidenceReport(parsed.report, 10);
+    expect(cleaned.visual_observations.map((item) => item.time)).toEqual(["00:08"]);
+    expect(cleaned.uncertainties.some((item) => item.description.includes("更早画面"))).toBe(true);
+  });
+
+  it("redacts canary upload URLs, credentials, and local paths from every report section", () => {
+    const canary =
+      "oss://private-bucket/path sk-test-0123456789abcdef C:\\Users\\Alice\\secret.mp4";
+    const cleaned = sanitizeEvidenceReport({
+      visual_observations: [
+        { time: "00:01", evidence: "seen", confidence: 0.9, description: canary },
+      ],
+      audio_observations: [
+        { time: "00:01", evidence: "heard", confidence: 0.9, description: canary },
+      ],
+      inferences: [{ description: canary }],
+      uncertainties: [{ description: canary }],
+      answer: canary,
+    });
+    const serialized = JSON.stringify(cleaned);
+    expect(serialized).not.toContain(canary);
+    expect(serialized).not.toContain("private-bucket");
+    expect(serialized).not.toContain("sk-test-0123456789abcdef");
+    expect(serialized).not.toContain("C:\\\\Users");
+    expect(serialized).toContain("[内部媒体地址已隐藏]");
+    expect(serialized).toContain("[凭证已隐藏]");
+    expect(serialized).toContain("[本地路径已隐藏]");
+  });
+
+  it("redacts complete Windows paths with spaces without damaging ordinary HTTPS URLs", () => {
+    expect(sanitizeSensitiveText("C:\\Users\\Alice\\My Videos\\secret.mp4")).toBe(
+      "[本地路径已隐藏]",
+    );
+    expect(sanitizeSensitiveText("https://example.com/Users/demo.mp4")).toBe(
+      "https://example.com/Users/demo.mp4",
+    );
+  });
+
+  it("does not treat a denial of hearing as a positive sound claim", () => {
+    const report = {
+      ...valid,
+      audio_observations: [],
+      answer: "没有听到任何音乐。",
+    };
+    const parsed = parseEvidence(JSON.stringify(report));
+    expect(parsed.kind).toBe("report");
+    if (parsed.kind !== "report") return;
+    expect(parsed.violations).not.toContain("audio_answer");
+    expect(sanitizeEvidenceReport(parsed.report).answer).toBe(report.answer);
+  });
+
+  it("keeps an explicit inability to verify music without adding a false correction", () => {
+    const answer =
+      "无法确认内嵌音轨的实际内容——既不能证实存在背景音乐或歌曲，也不能据此断言视频静音。";
+    const parsed = parseEvidence(JSON.stringify({ ...valid, audio_observations: [], answer }));
+    if (parsed.kind !== "report") return;
+    expect(parsed.violations).not.toContain("audio_answer");
+    expect(sanitizeEvidenceReport(parsed.report).answer).toBe(answer);
+  });
+
+  it("removes unsupported sound details even when another sound was heard", () => {
+    const report = {
+      ...valid,
+      answer: "背景音乐是电子乐。",
+    };
+    const parsed = parseEvidence(JSON.stringify(report));
+    if (parsed.kind !== "report") return;
+    expect(parsed.violations).toContain("audio_answer");
+    const cleaned = sanitizeEvidenceReport(parsed.report);
+    expect(cleaned.answer).not.toContain("电子乐");
+    expect(cleaned.audio_observations[0]?.description).toContain("脚步");
+    expect(collectViolations(cleaned)).toEqual([]);
+  });
+
+  it("keeps supported background music and describes only unsupported details naturally", () => {
+    const report = {
+      ...valid,
+      audio_observations: [
+        {
+          time: "00:01",
+          evidence: "heard" as const,
+          description: "持续的背景音乐",
+          confidence: 0.9,
+        },
+      ],
+      answer: "全程有背景音乐，伴有清晰女声演唱和爆炸音效。",
+      uncertainties: [{ description: "歌手性别及音效待确认" }],
+    };
+    const cleaned = sanitizeEvidenceReport(report);
+    expect(cleaned.answer).toContain("全程有背景音乐");
+    expect(cleaned.answer).not.toMatch(/女声演唱|爆炸音效/);
+    expect(cleaned.answer).toContain("其它声音细节本次无法确认");
+    expect(cleaned.uncertainties.map((item) => item.description).join(" ")).toContain(
+      "其它声音细节本次无法确认",
+    );
+    const visible = JSON.stringify(cleaned);
+    expect(visible).not.toMatch(/正文中缺少对应证据|已移除|未获 heard/);
+  });
+
+  it("keeps heard background music while removing unsupported singer and lyric claims", () => {
+    const report = {
+      ...valid,
+      audio_observations: [
+        {
+          time: "00:01",
+          evidence: "heard" as const,
+          description: "持续的背景音乐",
+          confidence: 0.9,
+        },
+      ],
+      answer: "确认有背景音乐，但能听到女声演唱中文歌词。",
+    };
+    const parsed = parseEvidence(JSON.stringify(report));
+    expect(parsed.kind).toBe("report");
+    if (parsed.kind !== "report") return;
+    expect(parsed.violations).toContain("audio_answer");
+    const cleaned = sanitizeEvidenceReport(parsed.report);
+    expect(cleaned.answer).toContain("确认有背景音乐");
+    expect(cleaned.answer).not.toMatch(/女声演唱|中文歌词/);
+    expect(cleaned.answer).toContain("其它声音细节本次无法确认");
+  });
+
+  it("does not add a correction note for a pure negative sound statement", () => {
+    const report = {
+      ...valid,
+      audio_observations: [],
+      answer: "无法确认是否存在背景音乐，也不能断言静音。",
+    };
+    const cleaned = sanitizeEvidenceReport(report);
+    expect(cleaned.answer).toBe(report.answer);
+    expect(cleaned.uncertainties).toEqual([]);
+  });
+
+  it("uses plain user wording when all sound observations are uncertain", () => {
+    const report = {
+      ...valid,
+      audio_observations: [
+        {
+          time: "00:01",
+          evidence: "uncertain" as const,
+          description: "可能有歌曲",
+          confidence: 0.2,
+        },
+      ],
+      answer: "背景音乐是电子乐。",
+    };
+    const cleaned = sanitizeEvidenceReport(report);
+    expect(cleaned.answer).toContain("本次未能确认音轨中的具体声音");
+    expect(cleaned.uncertainties.map((item) => item.description).join(" ")).toContain(
+      "本次未能确认音轨中的具体声音",
+    );
+    expect(JSON.stringify(cleaned)).not.toMatch(/heard|正文中缺少对应证据|已移除|未获 heard/);
+  });
+
+  it("removes positive sound claims without heard evidence", () => {
+    const parsed = parseEvidence(
+      JSON.stringify({
+        ...valid,
+        audio_observations: [],
+        answer: "响起节奏很强的电子舞曲。",
+      }),
+    );
+    if (parsed.kind !== "report") return;
+    expect(parsed.violations).toContain("audio_answer");
+    expect(sanitizeEvidenceReport(parsed.report).answer).not.toContain("电子舞曲");
+  });
+
+  it("does not let a negative sound clause mask a later unsupported positive one", () => {
+    const parsed = parseEvidence(
+      JSON.stringify({
+        ...valid,
+        audio_observations: [],
+        answer: "没有听到音乐，但听到枪声。",
+      }),
+    );
+    if (parsed.kind !== "report") return;
+    expect(parsed.violations).toContain("audio_answer");
+    expect(sanitizeEvidenceReport(parsed.report).answer).not.toContain("听到枪声");
   });
 
   it("extracts JSON from a fenced block", () => {
@@ -452,7 +669,7 @@ describe("buildCoverage", () => {
     expect(coverage.video_observed).toBe(true);
     expect(coverage.audio_observed).toBe(false);
     const limits = coverage.coverage_limitations.join(" ");
-    expect(limits).toContain("含可解码音轨");
+    expect(limits).toContain("本地探测报告存在音轨");
     expect(limits).toContain("audio_analyzed 仅表示");
     expect(limits).toContain("不能据此判断静音");
   });
@@ -623,7 +840,7 @@ describe("salvageJsonAnswer", () => {
         answer: "夜景与音乐。",
       }),
     );
-    expect(salvaged?.answer).toBe("夜景与音乐。");
+    expect(salvaged?.answer).toContain("未能确认音轨");
     expect(salvaged?.report?.visual_observations).toHaveLength(1);
     expect(salvaged?.report?.audio_observations).toEqual([]);
   });

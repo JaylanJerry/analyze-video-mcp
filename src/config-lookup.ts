@@ -20,9 +20,12 @@ const WINDOWS_FALLBACK_NAMES = [
   "DASHSCOPE_API_KEY",
   "QWEN_ALLOWED_ROOTS",
   "QWEN_MODEL",
+  "QWEN_AUDIO_SILENCE_CHECK",
   "DASHSCOPE_BASE_URL",
   "DASHSCOPE_UPLOAD_URL",
 ] as const;
+
+let windowsUserEnvCache: { readAt: number; values: Record<string, string> } | undefined;
 
 export interface ConfigLookupOptions {
   env?: NodeJS.ProcessEnv;
@@ -167,6 +170,41 @@ export function readWindowsUserEnvironment(name: string): string | undefined {
   }
 }
 
+function readWindowsUserEnvironmentBatch(): Record<string, string> {
+  if (process.platform !== "win32") return {};
+  const now = Date.now();
+  if (windowsUserEnvCache !== undefined && now - windowsUserEnvCache.readAt < 15_000) {
+    return windowsUserEnvCache.values;
+  }
+  const names = WINDOWS_FALLBACK_NAMES.map((name) => JSON.stringify(name)).join(",");
+  const script = `$result=@{}; foreach($name in @(${names})) { $value=[Environment]::GetEnvironmentVariable($name,'User'); if ($null -ne $value) { $result[$name]=$value } }; ConvertTo-Json -Compress -InputObject $result`;
+  const values: Record<string, string> = {};
+  try {
+    const result = spawnSync(
+      "powershell.exe",
+      ["-NoProfile", "-NonInteractive", "-Command", script],
+      {
+        encoding: "utf8",
+        timeout: 5_000,
+        windowsHide: true,
+      },
+    );
+    if (result.status === 0) {
+      const parsed: unknown = JSON.parse(result.stdout.replace(/^\uFEFF/, "").trim());
+      if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+        for (const name of WINDOWS_FALLBACK_NAMES) {
+          const value = (parsed as Record<string, unknown>)[name];
+          if (typeof value === "string") values[name] = value;
+        }
+      }
+    }
+  } catch {
+    // Windows user environment is an optional fallback.
+  }
+  windowsUserEnvCache = { readAt: Date.now(), values };
+  return values;
+}
+
 function windowsReader(
   options: ConfigLookupOptions | undefined,
   silent: boolean,
@@ -207,12 +245,16 @@ function buildLayers(options?: ConfigLookupOptions): LayeredValues {
         ? defaultUserConfigPath(options?.homedir)
         : undefined;
   const userLoaded = loadEnvFile(userPath, options);
-  const readWin = windowsReader(options, silent);
   const windowsValues: Record<string, string> = {};
-  for (const name of WINDOWS_FALLBACK_NAMES) {
-    const value = presentEnvValue(readWin(name));
-    if (value !== undefined) {
-      windowsValues[name] = value;
+  if (silent) {
+    if (options === undefined || !Object.hasOwn(options, "readWindowsUserEnv")) {
+      Object.assign(windowsValues, readWindowsUserEnvironmentBatch());
+    } else {
+      const readWin = windowsReader(options, true);
+      for (const name of WINDOWS_FALLBACK_NAMES) {
+        const value = presentEnvValue(readWin(name));
+        if (value !== undefined) windowsValues[name] = value;
+      }
     }
   }
   return {

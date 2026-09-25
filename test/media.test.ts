@@ -66,6 +66,8 @@ function videoCfg(
     uploadUrl: "https://dashscope.test/api/v1/uploads",
     allowedRoots: roots,
     allowAnyLocalVideo,
+    audioSilenceCheck: false,
+    audioSilenceCheckInvalid: false,
     maxLocalVideoBytes,
     uploadTimeoutMs: 5_000,
     analysisTimeoutMs: 5_000,
@@ -381,6 +383,7 @@ describe("MOV support", () => {
     try {
       if (resolved.kind === "local") {
         expect(resolved.container).toBe("mp4");
+        expect(resolved.trackProbeComplete).toBe(true);
         expect(resolved.uploadName).toBe("video.mp4");
         expect(resolved.contentType).toBe("video/mp4");
         expect(resolved.objectExtension).toBe("mp4");
@@ -485,6 +488,12 @@ describe("MOV support", () => {
     const codecs = await probeTrackCodecs(readerOf(p), (await stat(p)).size);
     expect(codecs).toEqual({ video: [], audio: [] });
     expect(unsupportedCodec(codecs)).toBeUndefined();
+    const resolved = await resolveVideo(p, videoCfg([dir]));
+    try {
+      if (resolved.kind === "local") expect(resolved.trackProbeComplete).toBe(false);
+    } finally {
+      await closeResolvedVideo(resolved);
+    }
   });
 });
 

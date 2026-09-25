@@ -15,6 +15,8 @@ const cfg: AppConfig = {
   uploadUrl: "https://dashscope.test/api/v1/uploads",
   allowedRoots: [],
   allowAnyLocalVideo: false,
+  audioSilenceCheck: false,
+  audioSilenceCheckInvalid: false,
   maxLocalVideoBytes: 500 * 1024 * 1024,
   uploadTimeoutMs: 5_000,
   analysisTimeoutMs: 5_000,
@@ -110,6 +112,27 @@ describe("analyzeVideo", () => {
     expect(result.answer).toBe("画面是24");
     expect(result.requestId).toBe("chatcmpl-1");
     expect(result.receivedEvents).toBeGreaterThan(0);
+  });
+
+  it("rejects finish_reason=length instead of returning a partial answer", async () => {
+    server.use(
+      http.post(endpoint, () =>
+        sseResponse([
+          deltaEvent("partial answer"),
+          `data: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } })}\n\n`,
+          `data: ${JSON.stringify({ choices: [{ finish_reason: "length" }] })}\n\n`,
+        ]),
+      ),
+    );
+    await expect(analyzeVideo(videoCfg, httpsVideo, videoReq)).rejects.toMatchObject({
+      code: "PROVIDER_RESPONSE_INVALID",
+      diagnostic: {
+        parse_reason: "truncated",
+        prompt_tokens: 10,
+        completion_tokens: 5,
+        total_tokens: 15,
+      },
+    });
   });
 
   it("adds the OSS resolve header only for oss:// inputs", async () => {

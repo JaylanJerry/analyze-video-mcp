@@ -85,6 +85,9 @@ const DIAGNOSTIC_KEYS = new Set([
   "event_shape",
   "field",
   "codec",
+  "prompt_tokens",
+  "completion_tokens",
+  "total_tokens",
 ]);
 
 /**

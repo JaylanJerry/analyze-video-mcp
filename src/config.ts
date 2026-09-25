@@ -16,6 +16,8 @@ export interface AppConfig {
   uploadUrl: string;
   allowedRoots: string[];
   allowAnyLocalVideo: boolean;
+  audioSilenceCheck: boolean;
+  audioSilenceCheckInvalid: boolean;
   maxLocalVideoBytes: number;
   uploadTimeoutMs: number;
   analysisTimeoutMs: number;
@@ -151,6 +153,18 @@ function parseAllowAnyLocalVideo(options?: ConfigLookupOptions): boolean {
   return parseToggle("QWEN_ALLOW_ANY_LOCAL_VIDEO", false, options);
 }
 
+function parseAudioSilenceCheck(options?: ConfigLookupOptions): {
+  enabled: boolean;
+  invalid: boolean;
+} {
+  const raw = readRaw("QWEN_AUDIO_SILENCE_CHECK", options);
+  if (raw === undefined) return { enabled: false, invalid: false };
+  const parsed = parseOnOffToken(raw);
+  return parsed === undefined
+    ? { enabled: false, invalid: true }
+    : { enabled: parsed, invalid: false };
+}
+
 export function readAllowedRoots(options?: ConfigLookupOptions, lenient = false): string[] {
   return parseAllowedRoots(options, lenient);
 }
@@ -215,6 +229,7 @@ export function loadConfig(options?: ConfigLookupOptions): AppConfig {
   );
   const uploadCache = parseUploadCache(options);
   const allowAnyLocalVideo = parseAllowAnyLocalVideo(options);
+  const audioSilenceCheck = parseAudioSilenceCheck(options);
   return {
     apiKey: requireConfigValue("DASHSCOPE_API_KEY", options),
     model: readRaw("QWEN_MODEL", options) ?? DEFAULT_MODEL,
@@ -223,6 +238,8 @@ export function loadConfig(options?: ConfigLookupOptions): AppConfig {
     uploadUrl: httpsUrl("DASHSCOPE_UPLOAD_URL", DEFAULT_UPLOAD_URL, options),
     allowedRoots: parseAllowedRoots(options, allowAnyLocalVideo),
     allowAnyLocalVideo,
+    audioSilenceCheck: audioSilenceCheck.enabled,
+    audioSilenceCheckInvalid: audioSilenceCheck.invalid,
     maxLocalVideoBytes: maxLocalVideoMb * BYTES_PER_MIB,
     uploadTimeoutMs:
       boundedInt(

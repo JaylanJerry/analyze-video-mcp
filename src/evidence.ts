@@ -59,6 +59,63 @@ const ABSOLUTE_REPLACEMENTS: [RegExp, string][] = [
   [/不存在漏句/g, "当前分析无法保证逐字完整性"],
   [/没有漏句/g, "当前分析无法保证逐字完整性"],
 ];
+const AUDIO_CLAIM =
+  /听到|听见|可听见|伴随着|背景音乐|配乐|人声|对白|旁白|歌声|演唱|歌词|男声|女声|音乐(?!会)|歌曲|旋律|舞曲|音效|脚步声|枪声|风声|响起|传来/;
+const AUDIO_NEGATION =
+  /没有听到|没听到|未听到|听不到|无法听清|不能确认|未能确认|无法确认|难以确认|不能证实|无法证实|不能证明|无法证明|不能断言|无法断言|不确定|仅属推断|可能|疑似/;
+const AUDIO_DETAILS = [
+  "电子乐",
+  "电子舞曲",
+  "舞曲",
+  "钢琴",
+  "吉他",
+  "鼓点",
+  "脚步",
+  "枪声",
+  "爆炸",
+  "风声",
+  "对白",
+  "旁白",
+  "人声",
+  "演唱",
+  "歌词",
+  "男声",
+  "女声",
+  "歌声",
+  "歌曲",
+  "音乐",
+  "配乐",
+  "音效",
+] as const;
+
+function unsupportedAudioClauses(answer: string, heard: readonly EvidenceItem[]): string[] {
+  const observed = heard
+    .filter((item) => item.evidence === "heard")
+    .map((item) => item.description)
+    .join(" ");
+  return answer
+    .split(/[。！？；，,\n]/)
+    .map((clause) => clause.trim())
+    .filter((clause) => {
+      if (!AUDIO_CLAIM.test(clause) || AUDIO_NEGATION.test(clause)) return false;
+      if (observed.length === 0) return true;
+      return AUDIO_DETAILS.some((detail) => clause.includes(detail) && !observed.includes(detail));
+    });
+}
+
+function removeUnsupportedAudioClauses(answer: string, heard: readonly EvidenceItem[]): string {
+  const unsupported = unsupportedAudioClauses(answer, heard);
+  if (unsupported.length === 0) return answer;
+  const kept = answer
+    .split(/(?<=[。！？；，,\n])/)
+    .filter((sentence) => !unsupported.some((clause) => sentence.includes(clause)))
+    .join("")
+    .trim();
+  const note = heard.some((item) => item.evidence === "heard")
+    ? "其它声音细节本次无法确认。"
+    : "本次未能确认音轨中的具体声音；画面相关声音仅属推断。";
+  return `${kept}${kept.length > 0 ? "\n" : ""}${note}`;
+}
 
 export interface EvidenceItem {
   time: string | undefined;
@@ -75,12 +132,119 @@ export interface EvidenceReport {
   answer: string;
 }
 
+export function filterAudioClausesForDigitalSilence(answer: string): string {
+  return answer
+    .split(/(?<=[。！？\n])/)
+    .map((sentence) => {
+      const clauses = sentence.split(/(?<=[，,；])/);
+      return clauses
+        .map((clause) => {
+          if (!AUDIO_CLAIM.test(clause) || AUDIO_NEGATION.test(clause)) return clause;
+          const anchor =
+            /听到|听见|可听见|伴随着?|背景音乐|配乐|人声|对白|旁白|歌声|演唱|歌词|男声|女声|音乐|歌曲|旋律|舞曲|音效|脚步声|枪声|风声|响起|传来/g;
+          const firstAudio = anchor.exec(clause)?.index;
+          if (firstAudio === undefined || firstAudio === 0) return "";
+          return clause
+            .slice(0, firstAudio)
+            .replace(
+              /(?:(?:同时|随后|并且|并|伴随)?(?:播放|响起|传来|有|出现)|同时|随后|并且|并|伴随)\s*$/u,
+              "",
+            )
+            .trim();
+        })
+        .filter(Boolean)
+        .join("");
+    })
+    .join("")
+    .trim();
+}
+
+export function hasDirectAudioClaim(answer: string): boolean {
+  return answer
+    .split(/[。！？；，,\n]/)
+    .some((clause) => AUDIO_CLAIM.test(clause) && !AUDIO_NEGATION.test(clause));
+}
+
+const EMPTY_SILENT_TRACK_CLAIM = "音频轨道似乎是空的或静音的";
+const TRACK_EXISTENCE_UNCERTAINTY =
+  "无法确定视频中是否真的存在音轨，因为提供的分析工具没有检测到任何声音信号";
+const KNOWN_TRACK_PCM_FACT = "本地探测确认存在音轨，且完整解码后 PCM 样本为零";
+const TRACK_SEMANTIC_UNCERTAINTY = "仍无法确认视频原本是否应有可听声音或具体声音语义";
+
+function reconcileKnownSilentTrackText(answer: string): string {
+  const containsTrackExistenceUncertainty = answer.includes(TRACK_EXISTENCE_UNCERTAINTY);
+  return answer
+    .replaceAll(
+      EMPTY_SILENT_TRACK_CLAIM,
+      containsTrackExistenceUncertainty
+        ? KNOWN_TRACK_PCM_FACT
+        : `${KNOWN_TRACK_PCM_FACT}；${TRACK_SEMANTIC_UNCERTAINTY}`,
+    )
+    .replaceAll(
+      TRACK_EXISTENCE_UNCERTAINTY,
+      containsTrackExistenceUncertainty
+        ? TRACK_SEMANTIC_UNCERTAINTY
+        : `${KNOWN_TRACK_PCM_FACT}；${TRACK_SEMANTIC_UNCERTAINTY}`,
+    );
+}
+
+/** Reconcile only known model phrases that contradict a confirmed silent audio track. */
+export function reconcileKnownSilentTrackReport(report: EvidenceReport): EvidenceReport {
+  const containsEmptyTrackClaim = report.answer.includes(EMPTY_SILENT_TRACK_CLAIM);
+  return {
+    ...report,
+    answer: reconcileKnownSilentTrackText(report.answer),
+    uncertainties: report.uncertainties.map((item) =>
+      item.description.includes(TRACK_EXISTENCE_UNCERTAINTY)
+        ? {
+            ...item,
+            description: item.description.replace(
+              TRACK_EXISTENCE_UNCERTAINTY,
+              containsEmptyTrackClaim
+                ? TRACK_SEMANTIC_UNCERTAINTY
+                : `${KNOWN_TRACK_PCM_FACT}；${TRACK_SEMANTIC_UNCERTAINTY}`,
+            ),
+          }
+        : item,
+    ),
+  };
+}
+
+/** Apply the same narrowly scoped correction to a prose-only model answer. */
+export function reconcileKnownSilentTrackProse(answer: string): string {
+  return reconcileKnownSilentTrackText(answer);
+}
+
+export function demoteAudioForDigitalSilence(report: EvidenceReport): EvidenceReport {
+  const audioObservations = report.audio_observations.map((item) =>
+    item.evidence === "heard"
+      ? {
+          ...item,
+          evidence: "uncertain" as const,
+          confidence: 0,
+          description: `模型原报（与本地数字静音冲突，待确认）：${item.description}`,
+        }
+      : item,
+  );
+  const kept = filterAudioClausesForDigitalSilence(report.answer);
+  const note =
+    "本地完整解码确认所有已探测音轨的 PCM 样本为零，因此模型所述声音内容无法确认；画面观察仍按视觉证据保留。";
+  return {
+    ...report,
+    audio_observations: audioObservations,
+    uncertainties: [...report.uncertainties, { description: note }],
+    answer: `${kept}${kept.length > 0 ? "\n" : ""}${note}`,
+  };
+}
+
 export interface LocalMediaFacts {
   container: "mp4" | "mov";
-  videoTrackPresent: boolean;
-  audioTrackPresent: boolean;
+  videoTrackPresent: boolean | undefined;
+  audioTrackPresent: boolean | undefined;
   videoCodecs: string[];
   audioCodecs: string[];
+  digitalSilenceConfirmed?: boolean;
+  digitalSilenceConflict?: boolean;
 }
 
 export interface Coverage {
@@ -259,11 +423,30 @@ export function stripAbsoluteClaims(text: string): string {
 }
 
 export function sanitizeProseAnswer(text: string): string {
-  let out = stripAbsoluteClaims(text);
+  let out = sanitizeSensitiveText(stripAbsoluteClaims(text));
   if (hasIdentityClaim(out)) {
     out = `${out}\n人物身份未经标识确认，职业与关系仅为推断。`.trim();
   }
   return out;
+}
+
+/** Remove internal upload locations, credential-shaped tokens, and local absolute paths. */
+export function sanitizeSensitiveText(text: string): string {
+  return text
+    .replace(/\boss:\/\/[^\s"'<>]+/gi, "[内部媒体地址已隐藏]")
+    .replace(
+      /\b(?:sk-(?:ws-|proj-|live-|test-)?[A-Za-z0-9_-]{12,}|Bearer\s+[A-Za-z0-9._~-]{12,})\b/gi,
+      "[凭证已隐藏]",
+    )
+    .replace(
+      /(?:[A-Za-z]:\\|\\\\)[^\r\n<>"'，。；！？|?*]*?\.[A-Za-z0-9]{1,8}(?=$|[\s，。；！？<>"'])/gi,
+      "[本地路径已隐藏]",
+    )
+    .replace(/(?:[A-Za-z]:\\|\\\\)[^\s\r\n<>"'，。；！？|?*]+/g, "[本地路径已隐藏]")
+    .replace(
+      /(?<![A-Za-z0-9:/.])\/(?:Users|home|mnt|private|Volumes)\/[^\s<>"']+/g,
+      "[本地路径已隐藏]",
+    );
 }
 
 export function itemHasHedgingViolation(item: EvidenceItem): boolean {
@@ -295,6 +478,21 @@ function itemMissingTime(item: EvidenceItem): boolean {
   );
 }
 
+function invalidTime(item: EvidenceItem, durationSeconds?: number): boolean {
+  if (item.time === undefined) return false;
+  const match = /^(\d{2,}):([0-5]\d)$/.exec(item.time);
+  if (match === null) return true;
+  return (
+    durationSeconds !== undefined && Number(match[1]) * 60 + Number(match[2]) > durationSeconds
+  );
+}
+
+function timecodeSeconds(item: EvidenceItem): number | undefined {
+  if (item.time === undefined) return undefined;
+  const match = /^(\d{2,}):([0-5]\d)$/.exec(item.time);
+  return match === null ? undefined : Number(match[1]) * 60 + Number(match[2]);
+}
+
 function itemHasMixedInference(item: EvidenceItem): boolean {
   if (item.evidence !== "heard" && item.evidence !== "seen") {
     return false;
@@ -315,7 +513,8 @@ function itemIsSelfConsistent(item: EvidenceItem, wrongKind: boolean): boolean {
     itemHasIdentityViolation(item) ||
     itemHasMeasuredViolation(item) ||
     itemHasMixedInference(item) ||
-    itemMissingTime(item)
+    itemMissingTime(item) ||
+    invalidTime(item)
   );
 }
 
@@ -338,10 +537,20 @@ function hasConfirmedAudio(report: EvidenceReport): boolean {
   );
 }
 
-export function collectViolations(report: EvidenceReport): string[] {
+export function collectViolations(report: EvidenceReport, durationSeconds?: number): string[] {
   const violations: string[] = [];
   const confirmedVisual = hasConfirmedVisual(report);
   const confirmedAudio = hasConfirmedAudio(report);
+  const isOutOfOrder = (items: readonly EvidenceItem[]): boolean => {
+    let previous = -1;
+    for (const item of items) {
+      const seconds = timecodeSeconds(item);
+      if (seconds === undefined) continue;
+      if (seconds < previous) return true;
+      previous = seconds;
+    }
+    return false;
+  };
 
   for (const item of report.visual_observations) {
     if (
@@ -352,7 +561,11 @@ export function collectViolations(report: EvidenceReport): string[] {
     ) {
       violations.push("visual");
     }
-    if (itemHasMeasuredViolation(item) || itemMissingTime(item)) {
+    if (
+      itemHasMeasuredViolation(item) ||
+      itemMissingTime(item) ||
+      invalidTime(item, durationSeconds)
+    ) {
       violations.push("visual");
     }
     if (item.evidence === "cross_validated" && !confirmedAudio) {
@@ -368,23 +581,35 @@ export function collectViolations(report: EvidenceReport): string[] {
     ) {
       violations.push("audio");
     }
-    if (itemHasMeasuredViolation(item) || itemMissingTime(item)) {
+    if (
+      itemHasMeasuredViolation(item) ||
+      itemMissingTime(item) ||
+      invalidTime(item, durationSeconds)
+    ) {
       violations.push("audio");
     }
     if (item.evidence === "cross_validated" && !confirmedVisual) {
       violations.push("audio");
     }
   }
+  if (isOutOfOrder(report.visual_observations)) violations.push("visual_order");
+  if (isOutOfOrder(report.audio_observations)) violations.push("audio_order");
   if (hasAbsoluteClaim(report.answer)) {
     violations.push("absolute");
   }
   if (hasIdentityClaim(report.answer)) {
     violations.push("identity");
   }
+  if (unsupportedAudioClauses(report.answer, report.audio_observations).length > 0) {
+    violations.push("audio_answer");
+  }
   return violations;
 }
 
-export function sanitizeEvidenceReport(report: EvidenceReport): EvidenceReport {
+export function sanitizeEvidenceReport(
+  report: EvidenceReport,
+  durationSeconds?: number,
+): EvidenceReport {
   const uncertainties = [...report.uncertainties];
   const inferences = [...report.inferences];
   const visual: EvidenceItem[] = [];
@@ -411,12 +636,33 @@ export function sanitizeEvidenceReport(report: EvidenceReport): EvidenceReport {
       uncertainties.push({ description: `缺少时间码：${item.description}` });
       return undefined;
     }
+    if (invalidTime(item, durationSeconds)) {
+      uncertainties.push({ description: `无效时间码：${item.description}` });
+      return undefined;
+    }
     return item;
   };
 
   const pendingVisualCross: EvidenceItem[] = [];
   const pendingAudioCross: EvidenceItem[] = [];
+  const cleanOrder = (items: readonly EvidenceItem[]): Set<EvidenceItem> => {
+    const bad = new Set<EvidenceItem>();
+    let previous = -1;
+    for (const item of items) {
+      const seconds = timecodeSeconds(item);
+      if (seconds === undefined) continue;
+      if (seconds < previous) bad.add(item);
+      else previous = seconds;
+    }
+    return bad;
+  };
+  const badVisualOrder = cleanOrder(report.visual_observations);
+  const badAudioOrder = cleanOrder(report.audio_observations);
   for (const item of report.visual_observations) {
+    if (badVisualOrder.has(item)) {
+      uncertainties.push({ description: `时间顺序无效：${item.description}` });
+      continue;
+    }
     if (item.evidence === "cross_validated") {
       pendingVisualCross.push(item);
       continue;
@@ -427,6 +673,10 @@ export function sanitizeEvidenceReport(report: EvidenceReport): EvidenceReport {
     }
   }
   for (const item of report.audio_observations) {
+    if (badAudioOrder.has(item)) {
+      uncertainties.push({ description: `时间顺序无效：${item.description}` });
+      continue;
+    }
     if (item.evidence === "cross_validated") {
       pendingAudioCross.push(item);
       continue;
@@ -469,7 +719,15 @@ export function sanitizeEvidenceReport(report: EvidenceReport): EvidenceReport {
     }
   }
 
-  let answer = stripAbsoluteClaims(report.answer);
+  let answer = sanitizeSensitiveText(stripAbsoluteClaims(report.answer));
+  if (unsupportedAudioClauses(answer, audio).length > 0) {
+    answer = removeUnsupportedAudioClauses(answer, audio);
+    uncertainties.push({
+      description: audio.some((item) => item.evidence === "heard")
+        ? "其它声音细节本次无法确认。"
+        : "本次未能确认音轨中的具体声音。",
+    });
+  }
   if (hasIdentityClaim(answer)) {
     answer = `${answer}\n人物身份未经标识确认，职业与关系仅为推断。`.trim();
     if (!uncertainties.some((note) => note.description.includes("身份"))) {
@@ -478,15 +736,25 @@ export function sanitizeEvidenceReport(report: EvidenceReport): EvidenceReport {
   }
 
   return {
-    visual_observations: visual,
-    audio_observations: audio,
-    inferences,
-    uncertainties,
+    visual_observations: visual.map((item) => ({
+      ...item,
+      description: sanitizeSensitiveText(item.description),
+    })),
+    audio_observations: audio.map((item) => ({
+      ...item,
+      description: sanitizeSensitiveText(item.description),
+    })),
+    inferences: inferences.map((item) => ({
+      description: sanitizeSensitiveText(item.description),
+    })),
+    uncertainties: uncertainties.map((item) => ({
+      description: sanitizeSensitiveText(item.description),
+    })),
     answer,
   };
 }
 
-export function parseEvidence(raw: string): EvidenceParse {
+export function parseEvidence(raw: string, durationSeconds?: number): EvidenceParse {
   const json = extractJsonObject(raw);
   if (json === undefined) {
     return looksLikeJson(raw) ? { kind: "invalid", answer: raw } : { kind: "prose", answer: raw };
@@ -515,7 +783,7 @@ export function parseEvidence(raw: string): EvidenceParse {
     uncertainties,
     answer,
   };
-  return { kind: "report", report, violations: collectViolations(report) };
+  return { kind: "report", report, violations: collectViolations(report, durationSeconds) };
 }
 
 /**
@@ -585,6 +853,8 @@ export function buildCoverage(
   durationSeconds: number | undefined,
   facts?: LocalMediaFacts,
   report?: EvidenceReport,
+  silenceCheckStatus?:
+    "digital_silence" | "non_silent" | "not_run" | "invalid_config" | "incomplete",
 ): Coverage {
   const visualItems = report?.visual_observations ?? [];
   const audioItems = report?.audio_observations ?? [];
@@ -595,20 +865,26 @@ export function buildCoverage(
   // conflict, not a confirmation).
   const claimsVideo = visualItems.some((item) => item.evidence === "seen");
   const claimsAudio = audioItems.some((item) => item.evidence === "heard");
-  const noVideoTrack = facts !== undefined && !facts.videoTrackPresent;
-  const noAudioTrack = facts !== undefined && !facts.audioTrackPresent;
+  const noVideoTrack = facts?.videoTrackPresent === false;
+  const noAudioTrack = facts?.audioTrackPresent === false;
   const videoObserved = claimsVideo && !noVideoTrack;
-  const audioObserved = claimsAudio && !noAudioTrack;
+  const digitalSilence = facts?.digitalSilenceConfirmed === true;
+  const audioObserved = claimsAudio && !noAudioTrack && !digitalSilence;
 
   const conflicts: string[] = [];
   if (claimsAudio && noAudioTrack) {
     conflicts.push(
-      "模型给出了「听到」类音频条目，但本地探测在该文件中未发现音轨：这是证据冲突（可能文件确实没有音轨，也可能本地探测未能读取音轨结构），不得当作已确认听到",
+      "模型给出了「听到」类音频条目，但本地完整轨道探测在该文件中未发现音轨：这是证据冲突，不得当作已确认听到",
+    );
+  }
+  if (facts?.digitalSilenceConflict === true || (claimsAudio && digitalSilence)) {
+    conflicts.push(
+      "模型给出了「听到」类音频条目，但本地完整解码的所有音轨均为数字零样本：该声音内容无法由此文件支持",
     );
   }
   if (claimsVideo && noVideoTrack) {
     conflicts.push(
-      "模型给出了「看到」类画面条目，但本地探测在该文件中未发现视频轨：这是证据冲突（可能文件确实没有视频轨，也可能本地探测未能读取轨道结构），不得当作已确认看到",
+      "模型给出了「看到」类画面条目，但本地完整轨道探测在该文件中未发现视频轨：这是证据冲突，不得当作已确认看到",
     );
   }
   const limitations = [
@@ -623,15 +899,35 @@ export function buildCoverage(
       `存在证据冲突（${String(conflicts.length)} 项）：模型报告了本地探测未发现的模态内容，详见 evidence_conflicts`,
     );
   }
+  if (facts?.audioTrackPresent === undefined && facts !== undefined) {
+    limitations.push("本地轻量探测未能确认音轨是否存在，不能将其解释为无音轨或静音");
+  }
+  if (silenceCheckStatus === "incomplete") {
+    limitations.push("本地数字静音核对未能完整完成；不据此判断静音或非静音");
+  } else if (silenceCheckStatus === "not_run") {
+    limitations.push("本地数字静音核对未执行（输入为 HTTPS 或未发现音轨）");
+  } else if (silenceCheckStatus === "invalid_config") {
+    limitations.push("QWEN_AUDIO_SILENCE_CHECK 配置值无效；本地静音核对已跳过");
+  }
+  if (digitalSilence || silenceCheckStatus === "digital_silence") {
+    limitations.push(
+      "本地 FFmpeg 完整解码确认所有已探测音轨的 PCM 样本为零；这不判断声音语义或媒体感知响度",
+    );
+  } else if (silenceCheckStatus === "non_silent") {
+    limitations.push("本地完整解码检测到非零 PCM 样本；此结果不证明样本可听或具有特定声音语义");
+  }
+  if (facts?.videoTrackPresent === undefined && facts !== undefined) {
+    limitations.push("本地轻量探测未能确认视频轨是否存在，不能将其解释为无画面");
+  }
   if (report !== undefined) {
-    if (facts?.audioTrackPresent === true && !audioObserved) {
+    if (facts?.audioTrackPresent === true && !audioObserved && !digitalSilence) {
       limitations.push(
         "audio_analyzed 仅表示本地探测到音轨并将视频随请求提交，不证明模型实际听清或完整核听；audio_observed=false 表示回答没有直接确认听到的内容，也不能据此判断静音",
       );
       limitations.push(
         audioItems.length > 0
-          ? `文件含可解码音轨（本地已确认），但本次回答没有直接确认听到的内容（现有音频条目为：${presentKinds(audioItems)}）：建议截取目标位置 5–30 秒并针对声音复核`
-          : "文件含可解码音轨（本地已确认），但本次回答没有给出任何「听到」的观察：可能是模型未利用音轨、音轨近似静音，或抽样忽略了声音；建议截取目标位置 5–30 秒并针对声音复核",
+          ? `本地探测报告存在音轨，但本次回答没有直接确认听到的内容（现有音频条目为：${presentKinds(audioItems)}）：建议截取目标位置 5–30 秒并针对声音复核`
+          : "本地探测报告存在音轨，但本次回答没有给出任何「听到」的观察：可能是模型未利用音轨、音轨近似静音，或抽样忽略了声音；建议截取目标位置 5–30 秒并针对声音复核",
       );
     }
     if (facts?.videoTrackPresent === true && !videoObserved) {
@@ -650,8 +946,8 @@ export function buildCoverage(
     video_codecs: facts?.videoCodecs,
     audio_codecs: facts?.audioCodecs,
     // Request-level: without a local probe (HTTPS) we sent both modalities as-is.
-    video_analyzed: facts === undefined ? true : facts.videoTrackPresent,
-    audio_analyzed: facts === undefined ? true : facts.audioTrackPresent,
+    video_analyzed: facts?.videoTrackPresent !== false,
+    audio_analyzed: facts?.audioTrackPresent !== false,
     video_observed: videoObserved,
     audio_observed: audioObserved,
     evidence_conflicts: conflicts,

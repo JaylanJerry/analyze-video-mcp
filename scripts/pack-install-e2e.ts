@@ -17,6 +17,7 @@ const required = [
   "dist/config.js",
   "dist/config-lookup.js",
   "dist/media.js",
+  "dist/audio-silence.js",
   "dist/upload.js",
   "dist/upload-cache.js",
   "dist/bailian.js",

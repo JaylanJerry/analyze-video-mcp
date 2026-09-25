@@ -20,6 +20,14 @@ export interface AnalyzeVideoResult {
   answer: string;
   requestId: string | undefined;
   receivedEvents: number;
+  finishReason?: string | undefined;
+  usage?:
+    | {
+        prompt_tokens: number | undefined;
+        completion_tokens: number | undefined;
+        total_tokens: number | undefined;
+      }
+    | undefined;
 }
 
 export interface VideoAnalyzer {
@@ -217,12 +225,34 @@ async function analyzeVideoOnce(
       parser.push(chunk);
     }
     const aggregated = parser.finish();
+    if (aggregated.finishReason === "length") {
+      throw new VideoError({
+        code: "PROVIDER_RESPONSE_INVALID",
+        stage: "analyzing",
+        ...(aggregated.requestId === undefined ? {} : { requestId: aggregated.requestId }),
+        diagnostic: {
+          parse_reason: "truncated",
+          received_sse_events: aggregated.receivedEvents,
+          ...(aggregated.usage?.prompt_tokens === undefined
+            ? {}
+            : { prompt_tokens: aggregated.usage.prompt_tokens }),
+          ...(aggregated.usage?.completion_tokens === undefined
+            ? {}
+            : { completion_tokens: aggregated.usage.completion_tokens }),
+          ...(aggregated.usage?.total_tokens === undefined
+            ? {}
+            : { total_tokens: aggregated.usage.total_tokens }),
+        },
+      });
+    }
     return {
       ok: true,
       result: {
         answer: aggregated.text,
         requestId: aggregated.requestId,
         receivedEvents: aggregated.receivedEvents,
+        finishReason: aggregated.finishReason,
+        usage: aggregated.usage,
       },
     };
   } catch (err) {

@@ -20,6 +20,8 @@ const baseCfg: AppConfig = {
   uploadUrl: "https://dashscope.test/api/v1/uploads",
   allowedRoots: [],
   allowAnyLocalVideo: false,
+  audioSilenceCheck: false,
+  audioSilenceCheckInvalid: false,
   maxLocalVideoBytes: 1024 * BYTES_PER_MIB,
   uploadTimeoutMs: 5_000,
   analysisTimeoutMs: 5_000,

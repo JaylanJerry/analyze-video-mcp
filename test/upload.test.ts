@@ -60,6 +60,8 @@ function cfg(overrides: Partial<AppConfig> = {}): AppConfig {
     uploadUrl: POLICY_URL,
     allowedRoots: [],
     allowAnyLocalVideo: false,
+    audioSilenceCheck: false,
+    audioSilenceCheckInvalid: false,
     maxLocalVideoBytes: 500 * BYTES_PER_MIB,
     uploadTimeoutMs: 30_000,
     analysisTimeoutMs: 5_000,

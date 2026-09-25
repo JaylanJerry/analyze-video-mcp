@@ -50,6 +50,22 @@ function expectNoEnvValues(message: string, ...values: string[]): void {
 }
 
 describe("loadConfig", () => {
+  it("defaults the optional audio silence check to off and accepts explicit on", () => {
+    process.env.DASHSCOPE_API_KEY = "k";
+    delete process.env.QWEN_AUDIO_SILENCE_CHECK;
+    expect(loadConfig().audioSilenceCheck).toBe(false);
+    process.env.QWEN_AUDIO_SILENCE_CHECK = "on";
+    expect(loadConfig().audioSilenceCheck).toBe(true);
+  });
+
+  it("rejects invalid optional audio silence check values", () => {
+    process.env.DASHSCOPE_API_KEY = "k";
+    process.env.QWEN_AUDIO_SILENCE_CHECK = "maybe";
+    expect(loadConfig()).toMatchObject({
+      audioSilenceCheck: false,
+      audioSilenceCheckInvalid: true,
+    });
+  });
   it("defaults the model to qwen3.8-omni-flash when only the API key is set", () => {
     delete process.env.QWEN_MODEL;
     delete process.env.DASHSCOPE_BASE_URL;

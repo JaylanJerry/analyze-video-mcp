@@ -16,6 +16,10 @@ export interface AuthorizedLocalVideo {
   /** Sample-format fourccs found in the container (validated allowlist). */
   videoCodecs: string[];
   audioCodecs: string[];
+  /** Number of audio tracks, independent of the de-duplicated codec list. */
+  audioTrackCount?: number;
+  /** False when the bounded box walk could not establish whether tracks are absent. */
+  trackProbeComplete?: boolean;
   /** Fixed, non-identifying multipart filename for the container. */
   uploadName: string;
   contentType: string;
@@ -284,24 +288,24 @@ async function childBoxes(
   parent: ParsedBox,
   state: ProbeState,
   wanted: string,
-): Promise<ParsedBox[]> {
+): Promise<{ boxes: ParsedBox[]; complete: boolean }> {
   const found: ParsedBox[] = [];
   let offset = parent.contentStart;
   while (offset + 8 <= parent.contentEnd) {
     state.boxes += 1;
     if (state.boxes > MAX_MP4_PROBE_BOXES) {
-      return found;
+      return { boxes: found, complete: false };
     }
     const box = await readBoxHeader(reader, offset, parent.contentEnd, state);
     if (box === undefined) {
-      return found;
+      return { boxes: found, complete: false };
     }
     if (box.type === wanted) {
       found.push(box);
     }
     offset = box.contentEnd;
   }
-  return found;
+  return { boxes: found, complete: offset === parent.contentEnd };
 }
 
 /** hdlr: version/flags, pre_defined, then the 4-byte handler type ("vide"/"soun"). */
@@ -349,13 +353,14 @@ async function readSampleFormats(
  * Bounded codec probe: moov → trak → mdia → hdlr/minf → stbl → stsd, fourcc only.
  * Returns empty lists when the structure is unreadable, so callers can decide.
  */
-export async function probeTrackCodecs(
+async function probeTrackCodecsDetailed(
   reader: PositionedReader,
   fileSize: number,
-): Promise<TrackCodecs> {
+): Promise<TrackCodecs & { complete: boolean; audioTrackCount: number }> {
   const codecs: TrackCodecs = { video: [], audio: [] };
+  let audioTrackCount = 0;
   if (!Number.isSafeInteger(fileSize) || fileSize < 8) {
-    return codecs;
+    return { ...codecs, complete: false, audioTrackCount };
   }
   const state: ProbeState = { bytesRead: 0, boxes: 0 };
   const moov = await (async (): Promise<ParsedBox | undefined> => {
@@ -377,11 +382,14 @@ export async function probeTrackCodecs(
     return undefined;
   })();
   if (moov === undefined) {
-    return codecs;
+    return { ...codecs, complete: false, audioTrackCount };
   }
-  for (const trak of await childBoxes(reader, moov, state, "trak")) {
+  const tracks = await childBoxes(reader, moov, state, "trak");
+  let complete = tracks.complete && tracks.boxes.length > 0;
+  for (const trak of tracks.boxes) {
     const mdia = await firstBoxOfType(reader, trak, state, "mdia");
     if (mdia === undefined) {
+      complete = false;
       continue;
     }
     const handler = await (async (): Promise<string | undefined> => {
@@ -390,26 +398,39 @@ export async function probeTrackCodecs(
     })();
     const minf = await firstBoxOfType(reader, mdia, state, "minf");
     if (minf === undefined) {
+      complete = false;
       continue;
     }
     const stbl = await firstBoxOfType(reader, minf, state, "stbl");
     if (stbl === undefined) {
+      complete = false;
       continue;
     }
     const stsd = await firstBoxOfType(reader, stbl, state, "stsd");
     if (stsd === undefined) {
+      complete = false;
       continue;
     }
     const formats = await readSampleFormats(reader, stsd, state);
+    if (handler === undefined || formats.length === 0) complete = false;
     if (handler === "vide") {
       codecs.video.push(...formats);
     } else if (handler === "soun") {
+      audioTrackCount += 1;
       codecs.audio.push(...formats);
     }
   }
   codecs.video = [...new Set(codecs.video)];
   codecs.audio = [...new Set(codecs.audio)];
-  return codecs;
+  return { ...codecs, complete, audioTrackCount };
+}
+
+export async function probeTrackCodecs(
+  reader: PositionedReader,
+  fileSize: number,
+): Promise<TrackCodecs> {
+  const { video, audio } = await probeTrackCodecsDetailed(reader, fileSize);
+  return { video, audio };
 }
 
 /** First codec outside the provider's documented set, or undefined when all are fine. */
@@ -572,7 +593,7 @@ async function authorizeLocalVideo(raw: string, cfg: AppConfig): Promise<Resolve
       throw new VideoError({ code: "VIDEO_TOO_LONG", stage: "authorized" });
     }
 
-    const codecs = await probeTrackCodecs(reader, opened.size);
+    const codecs = await probeTrackCodecsDetailed(reader, opened.size);
     const badCodec = unsupportedCodec(codecs);
     if (badCodec !== undefined) {
       throw new VideoError({
@@ -592,6 +613,8 @@ async function authorizeLocalVideo(raw: string, cfg: AppConfig): Promise<Resolve
       container,
       videoCodecs: codecs.video,
       audioCodecs: codecs.audio,
+      audioTrackCount: codecs.audioTrackCount,
+      trackProbeComplete: codecs.complete,
       uploadName: upload.uploadName,
       contentType: upload.contentType,
       objectExtension: upload.objectExtension,
