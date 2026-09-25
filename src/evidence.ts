@@ -64,7 +64,7 @@ const AUDIO_CLAIM =
 const AUDIO_NEGATION =
   /没有听到|没听到|未听到|听不到|无法听清|不能确认|未能确认|无法确认|难以确认|不能证实|无法证实|不能证明|无法证明|不能断言|无法断言|不确定|仅属推断|可能|疑似/;
 const EXPLICIT_AUDIO_NEGATION =
-  /没有听到|没听到|未听到|听不到|未检测到|没有(?:任何)?(?:背景音乐|音乐|对白|人声|歌声|音效|声音)|无(?:任何)?(?:可辨识的)?(?:对白|音乐|人声|歌声|音效|效应音|声音内容)/;
+  /没有听到|没听到|未听到|听不到|未检测到|没有(?:任何)?(?:背景音乐|音乐|对白|人声|歌声|音效|声音)|无(?:任何)?(?:可辨识的)?(?:对白|音乐|人声|歌声|音效|效应音|声音内容)|处于(?:数字)?静音状态|处于无声状态|保持静音/;
 const AUDIO_DETAILS = [
   "电子乐",
   "电子舞曲",
@@ -230,8 +230,8 @@ export function reconcileKnownSilentTrackReport(report: EvidenceReport): Evidenc
     inferences: report.inferences.map((item) => ({
       ...item,
       description: item.description.replace(
-        /当前音轨缺失/g,
-        "当前音轨存在，但本地确认完整解码后的 PCM 样本全零，",
+        /(?:当前|实际)?音轨缺失/g,
+        "本地确认存在音轨，且完整解码后的 PCM 样本全零，",
       ),
     })),
     uncertainties: report.uncertainties.map((item) =>

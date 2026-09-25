@@ -1282,8 +1282,21 @@ describe("local authorized video", () => {
             description: "未检测到背景音乐。",
             confidence: 0.9,
           },
+          {
+            time: "00:01",
+            evidence: "heard",
+            description:
+              "音轨全程未检测到任何声音（包括背景音乐、对白、音效或环境噪音），处于静音状态。",
+            confidence: 0.9,
+          },
         ],
-        inferences: [{ description: "当前音轨缺失可能导致叙事张力削弱。" }],
+        inferences: [
+          { description: "当前音轨缺失可能导致叙事张力削弱。" },
+          {
+            description:
+              "根据画面内容推断，若正常播放应包含枪声、爆炸声及打斗音效，但实际音轨缺失。",
+          },
+        ],
         uncertainties: [],
         answer: "实际未听到任何背景音乐、对白或音效（evidence=heard）。",
       }),
@@ -1305,7 +1318,7 @@ describe("local authorized video", () => {
           description: string;
         }[];
         const inferences = structured?.inferences as { description: string }[];
-        expect(audio).toHaveLength(2);
+        expect(audio).toHaveLength(3);
         expect(audio.every((item) => item.evidence === "uncertain")).toBe(true);
         expect(audio.every((item) => !item.description.includes("数字静音冲突"))).toBe(true);
         expect(text).toContain("实际未听到任何背景音乐、对白或音效。");
@@ -1316,9 +1329,13 @@ describe("local authorized video", () => {
         expect(coverage.audio_observed).toBe(false);
         expect(coverage.evidence_conflicts).toBeUndefined();
         expect(inferences[0]?.description).toContain(
-          "当前音轨存在，但本地确认完整解码后的 PCM 样本全零，可能导致叙事张力削弱",
+          "本地确认存在音轨，且完整解码后的 PCM 样本全零，可能导致叙事张力削弱",
         );
         expect(inferences[0]?.description).not.toContain("当前音轨缺失");
+        expect(inferences[1]?.description).toContain(
+          "但本地确认存在音轨，且完整解码后的 PCM 样本全零",
+        );
+        expect(inferences[1]?.description).not.toContain("实际音轨缺失");
         expect(rec.calls).toHaveLength(1);
       },
     );
