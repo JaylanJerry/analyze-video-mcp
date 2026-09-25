@@ -1,6 +1,6 @@
 # 下一大版本媒体网关任务清单
 
-状态：**A、B、C、D1、D2、D3 已实现并通过本地门禁；A-P 与 D4 的服务商格式矩阵已完成真实验证；Codex 当前任务的 MCP Tool 调用已用公开 MP4 夹具通过；ZCode GUI 新会话的拖入 MOV 与 MP3 调用也已通过，同一会话还留下 ADR 0023 之后内容检查拒绝的首个真实现场（HTTP 400 正文形态）与一条模型可靠性反例（同一 MP3 样本段数/时间点报错）。** Codex 新会话拖入、Codex 宿主中的 MOV/MP3、费用金额和 Node 22 CI 仍未验证。**已本地提交 `381da84`**（未推送、未发布）；npm 上的 `0.6.1` 仍是 `analyze_video`。总计划见 [`plan-next-major-media-gateway.md`](plan-next-major-media-gateway.md)。
+状态（2026-09-26）：**A、B、C、D1、D2、D3 已实现并通过本地门禁；A-P 与 D4 的服务商格式矩阵已完成真实验证；Codex 当前任务的 MCP Tool 已用公开 MP4、合成 MOV、合成 MP3 各成功调用一次；ZCode GUI 新会话的拖入 MOV 与 MP3 也已通过。** Codex **新会话手动拖入**、最新构建经新 MCP 进程加载、费用金额和 Node 22/24 CI 仍未验证。ZCode 会话留下的内容检查 HTTP 400 现场与模型计数反例仍见 D4。当前分支已本地提交，未推送、未发布；npm 上的 `0.6.1` 仍是 `analyze_video`。最新独立验收见 [`codex-acceptance-20260926.md`](codex-acceptance-20260926.md)，总计划见 [`plan-next-major-media-gateway.md`](plan-next-major-media-gateway.md)。
 
 **本轮本地门禁（2026-09-25，Windows / Node 24.18.0）：** `npm run typecheck`、`npm run lint`、`npm run format:check`、`npm test`（264 passed / 1 skipped / 17 files，HEAD `43584e1` 上复核）、`npm run coverage`（All files 88.24% stmts / 81.95% branch / 90.47% funcs）、`npm run build` 全部通过；`node dist/index.js --doctor` 报告 `handshake.registered=true` 且只注册 `analyze_media`。**Node 22 未在本机验证**（CI 会在 22 与 24 上跑，但本轮没有推送）。所有测试均为 msw 模拟，零真实请求、零费用。
 
@@ -70,6 +70,7 @@
     | MOV，同码流 `-c copy` 转封装                           | 成功：画面 `24` + 语音 `3.1415926`；`usage` 784/223/1007、75 事件；`container=mov`                                                                                             |
     | 音频-only MP4（`ftyp isom`，无视频轨，890 秒）         | **服务商 HTTP 400**（复现 2 次，无 SSE 事件与用量）：见 PROVIDER_PROTOCOL §3b 负例与原因未定位说明                                                                             |
   - **Codex 宿主补验（2026-09-25，当前任务，一次真实调用）：** 当前 Tool 列表含 `mcp__analyze_video_mcp__analyze_media`；用仓库公开 `test/fixtures/live-av.mp4`（30,988 bytes，3 秒；前后 SHA-256 均为 `2193544187DCCFEBBE68CF377FEE063DC599300D27D5447A05CD63E984B98A76`）提问“分别报告画面数字和音轨语音数字，不互相推断”。返回 `isError=false`、`media.kind=video`、`audio_track_present=true`、`request.model=qwen3.5-omni-plus`、`upload_reused=false`、`usage=770/26/796`；`content[0].text` 与 `structuredContent.answer` 一致，分别报告看到 `24`、听到 `3.1415926`，与夹具说明一致。仅核对了 Agent 可见结果；没有检查该次服务端 stderr 或账单。此项证明当前 Codex 任务的 Tool 挂载与真实调用，未验证新会话的手动拖入流程。
+  - **Codex 当前任务 MOV/MP3 补验（2026-09-26，用户分别授权，各一次）：** `%LOCALAPPDATA%/Temp/live-av.mov`（31,039 B、3 秒、H.264 + AAC）返回 `isError=false`、`container=mov`、`audio_track_present=true`、`request.model=qwen3.5-omni-plus`、`upload_reused=false`、`usage=769/26/795`；回答画面 `24` 与语音 `3.1415926`，与公开夹具说明一致。`%LOCALAPPDATA%/Temp/probe-tones.mp3`（72,559 B、SHA-256 `F47B19D9…C4545CB`）返回 `isError=false`、`container=mp3`、`duration_seconds=9.038367346938776`、同一模型、`upload_reused=false`、`usage=151/98/249`；回答电子纯音三段、音高逐段升高，与合成样本一致。两次文本/结构化答案相同；没有查账单或服务端 stderr。此项只验证当前任务已挂载的 MCP 调用链，不能证明模型内部模态路径、新会话手动拖入或本轮最新代码已由新 MCP 进程加载。完整记录见 [`codex-acceptance-20260926.md`](codex-acceptance-20260926.md)。
   - **ZCode 重装与同款启动测试（2026-09-25）：** ZCode `~/.zcode/cli/config.json` 里原本那条 `analyze_video_mcp`（指向已删除的 `Documents\Codex\Video MCP`）已**整条删除并重新注册**为当前仓库：`command=C:\Program Files
 odejs
 ode.exe`、`args=[<repo>\dist\index.js]`、`cwd=<repo>`、`timeoutMs=3600000`、`enabled=true`、env 为 `QWEN_MODEL` / `MEDIA_ALLOWED_ROOTS` / `MEDIA_ALLOW_ANY_LOCAL_FILE=on`（键均在 ZCode 严格 schema 内；备份 `.bak-before-reinstall`）。用**与 ZCode 完全相同的启动方式**（同一 node 可执行文件、同 args/cwd/env）完成真实调用：公开 MP4 夹具 → 画面 `24` + 语音 `3.1415926`、`usage` 786/181/967、64 事件、`upload_reused=true`；合成 MP3 同一进程两次 → 均正确（三段、低→中→高）、`usage` 178/536/714 与 178/384/562。这验证的是**ZCode 的启动接线**，不等于 GUI 会话已验收（宿主在会话启动时挂载工具）。
@@ -90,10 +91,10 @@ ode.exe`、`args=[<repo>\dist\index.js]`、`cwd=<repo>`、`timeoutMs=3600000`、
     | `视频+音频2.mp4`                        | mp4 889 秒          | ⛔ 未重传 | —                                | 上次内容检查拒绝的同一文件                                                                                    |
     | `synthetic-silence-aac.mp4`（仓库夹具） | 8 秒、PCM 全零      | ✅        | 710 / 125 / 835                  | 模型如实回答“没有声音、整体静音”，工具报 `audio_track_present:true` —— “轨道存在 ≠ 模型听到”的正确配对        |
   - **本轮暴露的三点**：① 长视频用量与耗时都很大（317 秒 ≈ 17.4 万 prompt tokens；1455 秒 ≈ 16.7 万 prompt tokens、耗时 432 秒），工具按设计不含费用/预算旋钮，宿主超时与费用需安装者自行评估；② 模型对具体细节的可靠性是**逐条**的——同一份三音调样本的段数/切换点错，而 `沈砚.mp3` 的静音判断对，因此必须逐条本地核对，不能整体信任或整体否定；③ 成功结果不含 `request_id`（只在错误与 stderr），宿主侧取证无法直接引用它——是否加进成功元数据属于公开契约变更，需要单独决定。
-  - 仍未做：Codex 新会话手动拖入与 Codex 宿主 MOV/MP3 调用、费用金额（不记录账单）、内容检查拒绝在 **SSE 事件形态**下修复后的复验与输入/输出侧别判定（正文形态已有真实现场，侧别仍为 `unknown`）。**原「ZCode GUI 新会话一次确认」与「ZCode 宿主 MP3」已于 2026-09-25 完成。**
+  - 2026-09-25 当时仍未做 Codex 新会话手动拖入与 Codex 宿主 MOV/MP3；后者已于 2026-09-26 在当前任务补验，见独立验收报告。费用金额（不记录账单）、内容检查拒绝在 **SSE 事件形态**下修复后的复验与输入/输出侧别判定（正文形态已有真实现场，侧别仍为 `unknown`）仍未做。**ZCode GUI 新会话与宿主 MP3 已于 2026-09-25 完成。**
   - 样本处理：用户原文件未被修改；派生的 MP3 副本位于系统临时目录。**更正：** 早先记录的“派生 MP3 副本已回收”不适用于 `probe-tones.mp3`——它仍在 `%TEMP%` 中（mtime 2026-09-25 22:06），本次 `upload_reused:true` 也正说明该路径/大小/mtime 先前已被上传过。
   - **宿主配置迁移（2026-09-25，本机，已备份 `.bak-20260925`）**：Codex `~/.codex/config.toml` 的 env 已由 `QWEN_ALLOWED_ROOTS` / `QWEN_ALLOW_ANY_LOCAL_VIDEO` 改为 `MEDIA_ALLOWED_ROOTS` / `MEDIA_ALLOW_ANY_LOCAL_FILE`（值不变，权限不变），`QWEN_AUDIO_SILENCE_CHECK` 行已注释；ZCode `~/.zcode/cli/config.json` 的 `args`/`cwd` 从已不存在的 `Documents\Codex\Video MCP` 改指本仓库 `dist/index.js`，env 同样改名为 `MEDIA_*`。两处都用迁移后的授权跑过 `--doctor`：`local_media_policy.mode=any_local_file`、`handshake.registered=true`、无旧变量警告。
-  - **宿主后续验收**：Codex 当前任务与 ZCode GUI 新会话都已实际调用 `analyze_media`（ZCode 侧另含 MOV 与 MP3 各一次，见上）。**仍需验收：Codex 新会话手动拖入、Codex 宿主内的 MOV/MP3**；不能由已有几次调用推定这些路径均已通过。
+  - **宿主后续验收**：Codex 当前任务已实际调用 MP4/MOV/MP3，ZCode GUI 新会话已调用 MOV/MP3。**仍需验收：Codex 新会话手动拖入及新进程加载最新构建**；不能由当前任务的调用推定新会话已通过。
 
 **最终检查点：** 变更清单见下方「本轮变更文件」；推送、tag 与 npm 发布仍须单独指令。 ⏳
 
@@ -122,7 +123,7 @@ ode.exe`、`args=[<repo>\dist\index.js]`、`cwd=<repo>`、`timeoutMs=3600000`、
 
 1. **单 Tool 契约** ✅ 已验证：`test/tools.test.ts` 断言恰好一个 `analyze_media`、schema 只有 `media`/`prompt` 且都必需、无 provider/model/预算字段；宽泛、具体、中文与时间码 prompt 都逐字送达（两次断言原文相等）；每次调用只发一次请求（无二次提问）；旧码到新码的迁移由 `docs/API_CONTRACT.md` 的迁移表逐项列出，并有对应测试断言新码。
 2. **夹具与反例** ✅ 已验证（全部无私密合成夹具、端到端走 mock provider）：MP4 有音轨（`test/tools.test.ts` 本地事实例）、**MP4 无音轨**（同文件，断言 `audio_track_present:false` 与对应 limitation，且不改写模型措辞）、MOV 受支持组合与拒绝组合（`test/media.test.ts` MOV support）、MP3（`test/tools.test.ts` + `test/media.test.ts`）；坏魔数、伪装后缀、仅 ID3、Layer II、PCM MOV、超大小、超时长、junction 越界、根外路径、取消、换 Key 后缓存失效、**检查后文件被替换**（新增 `test/media-identity.test.ts`，用 stub 确定性地复现快照与句柄不一致）；HTTPS 直连与远端 `.mp3` 拒绝各有用例。
-3. **真实服务商与宿主验收** ⏳ **服务商侧已完成，宿主侧已有两项**：MP4、MOV、MP3 都已完成真实百炼调用并得到正确内容（含 890 秒长样本与二次追问的 `upload_reused`），见 D4 表；Codex 当前任务用公开 MP4 夹具通过一次 `analyze_media` 调用，ZCode GUI 新会话又用同码流 MOV 夹具（本地核对 `mdat` 与 `live-av.mp4` 一致）通过一次。Codex 新会话拖入、Codex 宿主 MOV/MP3 仍未验收；费用金额未知；内容检查拒绝已有一个真实现场（HTTP 400 正文形态，见 D4），SSE 形态在修复后仍未复验，输入/输出侧别仍无真实判定；ZCode 宿主上的 MP3 另曝出模型计数/时间点不可靠的反例（见 D4）。
+3. **真实服务商与宿主验收** ⏳ **服务商格式矩阵及当前任务的 Codex MP4/MOV/MP3 Tool 调用已完成**：MP4、MOV、MP3 都有真实百炼调用并得到与样本一致的内容，见 D4 与独立验收报告；ZCode GUI 新会话也已用同码流 MOV 夹具和合成 MP3 调用成功。Codex **新会话手动拖入及新进程加载最新构建**仍未验收；费用金额未知；内容检查拒绝已有一个真实现场（HTTP 400 正文形态，见 D4），SSE 形态在修复后仍未复验，输入/输出侧别仍无真实判定；ZCode 宿主上的 MP3 曾曝出模型计数/时间点不可靠的反例，不能把本轮 Codex MP3 答对当成稳定能力。
 4. **脱敏、拒绝与重试** ✅ 已验证：`test/tools.test.ts` 断言 Key / `oss://` / 本地绝对路径在 `content[0].text` 与 `structuredContent` 两处都不出现且两处答案一致；内容检查拒绝 `retryable:false` 且只请求一次（另有 2026-09-25 的真实现场：HTTP 400 正文形态、未自动重试、Request ID 为 UUID 形态，见 D4）；`test/bailian.test.ts` 断言 429/502/503 各至多一次重试、收到文本后不再重试；`test/host-env.test.ts` 断言 stdio 子进程 stderr 不含 `sk-`；第二次调用报告 `upload_reused:true` 且仍重新分析。
 5. **门禁** ✅ 本地已验证（Node 24）：typecheck / lint / format:check / test / coverage(88.08/81.71/90.47) / build；独立打包安装与 stdio 握手通过（见 D3）。⏳ **Node 22 未在本机验证**：本机只装了 Node 24，`npx -p node@22` 被本地 `node` 遮蔽（尝试过 `npx -y node@22` 与 `npm exec --package=node@22`，两者都返回 v24.18.0），因此 Node 22 由推送后的 CI 覆盖。默认测试全部模拟、零付费。
 
@@ -138,6 +139,6 @@ ode.exe`、`args=[<repo>\dist\index.js]`、`cwd=<repo>`、`timeoutMs=3600000`、
 
 2026-09-26 的独立收口验收与新增的取消/缓存竞态修复见 [`codex-acceptance-20260926.md`](codex-acceptance-20260926.md)；其中把 Node 22、CI 触发条件和 Codex 宿主剩余项按实际状态列明。
 
-1. 在 Codex 新会话手动拖入一份真实受支持的本地媒体，核对是否出现 `analyze_media`、是否能成功返回；再在 Codex 宿主内各验收一次 MOV 与 MP3。ZCode 侧的 GUI 会话、拖入、MOV 与 MP3 已完成，不把任一侧的成功外推到另一侧。真实调用的费用另记。
+1. 在 Codex 新会话手动拖入一份公开合成媒体，核对新进程是否挂载最新 `analyze_media`、是否能成功返回。当前任务的 MP4/MOV/MP3 与 ZCode GUI 的 MOV/MP3 已分别通过，不外推到新会话；额外真实调用需另行授权，费用另记。
 2. 模型是否读取媒体与模型自报细节的可靠性：已完成同模型同问题的有/无媒体块对照（`qwen-plus` 两次 `prompt_tokens` 均为 78、回答相同，说明该块未贡献输入 token）；ZCode 宿主的三音调样本又给出一个「回答与样本一致、但**段数与切换时间点都报错**」的反例（模型答 4 段 / 2·5·8 秒，本机频谱质心实测 3 段 / ≈2.9·≈5.9 秒）。**决定：不做本地核验，也不过滤或纠正模型自报的段数与时间点**——服务端只如实暴露 `request.model`/`usage`，并在音频 `limitations` 里明说「本机未逐句转写，也未核对模型自报的段数与时间点」。理由：一旦服务端开始按模型数字做纠正或过滤，就等于把未经核验的模型输出当成判据；`MEDIA_MODEL_UNSUPPORTED` 的模态拒绝 allowlist 仍只有 mock 证据。
-3. 在 Node 22 上跑全量门禁并核对 CI；复检规格的完成标准。推送、tag 与发布仍须分别按仓库规则授权。
+3. 用户选择稍后通过 PR 的 Node 22/24 CI 验证；当前分支的普通 push 不触发 CI。创建 PR、推送、tag 与发布仍须分别按仓库规则授权，再复检规格完成标准。
