@@ -1,5 +1,9 @@
 # 下一大版本独立收口验收（2026-09-26）
 
+**运行时策略更新（2026-09-26，用户批准）：** 下一大版本正式只支持 Node 24.x；其它 Node 主版本暂不承诺，启动不增加人为版本阻断。Node 22 不再是新版本发布门，也不据此推断 Node 22 有缺陷。npm 已发布 `0.6.1` 的声明和历史仍为 `>=22`。CI、release 与 smoke 的验收环境已统一到 Node 24；本次工作区的 Node 24 远程 CI 尚未运行，仍是发布门。以下较早验收记录中的 Node 22/24 矩阵，是当时状态的历史记录。
+
+本次策略变更的本地复验：Windows Node `v24.18.0` / npm `12.0.2` 下，typecheck、lint、format:check、npm test（302 passed / 1 skipped）与 build 均通过。打包安装 smoke 首次因系统 npm cache 临时写入 `EPERM` 未执行；切到专用临时 npm cache 后独立 tarball 安装与 stdio 握手通过（38 files，单 Tool `analyze_media`，字段 `media` / `prompt`）。无仓库依赖或 lock 中依赖版本变化。远程 Node 24 CI 尚未运行。
+
 基线：`codex/optimization-prep`，开始时 HEAD `6edee34`、工作区干净。代码验收只使用公开代码、合成测试和本地打包；随后用户先后明确授权三轮合成夹具的付费宿主调用（重启前、重启后、Luna 新任务各 MOV/MP3 一次，共六次）。没有读取密钥或私人媒体，没有推送、创建 PR、打 tag 或发布。npm 上的 `0.6.1` 仍是旧 `analyze_video`，本报告只评估未发布的 `analyze_media` 分支。
 
 ## 本轮发现与处置

@@ -1,5 +1,9 @@
 # 下一大版本媒体网关任务清单
 
+**运行时策略更新（2026-09-26，用户批准）：** 下一大版本只正式支持 Node 24.x，其他 Node 主版本暂不承诺；不人为阻断其它版本启动。Node 22 不再是新版本验收或发布门，也不代表 Node 22 有缺陷；已发布 npm `0.6.1` 继续保留历史 `>=22` 声明。所有阻塞 CI、发布、安装及 smoke 验收现已统一为 Node 24；Node 24 远程 CI 仍待运行。下方 Node 22 验收记录属于当时状态，不再是当前任务。
+
+本策略修改已在 Windows Node `v24.18.0` 上通过 typecheck、lint、format:check、npm test（302 passed / 1 skipped）、build 与独立打包安装/stdio smoke。远程 Node 24 CI 仍为发布门，尚未运行。
+
 **2026-09-26 Luna 追加测试收口更新（覆盖下方旧快照中的新会话状态）：** 手动拖入指定 MP4 的路径传递与 Tool 选择已验证，该样本明确授权后仍上传失败（旧记录无诊断，原因未知）；另一份用户附上的 1455 秒 MP4 两次分析成功、上传复用 `false → true`。长回答原文在任务记录完整，打印重复正文导致 Agent 中间执行层截断；已无费用恢复原文并验证分段拼接。当前补交付指引与上传安全诊断，本地 Node 24 门禁 302 passed / 1 skipped，coverage 88.76% stmts / 82.48% branch / 91.18% funcs / 90.23% lines；未新增付费调用，本批随本地收尾提交保存，未推送、未发布。新指引的 GUI 执行、失败样本上传根因与 Node 22/24 PR CI 仍未验收。详情见 [`codex-acceptance-20260926.md`](codex-acceptance-20260926.md)「Luna 用户追加测试与本地取证」。
 
 状态（2026-09-26）：**A、B、C、D1、D2、D3 已实现并通过本地门禁；A-P 与 D4 的服务商格式矩阵已完成真实验证；Codex 当前任务的 MCP Tool 已用公开 MP4、合成 MOV、合成 MP3 各成功调用一次；ZCode GUI 新会话的拖入 MOV 与 MP3 也已通过。** Codex **新会话手动拖入**、费用金额和 Node 22/24 CI 仍未验证；最新本地构建已于重启后通过 MOV/MP3 调用，见独立验收报告。ZCode 会话留下的内容检查 HTTP 400 现场与模型计数反例仍见 D4。当前分支已本地提交，未推送、未发布；npm 上的 `0.6.1` 仍是 `analyze_video`。最新独立验收见 [`codex-acceptance-20260926.md`](codex-acceptance-20260926.md)，总计划见 [`plan-next-major-media-gateway.md`](plan-next-major-media-gateway.md)。
@@ -145,4 +149,4 @@ ode.exe`、`args=[<repo>\dist\index.js]`、`cwd=<repo>`、`timeoutMs=3600000`、
 
 1. 在 Codex 新会话手动拖入一份公开合成媒体，核对新进程是否挂载最新 `analyze_media`、是否能成功返回。当前任务的 MP4/MOV/MP3 与 ZCode GUI 的 MOV/MP3 已分别通过，不外推到新会话；额外真实调用需另行授权，费用另记。
 2. 模型是否读取媒体与模型自报细节的可靠性：已完成同模型同问题的有/无媒体块对照（`qwen-plus` 两次 `prompt_tokens` 均为 78、回答相同，说明该块未贡献输入 token）；ZCode 宿主的三音调样本又给出一个「回答与样本一致、但**段数与切换时间点都报错**」的反例（模型答 4 段 / 2·5·8 秒，本机频谱质心实测 3 段 / ≈2.9·≈5.9 秒）。**决定：不做本地核验，也不过滤或纠正模型自报的段数与时间点**——服务端只如实暴露 `request.model`/`usage`，并在音频 `limitations` 里明说「本机未逐句转写，也未核对模型自报的段数与时间点」。理由：一旦服务端开始按模型数字做纠正或过滤，就等于把未经核验的模型输出当成判据；`MEDIA_MODEL_UNSUPPORTED` 的模态拒绝 allowlist 仍只有 mock 证据。
-3. 用户选择稍后通过 PR 的 Node 22/24 CI 验证；当前分支的普通 push 不触发 CI。创建 PR、推送、tag 与发布仍须分别按仓库规则授权，再复检规格完成标准。
+3. 用户批准以 Node 24.x 作为下一大版本唯一正式支持的主版本（ADR 0025）。远程 Node 24 CI 仍待通过；当前分支的普通 push 不触发 CI，PR 会触发。Node 22 不再是验收门，不能据此声称它存在缺陷。创建 PR、推送、tag 与发布仍须分别按仓库规则授权，再复检规格完成标准。

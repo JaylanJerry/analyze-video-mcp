@@ -60,9 +60,9 @@ jobs:
         run: |
           node --input-type=module -e '
             import { execSync } from "node:child_process";
-            const [maj, min] = process.versions.node.split(".").map(Number);
-            if ((maj ?? 0) < 22 || (maj === 22 && (min ?? 0) < 14)) {
-              console.error("need Node >= 22.14.0", process.versions.node);
+            const [maj] = process.versions.node.split(".").map(Number);
+            if (maj !== 24) {
+              console.error("release must run on Node 24.x", process.versions.node);
               process.exit(1);
             }
             const npm = execSync("npm --version", { encoding: "utf8" }).trim();

@@ -1,6 +1,10 @@
 # 下一大版本规格：Agent 主导的媒体分析网关
 
+> **2026-09-26 发布准备更新：** 当前候选版本为 `1.0.0`（Node 24.x），已获用户授权提交、推送和 npm 发布；远程 CI 与 npm 发布尚未完成。当前安装示例已迁移，发布状态以 [`tasks/release-1.0.0.md`](../tasks/release-1.0.0.md) 为准；下文旧日期状态保留为历史记录。
+
 状态：**产品方向已获用户确认，当前工作区分支已按本规格实现核心路径并**本地提交**（未推送、未发布；提交见 `git log`）。** 目标为下一破坏性大版本，版本号在发布准备时确定。工作区实现与尚未完成的验收见 [`API_CONTRACT.md`](API_CONTRACT.md) 和 [`../tasks/todo-next-major-media-gateway.md`](../tasks/todo-next-major-media-gateway.md)；npm 已发布的 `0.6.1` 仍提供旧 Tool。架构取舍见 [ADR 0024](decisions/0024-agent-directed-media-gateway.md)，实施顺序见 [`../tasks/plan-next-major-media-gateway.md`](../tasks/plan-next-major-media-gateway.md)。
+
+**Runtime support for this unreleased major:** Node.js 24.x only. Other Node major versions are not currently promised; startup is not artificially blocked on them. The published npm `0.6.1` retains its historical `>=22` declaration. CI and release workflows target Node 24; remote Node 24 CI remains pending and is a release gate.
 
 ## 目标与非目标
 
@@ -113,7 +117,7 @@
 2. 本地 MP4（有/无音轨）、MOV（受支持组合）、MP3 各至少一份无私密测试夹具走通模拟端到端；坏魔数、伪装后缀、非法 MP3、PCM MOV 或其它不支持编码、超限、文件替换、junction、取消、账号/凭证变化与缓存失效有反例测试。公开 HTTPS 视频维持直连；远端 MP3 不被误路由为视频成功。
 3. MP4/MOV 画面和内嵌声音、MP3 声音分别完成**获授权的**真实服务商与宿主验收后，才能宣称“已验证可用”。模型没确认声音时只说没确认；不能用轨道存在或数字测量补成听觉结论。
 4. 无密钥、路径、`oss://` 或原始服务商错误正文泄露到 Agent 结果与日志。内容检查拒绝不自动重试；其它重试遵循现有安全上限。第二次提问能报告上传是否复用，且不会声称跨请求记忆。
-5. `npm run typecheck`、`npm run lint`、`npm run format:check`、`npm test`、`npm run coverage`、`npm run build` 通过；Node 22/24 CI 与独立打包安装/stdio 握手通过。默认测试均为模拟请求、零付费。发布、推送、真实付费调用按仓库规则分别授权。
+5. `npm run typecheck`、`npm run lint`、`npm run format:check`、`npm test`、`npm run coverage`、`npm run build` 通过；Node 24 远程 CI 与独立打包安装/stdio 握手通过。Node 22 不再是下一大版本的验收门；不据此声称 Node 22 存在缺陷。默认测试均为模拟请求、零付费。发布、推送、真实付费调用按仓库规则分别授权。
 
 ## 实施规则与现有文档关系
 

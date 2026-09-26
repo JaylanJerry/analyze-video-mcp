@@ -1,5 +1,7 @@
 # AGENTS.md — Rules for AI agents working on this repo
 
+> **2026-09-26 发布准备更新：** 当前候选版本为 `1.0.0`（Node 24.x），已获用户授权提交、推送和 npm 发布；远程 CI 与 npm 发布尚未完成。当前安装示例已迁移，发布状态以 [`tasks/release-1.0.0.md`](tasks/release-1.0.0.md) 为准；下文旧日期状态保留为历史记录。
+
 Hard rules. Follow exactly. These exist to keep agents from shipping broken or leaky code.
 
 实现与规格在仓库根。先读 `DEVELOPMENT_HANDOFF.md`，再改代码。
@@ -30,7 +32,7 @@ npm test            # vitest, unit + mocked e2e (live tests auto-skip without LI
 npm run build       # tsc -p tsconfig.build.json -> dist/
 ```
 
-CI runs the same on Node 22 and 24. Local green ≠ CI green if you skip a step.
+The unreleased next-major branch formally supports Node 24.x only; its blocking CI, release, install and smoke workflows run on Node 24. Remote Node 24 CI remains to be run. The published npm `0.6.1` keeps its historical Node `>=22` declaration. Local green ≠ CI green if you skip a step.
 
 ## Scope
 

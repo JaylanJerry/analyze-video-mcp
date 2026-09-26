@@ -2,98 +2,71 @@
 
 [![CI](https://github.com/JaylanJerry/analyze-video-mcp/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/JaylanJerry/analyze-video-mcp/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/analyze-video-mcp)](https://www.npmjs.com/package/analyze-video-mcp)
-[![Release](https://img.shields.io/github/v/release/JaylanJerry/analyze-video-mcp)](https://github.com/JaylanJerry/analyze-video-mcp/releases/latest)
 [![License: MIT](https://img.shields.io/github/license/JaylanJerry/analyze-video-mcp)](LICENSE)
-[![Node.js](https://img.shields.io/badge/node-%3E%3D22-339933)](https://nodejs.org)
+[![Node.js](https://img.shields.io/badge/node-24.x-339933)](https://nodejs.org)
 
-> **Unreleased next major (this branch):** the code here implements one tool, `analyze_media(media, prompt)` — local MP4/MOV/MP3 plus a public HTTPS video URL — with no server-side analysis outline, no evidence-JSON gate, no automatic second request, and `MEDIA_ALLOWED_ROOTS` / `MEDIA_ALLOW_ANY_LOCAL_FILE` for local access. It is **not published yet**: the install snippets below still pin the published `0.6.1`, which exposes `analyze_video(video, question?)` and reads the `QWEN_*` names. Migration table: [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md#迁移表旧契约--新契约).
->
-> **下一大版本（本分支，尚未发布）：** 代码已改为唯一 Tool `analyze_media(media, prompt)`，支持本地 MP4/MOV/MP3 与公开 HTTPS 视频；服务端不再补写分析提纲、不再强制证据 JSON、不再为纠错自动发第二次请求；本地授权改用 `MEDIA_ALLOWED_ROOTS` / `MEDIA_ALLOW_ANY_LOCAL_FILE`。下面的安装示例仍钉已发布的 `0.6.1`（`analyze_video` + `QWEN_*`）。
+> **1.0.0 media gateway:** installation below requires this version to be available on npm. Publication and remote CI are tracked in [`tasks/release-1.0.0.md`](tasks/release-1.0.0.md). The previously published `0.6.1` exposes `analyze_video(video, question?)`; it retains its original Node `>=22` metadata.
 
-MCP server that gives local agents **media understanding**: the model reads picture and embedded audio together (or a standalone audio file), then answers in text.
+MCP media gateway for local agents: submit an MP4/MOV video, MP3 audio, or public HTTPS video URL, and ask the media model a question. The Agent decides what to ask and how to present the answer.
 
-给本地 Agent 增加媒体理解：看画面、听内嵌音轨或独立音频，只返回文本回答。已发布版本的工具名是 `analyze_video`；本分支的下一大版本改为 `analyze_media`。
-
-给本地 Agent 增加视频理解：同时看画面、听视频里的音轨，只返回文本。把下面的标准配置贴进 MCP 客户端，填入百炼 Key。
-
-[![Install MCP Server](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=analyze_video_mcp&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIi0tcHJlZmVyLW9mZmxpbmUiLCJhbmFseXplLXZpZGVvLW1jcEAwLjYuMSJdLCJlbnYiOnsiREFTSFNDT1BFX0FQSV9LRVkiOiJZT1VSX0RBU0hTQ09QRV9BUElfS0VZIiwiUVdFTl9NT0RFTCI6InF3ZW4zLjUtb21uaS1wbHVzIiwiUVdFTl9BTExPV0VEX1JPT1RTIjoiQzpcXFxcVXNlcnNcXFxc55So5oi35ZCNXFxcXFZpZGVvcyJ9fQ==)
+本地 Agent 的媒体分析入口：上传视频或音频，由 Agent 向媒体模型提问。服务端不补写分析提纲、不强制证据 JSON、不自动发起纠错分析。
 
 ## Requirements
 
-- Node.js 22+
-- An [Alibaba Cloud Bailian](https://bailian.console.aliyun.com/) API key (`DASHSCOPE_API_KEY`)
-- Any MCP client (Cursor, Claude Code, Claude Desktop, Codex, VS Code, …)
+- **Node.js 24.x**. Other Node major versions are not formally supported.
+- An Alibaba Cloud Bailian API key (`DASHSCOPE_API_KEY`). Requests can incur provider charges.
+- An MCP client such as Cursor, Claude Code, Claude Desktop, Codex or VS Code.
 
 ## Getting started
 
-1. Create a key in the [Bailian console](https://bailian.console.aliyun.com/) → API-KEY. It looks like `sk-…`.
-2. Add the **standard config** below to your MCP client.
-3. Restart the client (or reload MCP servers).
-4. Ask the agent to analyze a **small** local MP4 or MOV (absolute path **inside** `QWEN_ALLOWED_ROOTS`) or a public `https://` URL. Prefer dragging files in from any folder? Turn on `QWEN_ALLOW_ANY_LOCAL_VIDEO` and read its trade-off in the Environment table first.
+1. Create a key in the [Bailian console](https://bailian.console.aliyun.com/).
+2. Add the config below to your MCP client. Set `MEDIA_ALLOWED_ROOTS` to an existing folder containing media you permit the Agent to upload.
+3. Restart or reload MCP servers. In Codex, start a new chat after changing the server configuration.
+4. Explicitly ask for MCP analysis of a small MP4, MOV or MP3 inside the allowed folder, and state what you want to know.
 
-Do not commit a config file that contains a real key.
+Do not commit a config containing a real key. Local media is uploaded in full to Bailian's Beijing temporary storage on a cache miss (objects expire after about 48 hours).
 
 ### Standard config
-
-Works in Cursor, Claude Desktop, and most `mcpServers` clients:
 
 ```json
 {
   "mcpServers": {
     "analyze_video_mcp": {
       "command": "npx",
-      "args": ["-y", "--prefer-offline", "analyze-video-mcp@0.6.1"],
+      "args": ["-y", "--prefer-offline", "analyze-video-mcp@1.0.0"],
       "env": {
         "DASHSCOPE_API_KEY": "YOUR_DASHSCOPE_API_KEY",
         "QWEN_MODEL": "qwen3.8-omni-flash",
-        "QWEN_ALLOWED_ROOTS": "C:\\Users\\用户名\\Videos"
+        "MEDIA_ALLOWED_ROOTS": "C:\\Users\\用户名\\Videos"
       }
     }
   }
 }
 ```
 
-Names (do not mix them):
+Names are separate: package/CLI/server name `analyze-video-mcp`; example Host config key `analyze_video_mcp`; the only Tool is `analyze_media`. The Host key may be renamed.
 
-| Layer                                               | Name                |
-| --------------------------------------------------- | ------------------- |
-| Repository, npm package, CLI, MCP `initialize.name` | `analyze-video-mcp` |
-| Host config key                                     | `analyze_video_mcp` |
-| Tool (published 0.6.1)                              | `analyze_video`     |
-| Tool (next major, this branch, unreleased)          | `analyze_media`     |
+Templates: [`Cursor`](examples/mcp.cursor.json), [`Claude Code/Desktop`](examples/mcp.claude-code.json), [`Codex`](examples/mcp.codex.toml).
 
-The Host config key is yours to rename. Changing it does not change the tool name. Old keys (`analyze-video`, `mcp_analyze_video`) still work if already installed.
+### Cursor and Claude Desktop
 
-Copy-paste templates: [`examples/mcp.cursor.json`](examples/mcp.cursor.json), [`examples/mcp.claude-code.json`](examples/mcp.claude-code.json), [`examples/mcp.codex.toml`](examples/mcp.codex.toml).
+Use the standard config in Cursor's `~/.cursor/mcp.json`, or Claude Desktop's `claude_desktop_config.json`.
 
-### Cursor
+On Windows, if the host cannot find `npx`, use `"command": "cmd"` and `"args": ["/c", "npx", "-y", "--prefer-offline", "analyze-video-mcp@1.0.0"]`.
 
-Use the install button above, or put the standard config in `~/.cursor/mcp.json` (Windows: `%USERPROFILE%\.cursor\mcp.json`). Project-level: `.cursor/mcp.json`.
+[![Install MCP Server](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=analyze_video_mcp&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIi0tcHJlZmVyLW9mZmxpbmUiLCJhbmFseXplLXZpZGVvLW1jcEAxLjAuMCJdLCJlbnYiOnsiREFTSFNDT1BFX0FQSV9LRVkiOiJZT1VSX0RBU0hTQ09QRV9BUElfS0VZIiwiUVdFTl9NT0RFTCI6InF3ZW4zLjgtb21uaS1mbGFzaCIsIk1FRElBX0FMTE9XRURfUk9PVFMiOiJDOlxcVXNlcnNcXOeUqOaIt+WQjVxcVmlkZW9zIn19)
 
 ### Claude Code
 
 ```bash
-claude mcp add --env DASHSCOPE_API_KEY=YOUR_DASHSCOPE_API_KEY --env QWEN_MODEL=qwen3.8-omni-flash --env QWEN_ALLOWED_ROOTS="C:\Users\用户名\Videos" --transport stdio analyze_video_mcp -- npx -y --prefer-offline analyze-video-mcp@0.6.1
+claude mcp add --env DASHSCOPE_API_KEY=YOUR_DASHSCOPE_API_KEY --env QWEN_MODEL=qwen3.8-omni-flash --env MEDIA_ALLOWED_ROOTS="C:\Users\用户名\Videos" --transport stdio analyze_video_mcp -- npx -y --prefer-offline analyze-video-mcp@1.0.0
 ```
 
-On native Windows, wrap `npx` if the server fails to start:
-
-```bash
-claude mcp add --env DASHSCOPE_API_KEY=YOUR_DASHSCOPE_API_KEY --env QWEN_MODEL=qwen3.8-omni-flash --env QWEN_ALLOWED_ROOTS="C:\Users\用户名\Videos" --transport stdio analyze_video_mcp -- cmd /c npx -y --prefer-offline analyze-video-mcp@0.6.1
-```
-
-### Claude Desktop
-
-Add the standard config to `claude_desktop_config.json`:
-
-- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
-- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
-
-If Windows cannot find `npx`, use `"command": "cmd"` and `"args": ["/c", "npx", "-y", "--prefer-offline", "analyze-video-mcp@0.6.1"]`.
+On native Windows, add `cmd /c` before `npx` if required by the host.
 
 ### Codex
 
-See [`examples/mcp.codex.toml`](examples/mcp.codex.toml). On Windows Codex, set `startup_timeout_sec = 120` and pin `@0.6.1`. Put `DASHSCOPE_API_KEY` in the MCP `env` block (Codex may not inherit the user/system environment). After adding the server, start a **new** thread; old threads may not remount tools.
+Use [`examples/mcp.codex.toml`](examples/mcp.codex.toml). Set `startup_timeout_sec = 120` and `tool_timeout_sec = 1200`; put the Key and allowed roots in the MCP `env` table because Codex may not inherit user/system environment variables. Start a new chat after installation.
 
 ```powershell
 codex mcp list
@@ -102,131 +75,102 @@ codex mcp get analyze_video_mcp
 
 ### VS Code
 
-User settings → **MCP: Open User Configuration**, or workspace `.vscode/mcp.json`:
+Use the standard server entry under `servers` instead of `mcpServers` in `.vscode/mcp.json` or the user MCP configuration.
 
-```json
-{
-  "servers": {
-    "analyze_video_mcp": {
-      "command": "npx",
-      "args": ["-y", "--prefer-offline", "analyze-video-mcp@0.6.1"],
-      "env": {
-        "DASHSCOPE_API_KEY": "YOUR_DASHSCOPE_API_KEY",
-        "QWEN_MODEL": "qwen3.8-omni-flash",
-        "QWEN_ALLOWED_ROOTS": "C:\\Users\\用户名\\Videos"
-      }
-    }
-  }
-}
-```
-
-## Tools
+## Tool
 
 ```text
-analyze_video(video, question?)
+analyze_media(media, prompt)
 ```
 
-| Field      | Required | Description                                               |
-| ---------- | -------- | --------------------------------------------------------- |
-| `video`    | yes      | Absolute local MP4/MOV path, or a public HTTPS URL        |
-| `question` | no       | Defaults to what happened on screen and in the soundtrack |
+| Field    | Required | Description                                                                             |
+| -------- | -------- | --------------------------------------------------------------------------------------- |
+| `media`  | yes      | Absolute local MP4/MOV/MP3 path, or public HTTPS video URL without embedded credentials |
+| `prompt` | yes      | The Agent's question; 1–8000 characters after trimming surrounding whitespace           |
 
-If the user is specific, copy that into `question`. If they only say “analyze this”, turn it into concrete picture-and-sound questions first.
-
-Vague requests get a structured default from the server: a timeline of segments (skippable for single-scene clips), composition by foreground/subject/background, motion and effects with timing, colour and light, what was actually heard (kept apart from sounds merely implied by the picture) and whether sound matches the action, pacing and mood shifts, evidence-backed pros and cons, likely use cases, and an explicit list of what could not be confirmed. The answer leads and the timestamped observations follow in the text itself, so hosts that ignore `structuredContent` still see per-segment evidence. Specific questions (time codes, “only check …”) are passed through untouched, and nothing claims frame-by-frame or full-transcript verification.
-
-Successful output removes internal upload URLs, credential-shaped strings, and local absolute paths from both the answer and structured observations. Direct sound claims in the answer must agree with a `heard` observation; if sound remains uncertain, the text says so. Timestamps are checked for `MM:SS` shape and known local duration, but remain approximate sampled locations.
-
-The tool asks the Agent to call it **only when the user explicitly asks for MCP analysis**; ordinary video work (editing, transcoding, screenshots, spotting frames, writing copy) should go through the host's own flow. That wording lives in the server instructions and the tool description, i.e. it steers the Agent — it is not enforcement. What actually bounds the tool is the server-side validation and your install config (allowed roots, `QWEN_ALLOW_ANY_LOCAL_VIDEO` off by default, the host's tool visibility and approval mode).
-
-Example:
+The prompt's internal whitespace and wording are retained. The server adds only a fixed protocol note requesting text and honest uncertainty. It does not prescribe a timeline, shot list, critique or output structure. Empty and oversized questions are rejected.
 
 ```text
-Analyze this video: C:\Videos\clip.mp4
-What happens on screen, and what does the soundtrack say?
+请用 MCP 分析 C:\Videos\clip.mov，描述画面和内嵌声音；无法确认时明确说明。
 ```
 
-## Migrating to the next major (unreleased)
+Results contain one text answer plus `structuredContent.answer`, `media`, `request`, optional `usage`, and `limitations`. Media facts are populated only when established locally. A matching answer does not prove the model's internal modality path or the accuracy of its timestamps.
 
-The next major is a breaking change: the tool is renamed, `prompt` is required, the report layer is gone, and local authorization moves to `MEDIA_*`.
+The Agent should read only one copy of the answer. For long results, save the tool result and read it in chunks if the host display truncates it; do not call paid analysis again merely because display output was truncated.
 
-| Published `0.6.1`                                                     | Next major (this branch)                                                         |
-| --------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| `analyze_video(video, question?)`                                     | `analyze_media(media, prompt)`, `prompt` required                                |
-| `question` optional; omitted → server default question                | no default question; empty/over-long prompt is `INVALID_MEDIA_INPUT`             |
-| Broad question → server appends a nine-section outline                | server appends only a fixed protocol note; the prompt is passed through verbatim |
-| Evidence JSON enforced; a failed check triggers one more paid request | plain text answer; exactly one provider request per call                         |
-| Local files: MP4/MOV                                                  | Local files: MP4/MOV + MP3 (MPEG Layer III)                                      |
-| `coverage` / `subtitle_audit` / itemized observations                 | `media` / `request` / `usage` / `limitations`                                    |
-| `QWEN_ALLOWED_ROOTS`                                                  | `MEDIA_ALLOWED_ROOTS` (the old name grants nothing; `--doctor` reports it)       |
-| `QWEN_ALLOW_ANY_LOCAL_VIDEO`                                          | `MEDIA_ALLOW_ANY_LOCAL_FILE` (default `off`)                                     |
-| `QWEN_MAX_LOCAL_VIDEO_MB`                                             | `MEDIA_MAX_LOCAL_MEDIA_MB`                                                       |
-| `QWEN_AUDIO_SILENCE_CHECK`                                            | removed; no FFmpeg silence check                                                 |
-| `VIDEO_*` / `VIDEO_ANALYSIS_*` error codes                            | `MEDIA_*` codes; cancellation is `MEDIA_ANALYSIS_CANCELLED`                      |
+There is no evidence correction request. Before any answer text arrives, transient failures may receive one bounded retry (configurable). Known content-inspection rejections are not automatically retried. Only one analysis is active per process.
 
-Local MP3 support is verified end to end against the live provider (2026-09-25, `qwen3.8-omni-flash`): a 9 s synthetic sample and an 890 s MP3 both analyzed correctly through `input_audio` with an `oss://` URL plus the OSS-resolve header, and a repeat call reported `upload_reused: true`. Two caveats: an **audio-only MP4** (no video track) is refused by the provider with HTTP 400 through the video path, so give audio-only files the `.mp3` extension — and `.mp3` files whose bytes are actually an MP4 container are refused as a wrong extension rather than silently re-routed.
+Internal upload URLs, credential-shaped tokens and local absolute paths are redacted. The exact local input path is hidden in the answer, while public HTTP(S) links are preserved. Generic redaction of other paths has declared limits; see [`SECURITY.md`](docs/SECURITY.md).
 
 ## Environment
 
-| Variable                     | Required        | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| ---------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `DASHSCOPE_API_KEY`          | yes             | Bailian API key. Resolved from `--config` / `QWEN_CONFIG_FILE`, then MCP/`process.env`, then `~/.analyze-video-mcp/config.env`, then Windows user env                                                                                                                                                                                                                                                                                                                                                                                |
-| `QWEN_CONFIG_FILE`           | no              | Optional env-file path (same format as `--config`). Not a cwd `.env`                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `QWEN_MODEL`                 | no              | DashScope omni model id. Default `qwen3.8-omni-flash`. Any DashScope id that accepts `video_url` **and** reads embedded audio works (`qwen3.5-omni-plus` is the previous generation); VL-only models will not hear the soundtrack. Not a Tool field. The id is part of the upload-cache key, so changing it re-uploads instead of reusing the old object. API keys are region-bound: a key from another region returns `PROVIDER_UNAUTHORIZED`.                                                                                      |
-| `QWEN_MCP_SERVER_NAME`       | no              | MCP `initialize.name`. Default `analyze-video-mcp`. Does not change the tool name `analyze_video`                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `QWEN_ALLOWED_ROOTS`         | for local files | Absolute folder allowlist. Unset: local MP4s are refused; HTTPS still works. Required in the install templates unless `QWEN_ALLOW_ANY_LOCAL_VIDEO` is on. Every entry must exist: a renamed or deleted media folder makes each call fail with `CONFIG_MISSING` (with `QWEN_ALLOW_ANY_LOCAL_VIDEO` on those entries are ignored and reported by `--doctor` instead). Platform path delimiter (`;` on Windows)                                                                                                                         |
-| `QWEN_ALLOW_ANY_LOCAL_VIDEO` | no              | Default `off`. Set `on` to accept **any** absolute local MP4/MOV path the Agent names — no allowed root, no confirmation step (drag the file into the chat and ask). The path alone then counts as authorization, so prompt-injected or mistaken paths can upload local files to Bailian (paid, third party); only enable it on an install where you accept that. See [ADR 0021](docs/decisions/0021-allow-any-local-video-opt-in.md)                                                                                                |
-| `QWEN_AUDIO_SILENCE_CHECK`   | no              | Default `off`. Set `on` to use an already-installed FFmpeg to check whether every decoded local audio track is exact digital silence before upload. No binary is bundled or installed. HTTPS is not checked. If all tracks decode to zero samples and the model reports heard audio, that audio report is marked uncertain while visual findings remain. Unsupported FFmpeg versions and measurement errors skip the check and continue normal analysis. See [ADR 0022](docs/decisions/0022-analyze-video-optional-silence-check.md) |
-| `QWEN_UPLOAD_CACHE`          | no              | Default on. Set `off` to disable in-process and on-disk reuse of temporary `oss://` URLs                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| `DASHSCOPE_BASE_URL`         | no              | Default: Beijing compatible-mode endpoint                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `DASHSCOPE_UPLOAD_URL`       | no              | Default: Beijing temporary upload                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Variable                     | Purpose                                                                                                                                                                         |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DASHSCOPE_API_KEY`          | Required Bailian Key. Resolved from explicit config, MCP/process env, user config, then supported Windows user env lookup. Never printed.                                       |
+| `MEDIA_ALLOWED_ROOTS`        | Existing absolute allowed folders; separate with the platform delimiter (`;` on Windows). Unset means all local files are refused.                                              |
+| `MEDIA_ALLOW_ANY_LOCAL_FILE` | Default `off`. `on` permits any absolute local media path the Agent names, including files outside allowed roots. Enable only if you accept mistaken or prompt-induced uploads. |
+| `MEDIA_MAX_LOCAL_MEDIA_MB`   | Local size limit; default and maximum 1024 MiB.                                                                                                                                 |
+| `QWEN_MODEL`                 | Model id; default `qwen3.8-omni-flash`. Video/audio support varies by model. `qwen3.5-omni-plus` remains selectable. Not a Tool field.                                          |
+| `QWEN_CONFIG_FILE`           | Optional config file path (same format as `--config`); the server does not implicitly load the cwd `.env`.                                                                      |
+| `QWEN_MCP_SERVER_NAME`       | MCP server name; does not change Tool name.                                                                                                                                     |
+| `QWEN_UPLOAD_CACHE`          | Default on; `off` disables temporary-upload reuse.                                                                                                                              |
+| `DASHSCOPE_BASE_URL`         | Default Beijing OpenAI-compatible endpoint. Key region must match.                                                                                                              |
+| `DASHSCOPE_UPLOAD_URL`       | Default Beijing temporary upload endpoint.                                                                                                                                      |
+
+Use `analyze-video-mcp --doctor --json` to inspect configuration, variable sources and obsolete names without printing the Key. A missing Key permits MCP initialization but analysis returns `CONFIG_MISSING`.
 
 ## Limits
 
-- This is **sampled understanding**, not frame-accurate editorial timing. Shot lists and timestamps can miss cuts or invert ranges; for precise transitions pass a **5–30 second clip** (or a public HTTPS URL of that clip). Objective peak/LUFS/black-frame detection is out of scope.
-- One video per call, up to **1 hour**. Local files are also capped at 1024 MiB and by live Bailian policy.
-- Local files upload in full on a cache miss. The same file + same `QWEN_MODEL` + same upload endpoint reuses the temporary object for about 47 hours (survives MCP restart unless `QWEN_UPLOAD_CACHE=off`). Bigger or slow-to-upload files: host them on public HTTPS and pass the URL. Do not retry the same large local upload after a failed transfer.
-- One in-flight analysis per process. Some hosts time out around 60 seconds; Codex templates set `tool_timeout_sec = 1200`.
-- Local input containers: **MP4 and MOV** (ISO BMFF, `ftyp` required). Video tracks must be H.264 (`avc1`/`avc3`) or H.265 (`hvc1`/`hev1`); audio tracks must be AAC (`mp4a`). Anything else — ProRes, MPEG-4 Part 2, PCM/ALAC audio — is refused before upload with `UNSUPPORTED_VIDEO_CODEC` naming the codec, because an undecodable audio track would otherwise turn into a misleading "no sound heard" answer.
-- The server never transcodes. Remuxing with `-c copy` only helps when the tracks are already supported; it does not convert PCM audio. For an H.264/H.265 video track with PCM audio, convert only the audio to AAC: `ffmpeg -i input.mov -map 0:v:0 -map 0:a:0? -c:v copy -c:a aac -b:a 192k -movflags +faststart output.mp4`. If the video codec is also unsupported, export both tracks as H.264/H.265 video and AAC audio. ffmpeg is **not** a dependency of this package: these are one-off steps you run, and no output file is created or cleaned up by the server.
-- Images and standalone audio are not tools yet.
+- Local inputs: **MP4/MOV** (ISO BMFF) with H.264/H.265 video and AAC audio; **MP3** with real MPEG Layer III frames. Renaming an MP4 to `.mp3` does not convert it and is refused.
+- An audio-only MP4 has been refused by the provider through the video path. Export genuine MP3 for standalone audio. The server never transcodes, extracts frames, decodes audio or installs FFmpeg.
+- Known local durations greater than **3600 seconds** are refused; exactly 3600 is allowed. Unknown duration is allowed. MP3 duration is reported only from declared Xing/Info/VBRI frame counts, with no bitrate estimate.
+- HTTPS inputs are fetched by the provider; the server does not download or probe their content/duration. Remote `.mp3` URLs are refused.
+- Media understanding is sampled, not frame-accurate or a verified transcript. Use a 5–30 second excerpt for precise timing questions; shot counts, dialogue and timestamps still require independent checking.
+- Cache entries include file identity, a size/head/tail fingerprint, model, upload endpoint and credential fingerprint, and expire after about 47 hours. Changing only the middle while preserving identity/head/tail can reuse stale media; this is an accepted limitation. Disable cache if that matters.
+- Images, downloads from video sites, automatic conversion, batch analysis, cross-call conversation memory and deterministic loudness/edit checks are outside scope.
 
-`npx analyze-video-mcp --version` prints the version without calling Bailian. `npx analyze-video-mcp --doctor --json` uses the same config resolver as `analyze_video` and reports whether the key is set **and from which source** — it never prints the key. A missing key no longer prevents MCP initialize; calling the tool returns `CONFIG_MISSING` with the variable name.
+## Migrating from 0.6.1
 
-## Development
+This is a breaking release. Existing configs do not silently gain MP3 access.
 
-Install and contract details: [`docs/SPEC_INSTALL.md`](docs/SPEC_INSTALL.md), [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md). Index: [`docs/README.md`](docs/README.md).
+| Published 0.6.1                      | 1.0.0                                            |
+| ------------------------------------ | ------------------------------------------------ |
+| `analyze_video(video, question?)`    | `analyze_media(media, prompt)`; prompt required  |
+| Optional question and server outline | Agent supplies the question; no business outline |
+| Evidence JSON and correction request | Plain answer with media facts and limitations    |
+| Local MP4/MOV                        | Local MP4/MOV/MP3                                |
+| `QWEN_ALLOWED_ROOTS`                 | `MEDIA_ALLOWED_ROOTS`                            |
+| `QWEN_ALLOW_ANY_LOCAL_VIDEO`         | `MEDIA_ALLOW_ANY_LOCAL_FILE` (off by default)    |
+| `QWEN_MAX_LOCAL_VIDEO_MB`            | `MEDIA_MAX_LOCAL_MEDIA_MB`                       |
+| `QWEN_AUDIO_SILENCE_CHECK`           | Removed                                          |
+| Node `>=22` declaration              | Formal support only for Node 24.x                |
+
+Old authorization variables grant nothing. Reload the MCP server after changing the version and variables. Full contract: [`API_CONTRACT.md`](docs/API_CONTRACT.md).
+
+## Development and release
 
 ```powershell
 npm install
+npm run typecheck
+npm run lint
+npm run format:check
 npm test
+npm run coverage
 npm run build
+npm run test:pack-install
 ```
 
-## Release
+Default tests are mocked and free. Live tests require explicit authorization and a real Key; they are not part of the default suite.
 
-Pushing an authorized `v*` tag (must equal `v${package.version}`) runs [`.github/workflows/release.yml`](.github/workflows/release.yml): pack probes, `npm publish`, then a GitHub Release. Authentication is npm [Trusted Publishing](https://docs.npmjs.com/trusted-publishers/) (OIDC), not a local OTP and not an `NPM_TOKEN` secret.
+After remote Node 24 CI passes, pushing an authorized version tag matching `package.json` and `src/version.ts` runs [`release.yml`](.github/workflows/release.yml): package/install probes, npm Trusted Publishing (OIDC), then GitHub Release. No `NPM_TOKEN` is used. See [ADR 0014](docs/decisions/0014-npm-trusted-publishing.md).
 
-One-time setup on [the npm package](https://www.npmjs.com/package/analyze-video-mcp) → Settings → Trusted Publisher → GitHub Actions:
-
-| Field                | Value               |
-| -------------------- | ------------------- |
-| Organization or user | `JaylanJerry`       |
-| Repository           | `analyze-video-mcp` |
-| Workflow filename    | `release.yml`       |
-| Allowed actions      | `npm publish`       |
-
-Do not publish on every `main` push. Do not retag a version that is already on npm.
-
-## Install from GitHub
-
-If you cannot use the npm registry:
+GitHub fallback after release:
 
 ```text
-npx -y --allow-git=all github:JaylanJerry/analyze-video-mcp#v0.5.0
+npx -y --allow-git=all github:JaylanJerry/analyze-video-mcp#v1.0.0
 ```
 
-npm 12 requires `--allow-git=all`. To follow `main` instead of the release tag, change the spec to `#main`.
+npm 12 requires `--allow-git=all`. Do not use this tag until it exists.
 
 ## License
 

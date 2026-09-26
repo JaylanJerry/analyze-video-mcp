@@ -1,5 +1,7 @@
 # Video MCP 开发交接
 
+> **2026-09-26 发布准备更新：** 当前候选版本为 `1.0.0`（Node 24.x），已获用户授权提交、推送和 npm 发布；远程 CI 与 npm 发布尚未完成。当前安装示例已迁移，发布状态以 [`tasks/release-1.0.0.md`](tasks/release-1.0.0.md) 为准；下文旧日期状态保留为历史记录。
+
 > **给独立审核者的入口（2026-09-25）：** 先读 [`tasks/codex-review-brief-20260925.md`](tasks/codex-review-brief-20260925.md)——它自带来审核目标、代码地图、复现命令、逐项检查清单、已知边界与「不要做」红线，并区分 mock / 真实百炼 / 宿主 GUI / 打包安装 / npm 发布五种状态。
 >
 > **2026-09-25 下一大版本接手入口：** 用户已确认“一个媒体分析 Tool、Agent 决定问题、本地 MP4/MOV/MP3、首发百炼”的大版本重构方向。DeepSeek 开发请先读 [`docs/SPEC_NEXT_MAJOR_MEDIA_GATEWAY.md`](docs/SPEC_NEXT_MAJOR_MEDIA_GATEWAY.md)、[ADR 0024](docs/decisions/0024-agent-directed-media-gateway.md)、[`tasks/plan-next-major-media-gateway.md`](tasks/plan-next-major-media-gateway.md)、[`tasks/todo-next-major-media-gateway.md`](tasks/todo-next-major-media-gateway.md) 和 [`tasks/deepseek-next-major-handoff.md`](tasks/deepseek-next-major-handoff.md)。以下 v0.7 三 Tool/综合审核计划是历史基线，**不再作为下一大版本实施指令**。当前工作区分支已实现 `analyze_media` 并**本地提交 `381da84`**（未推送、未发布）；npm 上的 `0.6.1` 仍使用 `analyze_video`。
@@ -19,6 +21,8 @@ v1 已本机收尾。V2 已实施。安装：钉版本 `npx` + 显式 MCP `env` 
 已在 Windows Node 24 + Cursor 上验证：中文文件名小视频、口播、496.8 MiB 漫剧。示例 Host 键是 `analyze_video_mcp`；已装的旧键（`analyze-video` / `mcp_analyze_video`）可继续用。
 
 ## 下一阶段
+
+**2026-09-26 运行时支持策略更新（用户批准，ADR 0025）：** 未发布的下一大版本正式只支持 Node 24.x，其他 Node 主版本暂不承诺；不增加启动硬阻断。已发布 npm `0.6.1` 继续保留 `>=22` 的历史声明。阻塞 CI、release、安装、GitHub npx 与 smoke 工作流已统一至 Node 24，Node 26 的非阻塞额外兼容测试已移除；原有所有阻塞质量门与安装专项保留。Node 22 不再是下一大版本发布门，不代表 Node 22 有缺陷。当前 Node 24 远程 CI 仍待运行，发布前必须通过。历史验收内容中的 Node 22/24 矩阵仅记录当时情况。
 
 **2026-09-26 Luna 用户追加测试排查：** 新任务手动拖入已正确转路径并选择 `analyze_media`，但指定样本授权后上传失败，旧结果无诊断，根因未知。另一份 1455 秒 MP4 两次分析成功，上传复用 `false → true`。原始结果两份完整正文仍在任务记录，截断直接发生在 Agent 中间执行层打印重复答案时；已本地恢复原文并校验分段拼接。当前改动补长结果交付指引和 multipart 安全诊断，不宣称历史上传失败已修、不宣称 GUI 已执行新指引。见 [`tasks/codex-acceptance-20260926.md`](tasks/codex-acceptance-20260926.md) 新增排查节。没有新增付费调用；Node 22/24 PR CI、推送和发布仍未进行。
 

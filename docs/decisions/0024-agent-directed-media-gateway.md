@@ -1,5 +1,7 @@
 # ADR 0024：下一大版本采用 Agent 主导的单入口媒体网关
 
+> Runtime support for the unreleased next major was decided separately in [ADR 0025](0025-next-major-node24-support.md): Node 24.x only; this does not revise published npm `0.6.1` history.
+
 - Status: Accepted for next major; implemented on working branch, unreleased
 - Date: 2026-09-25
 - Spec: [`SPEC_NEXT_MAJOR_MEDIA_GATEWAY.md`](../SPEC_NEXT_MAJOR_MEDIA_GATEWAY.md)

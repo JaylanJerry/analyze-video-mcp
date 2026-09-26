@@ -1,7 +1,7 @@
 {
   "name": "analyze-video-mcp",
-  "version": "0.6.1",
-  "description": "MCP server that lets local agents analyze video picture and embedded audio",
+  "version": "1.0.0",
+  "description": "MCP media gateway for agent-directed MP4, MOV and MP3 analysis",
   "keywords": [
     "mcp",
     "model-context-protocol",
@@ -19,7 +19,7 @@
   },
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": "24.x"
   },
   "publishConfig": {
     "access": "public"
