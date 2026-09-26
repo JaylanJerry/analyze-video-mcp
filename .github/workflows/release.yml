@@ -73,7 +73,25 @@ jobs:
             }
             console.log(`node ${process.versions.node} npm ${npm}`);
           '
+      # 2.0.0 established the renamed package before Trusted Publisher could be configured.
+      # Only this exact, maintainer-approved bootstrap artifact may skip publishing.
+      - name: Verify already published 2.0.0 bootstrap
+        id: bootstrap
+        if: github.ref_name == 'v2.0.0'
+        run: |
+          node --input-type=module -e '
+            import { execFileSync } from "node:child_process";
+            import { appendFileSync } from "node:fs";
+            const metadata = JSON.parse(execFileSync("npm", ["view", "media-analysis-mcp@2.0.0", "--json", "--registry=https://registry.npmjs.org"], { encoding: "utf8" }));
+            const expected = "sha512-0mN5OtpSYZ+aprk4hkkUskixwyw9rwm+OIcmBtw5HXzmEevVBuIp+WG2dDsut4SgLEvrajA/P+FASOz0AicMtg==";
+            if (metadata.name !== "media-analysis-mcp" || metadata.version !== "2.0.0" || metadata.dist?.integrity !== expected || metadata.dist?.shasum !== "f73dc70cd61c25fcc0337f2503db4df646f3f704") {
+              throw new Error("Published bootstrap artifact does not match the approved 2.0.0 package");
+            }
+            appendFileSync(process.env.GITHUB_OUTPUT, "verified=true\n");
+            console.log("Verified the approved bootstrap package; no duplicate publish");
+          '
       - name: Publish to npm
+        if: steps.bootstrap.outputs.verified != 'true'
         run: npm publish --access public
         env:
           HUSKY: "0"
