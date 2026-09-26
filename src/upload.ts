@@ -5,17 +5,33 @@ import { Readable } from "node:stream";
 import { z } from "zod";
 import type { AppConfig } from "./config.js";
 import { BYTES_PER_MIB } from "./config.js";
-import { VideoError } from "./errors.js";
-import type { AuthorizedLocalVideo } from "./media.js";
+import { MediaError } from "./errors.js";
+import type { AuthorizedLocalMedia } from "./media.js";
 
-export interface UploadedVideo {
+export interface UploadedMedia {
   url: string;
   requiresOssResolve: true;
+  /** True only when a previously uploaded temporary object was reused. */
+  reused: boolean;
 }
 
 export interface MediaUploader {
-  upload(video: AuthorizedLocalVideo, signal: AbortSignal): Promise<UploadedVideo>;
+  upload(media: AuthorizedLocalMedia, signal: AbortSignal): Promise<UploadedMedia>;
 }
+
+/**
+ * Bailian's field table documents these two as strings while its example response
+ * uses numbers, so accept either spelling instead of failing the whole upload.
+ */
+const positiveNumber = z.preprocess((raw) => {
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (trimmed !== "" && Number.isFinite(Number(trimmed))) {
+      return Number(trimmed);
+    }
+  }
+  return raw;
+}, z.number().positive());
 
 const policySchema = z.looseObject({
   request_id: z.string().min(1),
@@ -24,8 +40,8 @@ const policySchema = z.looseObject({
     signature: z.string().min(1),
     upload_dir: z.string().min(1),
     upload_host: z.string().min(1),
-    expire_in_seconds: z.number().positive(),
-    max_file_size_mb: z.number().positive(),
+    expire_in_seconds: positiveNumber,
+    max_file_size_mb: positiveNumber,
     oss_access_key_id: z.string().min(1),
     x_oss_object_acl: z.string().min(1),
     x_oss_forbid_overwrite: z.string().min(1),
@@ -33,6 +49,49 @@ const policySchema = z.looseObject({
 });
 
 export type UploadPolicy = z.infer<typeof policySchema>;
+
+/**
+ * Stable reason codes for the upload-policy step. They exist so a failure can be
+ * told apart without ever logging the key, the credential, or a local path.
+ */
+export type UploadPolicyReason =
+  | "request_failed"
+  | "http_error"
+  | "invalid_json"
+  | "shape_mismatch"
+  | "field_type_mismatch"
+  | "upload_host_invalid";
+
+const NUMERIC_POLICY_FIELDS = new Set(["expire_in_seconds", "max_file_size_mb"]);
+
+function policyFailure(
+  reason: UploadPolicyReason,
+  extra?: { httpStatus?: number; field?: string },
+): MediaError {
+  const diagnostic: Record<string, unknown> = { parse_reason: reason };
+  if (extra?.field !== undefined) {
+    diagnostic.field = extra.field;
+  }
+  return new MediaError({
+    code: "UPLOAD_POLICY_FAILED",
+    stage: "policy_acquired",
+    ...(extra?.httpStatus !== undefined ? { httpStatus: extra.httpStatus } : {}),
+    diagnostic,
+  });
+}
+
+function policyReasonFromIssues(
+  issues: readonly { code?: string; path?: readonly PropertyKey[] }[],
+): { reason: UploadPolicyReason; field?: string } {
+  const first = issues[0];
+  const path = (first?.path ?? []).map(String).filter((part) => part !== "data");
+  const leaf = path[path.length - 1];
+  const field = path.length > 0 ? `data.${path.join(".")}` : undefined;
+  const numericField = leaf !== undefined && NUMERIC_POLICY_FIELDS.has(leaf);
+  const reason: UploadPolicyReason =
+    first?.code === "invalid_type" && !numericField ? "shape_mismatch" : "field_type_mismatch";
+  return field === undefined ? { reason } : { reason, field };
+}
 
 const ERROR_BODY_LIMIT = 2048;
 
@@ -42,7 +101,7 @@ function mergeSignals(external: AbortSignal, timeoutMs: number): AbortSignal {
 
 function assertSafePartValue(value: string): void {
   if (value.includes("\r") || value.includes("\n")) {
-    throw new VideoError({ code: "UPLOAD_POLICY_FAILED", stage: "policy_acquired" });
+    throw new MediaError({ code: "UPLOAD_POLICY_FAILED", stage: "policy_acquired" });
   }
 }
 
@@ -51,22 +110,24 @@ function httpsHost(raw: string): string {
   try {
     parsed = new URL(raw);
   } catch {
-    throw new VideoError({ code: "UPLOAD_POLICY_FAILED", stage: "policy_acquired" });
+    throw policyFailure("upload_host_invalid", { field: "data.upload_host" });
   }
   if (parsed.protocol !== "https:" || parsed.username !== "" || parsed.password !== "") {
-    throw new VideoError({ code: "UPLOAD_POLICY_FAILED", stage: "policy_acquired" });
+    throw policyFailure("upload_host_invalid", { field: "data.upload_host" });
   }
   return parsed.toString();
 }
 
-export function objectKey(uploadDir: string, objectName?: string): string {
-  return `${uploadDir.replace(/\/+$/, "")}/${objectName ?? `${randomUUID()}.mp4`}`;
+export function objectKey(uploadDir: string, objectName?: string, extension = "mp4"): string {
+  return `${uploadDir.replace(/\/+$/, "")}/${objectName ?? `${randomUUID()}.${extension}`}`;
 }
 
 export function encodeMultipart(params: {
   boundary: string;
   fields: readonly (readonly [string, string])[];
   fileSize: number;
+  fileName?: string;
+  contentType?: string;
 }): { preamble: Buffer; epilogue: Buffer; contentLength: number } {
   const chunks: string[] = [];
   for (const [name, value] of params.fields) {
@@ -76,8 +137,12 @@ export function encodeMultipart(params: {
       `--${params.boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`,
     );
   }
+  const fileName = params.fileName ?? "video.mp4";
+  const contentType = params.contentType ?? "video/mp4";
+  assertSafePartValue(fileName);
+  assertSafePartValue(contentType);
   chunks.push(
-    `--${params.boundary}\r\nContent-Disposition: form-data; name="file"; filename="video.mp4"\r\nContent-Type: video/mp4\r\n\r\n`,
+    `--${params.boundary}\r\nContent-Disposition: form-data; name="file"; filename="${fileName}"\r\nContent-Type: ${contentType}\r\n\r\n`,
   );
   const preamble = Buffer.from(chunks.join(""), "utf8");
   const epilogue = Buffer.from(`\r\n--${params.boundary}--\r\n`, "utf8");
@@ -91,11 +156,11 @@ export function encodeMultipart(params: {
 const STREAM_CHUNK_BYTES = 64 * 1024;
 
 export function fileMultipartStream(
-  video: AuthorizedLocalVideo,
+  media: AuthorizedLocalMedia,
   preamble: Buffer,
   epilogue: Buffer,
 ): Readable {
-  const fileStream = video.handle.createReadStream({
+  const fileStream = media.handle.createReadStream({
     autoClose: false,
     start: 0,
     highWaterMark: STREAM_CHUNK_BYTES,
@@ -129,6 +194,37 @@ export type MultipartPoster = (
   signal: AbortSignal,
 ) => Promise<MultipartPostResult>;
 
+const TRANSPORT_CODES = new Set([
+  "ECONNRESET",
+  "ECONNREFUSED",
+  "ETIMEDOUT",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "EPIPE",
+  "ERR_TLS_CERT_ALTNAME_INVALID",
+  "CERT_HAS_EXPIRED",
+  "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+]);
+
+class UploadTransportFailure extends Error {
+  constructor(
+    readonly reason: "request_failed" | "file_read_failed" | "upload_timeout" | "cancelled",
+    readonly transportCode?: string,
+  ) {
+    super("upload request failed");
+  }
+}
+
+function transportCode(error: unknown): string | undefined {
+  if (typeof error !== "object" || error === null || !("code" in error)) return undefined;
+  return typeof error.code === "string" && TRANSPORT_CODES.has(error.code) ? error.code : undefined;
+}
+
+function abortReason(signal: AbortSignal): "upload_timeout" | "cancelled" {
+  const reason: unknown = signal.reason;
+  return reason instanceof Error && reason.name === "TimeoutError" ? "upload_timeout" : "cancelled";
+}
+
 async function readLimitedIncoming(res: IncomingMessage): Promise<void> {
   let seen = 0;
   try {
@@ -154,7 +250,7 @@ export function postMultipartStream(
 ): Promise<MultipartPostResult> {
   if (signal.aborted) {
     body.destroy();
-    return Promise.reject(new Error("upload request failed"));
+    return Promise.reject(new UploadTransportFailure(abortReason(signal)));
   }
 
   const parsed = new URL(url);
@@ -162,13 +258,14 @@ export function postMultipartStream(
 
   return new Promise<MultipartPostResult>((resolve, reject) => {
     let settled = false;
-    const fail = (): void => {
+    const fail = (failure: UploadTransportFailure): void => {
       if (settled) {
         return;
       }
       settled = true;
+      signal.removeEventListener("abort", onAbort);
       body.destroy();
-      reject(new Error("upload request failed"));
+      reject(failure);
     };
 
     const req = request(parsed, { method: "POST", headers }, (res) => {
@@ -178,17 +275,25 @@ export function postMultipartStream(
             return;
           }
           settled = true;
+          signal.removeEventListener("abort", onAbort);
           resolve({ status: res.statusCode ?? 0 });
         })
-        .catch(fail);
+        .catch(() => {
+          fail(new UploadTransportFailure("request_failed"));
+        });
     });
 
     const onAbort = (): void => {
       req.destroy();
-      fail();
+      fail(new UploadTransportFailure(abortReason(signal)));
     };
-    req.on("error", fail);
-    body.on("error", fail);
+    req.on("error", (error: unknown) => {
+      fail(new UploadTransportFailure("request_failed", transportCode(error)));
+    });
+    body.on("error", () => {
+      fail(new UploadTransportFailure("file_read_failed"));
+      req.destroy();
+    });
     body.pipe(req);
     signal.addEventListener("abort", onAbort, { once: true });
   });
@@ -240,59 +345,56 @@ export async function fetchUploadPolicy(
       signal: mergeSignals(signal, cfg.uploadTimeoutMs),
     });
   } catch {
-    throw new VideoError({ code: "UPLOAD_POLICY_FAILED", stage: "policy_acquired" });
+    throw policyFailure("request_failed");
   }
   if (!res.ok) {
     await readLimitedText(res);
-    throw new VideoError({
-      code: "UPLOAD_POLICY_FAILED",
-      stage: "policy_acquired",
-      httpStatus: res.status,
-    });
+    throw policyFailure("http_error", { httpStatus: res.status });
   }
   let json: unknown;
   try {
     json = await res.json();
   } catch {
-    throw new VideoError({ code: "UPLOAD_POLICY_FAILED", stage: "policy_acquired" });
+    throw policyFailure("invalid_json");
   }
   const parsed = policySchema.safeParse(json);
   if (!parsed.success) {
-    throw new VideoError({ code: "UPLOAD_POLICY_FAILED", stage: "policy_acquired" });
+    const { reason, field } = policyReasonFromIssues(parsed.error.issues);
+    throw policyFailure(reason, field === undefined ? {} : { field });
   }
   httpsHost(parsed.data.data.upload_host);
   return parsed.data;
 }
 
-export async function uploadLocalVideo(
+export async function uploadLocalMedia(
   cfg: AppConfig,
-  video: AuthorizedLocalVideo,
+  media: AuthorizedLocalMedia,
   signal: AbortSignal,
   poster: MultipartPoster = postMultipartStream,
-): Promise<UploadedVideo> {
-  if (video.sizeBytes <= 0) {
-    throw new VideoError({ code: "UNSUPPORTED_VIDEO", stage: "authorized" });
+): Promise<UploadedMedia> {
+  if (media.sizeBytes <= 0) {
+    throw new MediaError({ code: "UNSUPPORTED_MEDIA", stage: "authorized" });
   }
-  if (video.sizeBytes > cfg.maxLocalVideoBytes) {
-    throw new VideoError({
-      code: "VIDEO_FILE_TOO_LARGE",
+  if (media.sizeBytes > cfg.maxLocalMediaBytes) {
+    throw new MediaError({
+      code: "MEDIA_FILE_TOO_LARGE",
       stage: "authorized",
-      diagnostic: { size_bytes: video.sizeBytes },
+      diagnostic: { size_bytes: media.sizeBytes },
     });
   }
 
   const policy = await fetchUploadPolicy(cfg, signal);
   const maxPolicyBytes = policy.data.max_file_size_mb * BYTES_PER_MIB;
-  if (video.sizeBytes > maxPolicyBytes) {
-    throw new VideoError({
-      code: "VIDEO_FILE_TOO_LARGE",
+  if (media.sizeBytes > maxPolicyBytes) {
+    throw new MediaError({
+      code: "MEDIA_FILE_TOO_LARGE",
       stage: "policy_acquired",
-      diagnostic: { size_bytes: video.sizeBytes },
+      diagnostic: { size_bytes: media.sizeBytes },
     });
   }
 
-  const key = objectKey(policy.data.upload_dir);
-  const boundary = `----QwenVideo${randomBytes(16).toString("hex")}`;
+  const key = objectKey(policy.data.upload_dir, undefined, media.objectExtension);
+  const boundary = `----QwenMedia${randomBytes(16).toString("hex")}`;
   const fields: (readonly [string, string])[] = [
     ["OSSAccessKeyId", policy.data.oss_access_key_id],
     ["Signature", policy.data.signature],
@@ -302,8 +404,14 @@ export async function uploadLocalVideo(
     ["key", key],
     ["success_action_status", "200"],
   ];
-  const encoded = encodeMultipart({ boundary, fields, fileSize: video.sizeBytes });
-  const body = fileMultipartStream(video, encoded.preamble, encoded.epilogue);
+  const encoded = encodeMultipart({
+    boundary,
+    fields,
+    fileSize: media.sizeBytes,
+    fileName: media.uploadName,
+    contentType: media.contentType,
+  });
+  const body = fileMultipartStream(media, encoded.preamble, encoded.epilogue);
   const uploadHost = httpsHost(policy.data.upload_host);
   const headers = {
     "Content-Type": `multipart/form-data; boundary=${boundary}`,
@@ -311,30 +419,46 @@ export async function uploadLocalVideo(
   };
 
   let posted: MultipartPostResult;
+  const uploadSignal = mergeSignals(signal, cfg.uploadTimeoutMs);
   try {
-    posted = await poster(uploadHost, headers, body, mergeSignals(signal, cfg.uploadTimeoutMs));
-  } catch {
+    posted = await poster(uploadHost, headers, body, uploadSignal);
+  } catch (error: unknown) {
     body.destroy();
-    throw new VideoError({ code: "VIDEO_UPLOAD_FAILED", stage: "uploaded" });
+    const reason = uploadSignal.aborted
+      ? abortReason(uploadSignal)
+      : error instanceof UploadTransportFailure
+        ? error.reason
+        : "request_failed";
+    throw new MediaError({
+      code: "MEDIA_UPLOAD_FAILED",
+      stage: "uploaded",
+      diagnostic: {
+        parse_reason: reason,
+        ...(error instanceof UploadTransportFailure && error.transportCode !== undefined
+          ? { error_code: error.transportCode }
+          : {}),
+      },
+    });
   }
 
   if (posted.status !== 200) {
-    throw new VideoError({
-      code: "VIDEO_UPLOAD_FAILED",
+    throw new MediaError({
+      code: "MEDIA_UPLOAD_FAILED",
       stage: "uploaded",
       httpStatus: posted.status,
+      diagnostic: { parse_reason: "http_error" },
     });
   }
-  return { url: `oss://${key}`, requiresOssResolve: true };
+  return { url: `oss://${key}`, requiresOssResolve: true, reused: false };
 }
 
 export function createTemporaryUploader(cfg: AppConfig, poster?: MultipartPoster): MediaUploader {
   return {
-    upload(video, signal) {
+    upload(media, signal) {
       if (poster === undefined) {
-        return uploadLocalVideo(cfg, video, signal);
+        return uploadLocalMedia(cfg, media, signal);
       }
-      return uploadLocalVideo(cfg, video, signal, poster);
+      return uploadLocalMedia(cfg, media, signal, poster);
     },
   };
 }

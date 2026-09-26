@@ -32,14 +32,14 @@ const scratch = await mkdtemp(join(tmpdir(), "qwen-live-boundary-"));
 
 try {
   const http = await client.callTool({
-    name: "analyze_video",
-    arguments: { video: "http://example.com/v.mp4" },
+    name: "analyze_media",
+    arguments: { media: "http://example.com/v.mp4", prompt: "q" },
   });
   record("http-url", textOf(http), "INVALID_VIDEO_INPUT");
 
   const creds = await client.callTool({
-    name: "analyze_video",
-    arguments: { video: "https://user:pass@example.com/v.mp4" },
+    name: "analyze_media",
+    arguments: { media: "https://user:pass@example.com/v.mp4", prompt: "q" },
   });
   record("https-credentials", textOf(creds), "INVALID_VIDEO_INPUT");
 
@@ -49,8 +49,8 @@ try {
     Buffer.from([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x6d, 0x70, 0x34, 0x32]),
   );
   const blocked = await client.callTool({
-    name: "analyze_video",
-    arguments: { video: outside },
+    name: "analyze_media",
+    arguments: { media: outside, prompt: "q" },
   });
   const blockedText = textOf(blocked);
   record("outside-root", blockedText, "VIDEO_PATH_NOT_ALLOWED");
@@ -78,8 +78,8 @@ try {
     await tightClient.connect(a);
     try {
       const oversize = await tightClient.callTool({
-        name: "analyze_video",
-        arguments: { video: large },
+        name: "analyze_media",
+        arguments: { media: large, prompt: "q" },
       });
       record("user-cap-500-rejects-large", textOf(oversize), "VIDEO_FILE_TOO_LARGE");
     } finally {

@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { VideoError } from "./errors.js";
+import { MediaError } from "./errors.js";
+import { mapProviderError, safeProviderRequestId } from "./provider-error.js";
 
 const usageSchema = z.looseObject({
   prompt_tokens: z.number().optional(),
@@ -19,6 +20,7 @@ const choiceSchema = z.looseObject({
 
 const eventSchema = z.looseObject({
   id: z.string().optional(),
+  request_id: z.string().optional(),
   choices: z.array(choiceSchema).optional(),
   usage: usageSchema.nullish(),
 });
@@ -51,8 +53,8 @@ export function printableRequestId(raw: string): string | undefined {
   return out.length > 0 ? out : undefined;
 }
 
-function invalid(reason: string, extra?: Record<string, unknown>): VideoError {
-  return new VideoError({
+function invalid(reason: string, extra?: Record<string, unknown>): MediaError {
+  return new MediaError({
     code: "PROVIDER_RESPONSE_INVALID",
     stage: "analyzing",
     diagnostic: { parse_reason: reason, ...extra },
@@ -76,12 +78,29 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value as Record<string, unknown>;
 }
 
+const SHAPE_KEY_PATTERN = /^[A-Za-z0-9_]{1,32}$/;
+const SHAPE_KEY_LIMIT = 12;
+
+/**
+ * Shape diagnostics reach the Agent, so only plain field-name keys are echoed
+ * (bounded in count): a hostile endpoint must not be able to smuggle prose
+ * through key names.
+ */
+function safeKeys(rec: Record<string, unknown>): string {
+  const keys = Object.keys(rec).filter((key) => SHAPE_KEY_PATTERN.test(key));
+  const dropped = Object.keys(rec).length - keys.length;
+  const shown = keys.sort().slice(0, SHAPE_KEY_LIMIT);
+  const overflow = keys.length - shown.length;
+  const omitted = dropped + overflow;
+  return omitted > 0 ? `${shown.join(",")},+${String(omitted)}_other` : shown.join(",");
+}
+
 function eventShape(json: unknown): string {
   const rec = asRecord(json);
   if (rec === undefined) {
     return `root=${valueKind(json)}`;
   }
-  const parts = [`keys=${Object.keys(rec).sort().join(",")}`];
+  const parts = [`keys=${safeKeys(rec)}`];
   if ("id" in rec) {
     parts.push(`id=${valueKind(rec.id)}`);
   }
@@ -92,11 +111,11 @@ function eventShape(json: unknown): string {
     );
     const first = Array.isArray(choices) ? asRecord(choices[0]) : undefined;
     if (first !== undefined) {
-      parts.push(`choice_keys=${Object.keys(first).sort().join(",")}`);
+      parts.push(`choice_keys=${safeKeys(first)}`);
       if ("delta" in first) {
         const delta = asRecord(first.delta);
         if (delta !== undefined) {
-          parts.push(`delta_keys=${Object.keys(delta).sort().join(",")}`);
+          parts.push(`delta_keys=${safeKeys(delta)}`);
           if ("content" in delta) {
             parts.push(`content=${valueKind(delta.content)}`);
           }
@@ -122,17 +141,6 @@ function schemaReason(json: unknown): string {
   const delta = first === undefined ? undefined : asRecord(first.delta);
   const content = delta?.content;
   return Array.isArray(content) ? "array_content" : "schema";
-}
-
-function safeErrorCode(value: unknown): string | undefined {
-  if (typeof value !== "object" || value === null || !("code" in value)) {
-    return undefined;
-  }
-  const code = value.code;
-  if (typeof code === "string" && /^[A-Za-z0-9_.-]{1,64}$/.test(code)) {
-    return code;
-  }
-  return undefined;
 }
 
 function combinedByte(pending: Buffer, incoming: Uint8Array, index: number): number | undefined {
@@ -202,6 +210,22 @@ function dataPayload(block: string): string | undefined {
   return dataLines.join("\n");
 }
 
+const THINK_BLOCK = /<think\b[^>]*>[\s\S]*?<\/think>/gi;
+const THINK_OPEN = /<think\b[^>]*>/i;
+
+/**
+ * Newer Qwen models with thinking on by default may stream the reasoning inside
+ * `delta.content` wrapped in `<think>…</think>` (others use a separate
+ * `reasoning_content` field, which this parser ignores). The reasoning is not
+ * part of the answer, so it is dropped here; an unterminated trailing block means
+ * the stream was cut before any answer arrived.
+ */
+export function stripThinkingBlocks(text: string): string {
+  const withoutBlocks = text.replace(THINK_BLOCK, "");
+  const open = withoutBlocks.search(THINK_OPEN);
+  return open >= 0 ? withoutBlocks.slice(0, open) : withoutBlocks;
+}
+
 export class SseParser {
   private pending = Buffer.alloc(0);
   private pieces: string[] = [];
@@ -211,6 +235,12 @@ export class SseParser {
   private finishReason: string | undefined;
   private usage: SseUsage | undefined;
   private requestId: string | undefined;
+  private readonly providerRequestId: string | undefined;
+
+  constructor(requestId?: string) {
+    this.providerRequestId = safeProviderRequestId(requestId);
+    this.requestId = this.providerRequestId;
+  }
 
   get sawText(): boolean {
     return this.pieces.length > 0;
@@ -251,9 +281,12 @@ export class SseParser {
     if (!this.terminated) {
       throw invalid("unterminated", { received_sse_events: this.receivedEvents });
     }
-    const text = this.pieces.join("").trim();
+    const raw = this.pieces.join("");
+    const text = stripThinkingBlocks(raw).trim();
     if (text.length === 0) {
-      throw invalid("empty_text", { received_sse_events: this.receivedEvents });
+      throw invalid(THINK_OPEN.test(raw) ? "reasoning_only" : "empty_text", {
+        received_sse_events: this.receivedEvents,
+      });
     }
     return {
       text,
@@ -281,10 +314,12 @@ export class SseParser {
       throw invalid("non_json", { received_sse_events: this.receivedEvents });
     }
     if (typeof json === "object" && json !== null && "error" in json) {
-      throw invalid("provider_error", {
-        received_sse_events: this.receivedEvents,
-        error_code: safeErrorCode(json.error),
-      });
+      throw (
+        mapProviderError(json, {
+          receivedEvents: this.receivedEvents,
+          ...(this.providerRequestId === undefined ? {} : { requestId: this.providerRequestId }),
+        }) ?? invalid("provider_error", { received_sse_events: this.receivedEvents })
+      );
     }
     const parsed = eventSchema.safeParse(json);
     if (!parsed.success) {
@@ -293,8 +328,8 @@ export class SseParser {
         event_shape: eventShape(json),
       });
     }
-    if (parsed.data.id !== undefined && this.requestId === undefined) {
-      this.requestId = printableRequestId(parsed.data.id);
+    if (parsed.data.request_id !== undefined && this.requestId === undefined) {
+      this.requestId = safeProviderRequestId(parsed.data.request_id);
     }
     if (parsed.data.usage != null) {
       this.usage = {

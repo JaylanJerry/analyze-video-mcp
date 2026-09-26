@@ -17,20 +17,26 @@ const required = [
   "dist/config.js",
   "dist/config-lookup.js",
   "dist/media.js",
+  "dist/mpeg-audio.js",
+  "dist/bytes.js",
+  "dist/sanitize.js",
   "dist/upload.js",
   "dist/upload-cache.js",
   "dist/bailian.js",
-  "dist/evidence.js",
+  "dist/provider-error.js",
+  "dist/sse.js",
   "dist/doctor.js",
   "scripts/prepare.mjs",
 ];
 
-function runNpm(args: string[], cwd: string): string {
-  return execFileSync("npm", args, {
+function runNpm(args: string[], cwd: string, stdio: "pipe" | "inherit" = "pipe"): void {
+  const npmCli = process.env.npm_execpath;
+  if (npmCli === undefined || !existsSync(npmCli)) {
+    throw new Error("pack-install-e2e: run this script via npm run");
+  }
+  execFileSync(process.execPath, [npmCli, ...args], {
     cwd,
-    encoding: "utf8",
-    shell: true,
-    stdio: ["ignore", "pipe", "pipe"],
+    stdio,
     env: { ...process.env, HUSKY: "0" },
   });
 }
@@ -61,7 +67,7 @@ if (!existsSync(join(repoRoot, "dist/index.js"))) {
 
 const work = await mkdtemp(join(tmpdir(), "analyze-video-pack-"));
 try {
-  runNpm(["pack", "--ignore-scripts", `--pack-destination=${JSON.stringify(work)}`], repoRoot);
+  runNpm(["pack", "--ignore-scripts", `--pack-destination=${work}`], repoRoot);
   const tarballName = readdirSync(work).find((name) => name.endsWith(".tgz"));
   if (tarballName === undefined) {
     process.stderr.write("pack-install-e2e: npm pack did not write a tarball\n");
@@ -79,12 +85,7 @@ try {
     process.exit(1);
   }
 
-  execFileSync("npm", ["install", "--omit=dev", "--ignore-scripts", tarball], {
-    cwd: work,
-    shell: true,
-    stdio: "inherit",
-    env: { ...process.env, HUSKY: "0" },
-  });
+  runNpm(["install", "--omit=dev", "--ignore-scripts", tarball], work, "inherit");
   const serverJs = join(work, "node_modules/analyze-video-mcp/dist/index.js");
   const sdk = join(work, "node_modules/@modelcontextprotocol/sdk/package.json");
   if (!existsSync(serverJs) || !existsSync(sdk)) {
@@ -111,10 +112,10 @@ try {
     const keys = Object.keys(props ?? {}).sort();
     const ok =
       names.length === 1 &&
-      names[0] === "analyze_video" &&
+      names[0] === "analyze_media" &&
       keys.length === 2 &&
-      keys[0] === "question" &&
-      keys[1] === "video";
+      keys[0] === "media" &&
+      keys[1] === "prompt";
     process.stdout.write(
       `${JSON.stringify({
         ok,

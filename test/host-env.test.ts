@@ -19,7 +19,7 @@ function strippedEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env };
   delete env.DASHSCOPE_API_KEY;
   delete env.QWEN_CONFIG_FILE;
-  delete env.QWEN_ALLOWED_ROOTS;
+  delete env.MEDIA_ALLOWED_ROOTS;
   env.QWEN_DISABLE_CONFIG_FALLBACKS = "1";
   return { ...env, ...overrides };
 }
@@ -159,10 +159,10 @@ describe("host env inheritance", () => {
     await client.connect(transport);
     try {
       const { tools } = await client.listTools();
-      expect(tools.map((tool) => tool.name)).toEqual(["analyze_video"]);
+      expect(tools.map((tool) => tool.name)).toEqual(["analyze_media"]);
       const result: unknown = await client.callTool({
-        name: "analyze_video",
-        arguments: { video: "https://cdn.example/v.mp4" },
+        name: "analyze_media",
+        arguments: { media: "https://cdn.example/v.mp4", prompt: "q" },
       });
       const payload = result as { content?: { text?: string }[]; isError?: boolean };
       const text = payload.content?.[0]?.text ?? "";

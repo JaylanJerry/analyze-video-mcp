@@ -74,10 +74,10 @@ try {
     const keys = Object.keys(props ?? {}).sort();
     const ok =
       names.length === 1 &&
-      names[0] === "analyze_video" &&
+      names[0] === "analyze_media" &&
       keys.length === 2 &&
-      keys[0] === "question" &&
-      keys[1] === "video";
+      keys[0] === "media" &&
+      keys[1] === "prompt";
     process.stdout.write(
       `${JSON.stringify({
         ok,

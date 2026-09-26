@@ -6,10 +6,11 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { type AppConfig } from "../src/config.js";
 import { BYTES_PER_MIB } from "../src/config.js";
-import { createServer, MAX_QUESTION_CHARS } from "../src/server.js";
+import { createServer, MAX_PROMPT_CHARS } from "../src/server.js";
 
+/** Minimal well-formed ftyp box; a truncated one would break the box walk. */
 const MP4_HEADER = Buffer.from([
-  0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x6d, 0x70, 0x34, 0x32,
+  0x00, 0x00, 0x00, 0x10, 0x66, 0x74, 0x79, 0x70, 0x6d, 0x70, 0x34, 0x32, 0x00, 0x00, 0x00, 0x00,
 ]);
 
 const baseCfg: AppConfig = {
@@ -19,12 +20,14 @@ const baseCfg: AppConfig = {
   baseUrl: "https://dashscope.test/v1",
   uploadUrl: "https://dashscope.test/api/v1/uploads",
   allowedRoots: [],
-  maxLocalVideoBytes: 1024 * BYTES_PER_MIB,
+  allowAnyLocalFile: false,
+  maxLocalMediaBytes: 1024 * BYTES_PER_MIB,
   uploadTimeoutMs: 5_000,
   analysisTimeoutMs: 5_000,
   analysisRetries: 1,
   uploadCache: true,
   uploadCachePath: undefined,
+  legacyMediaVars: [],
 };
 
 function textOf(result: unknown): string {
@@ -46,7 +49,11 @@ async function withClient(cfg: AppConfig, fn: (client: Client) => Promise<void>)
     },
     uploader: {
       upload() {
-        return Promise.resolve({ url: "oss://tmp/test.mp4", requiresOssResolve: true });
+        return Promise.resolve({
+          url: "oss://tmp/test.mp4",
+          requiresOssResolve: true,
+          reused: false,
+        });
       },
     },
   });
@@ -63,14 +70,13 @@ async function withClient(cfg: AppConfig, fn: (client: Client) => Promise<void>)
 
 async function call(
   client: Client,
-  video: string,
-  question?: string,
+  media: string,
+  prompt = "q",
 ): Promise<{ text: string; isError: boolean }> {
-  const arguments_: Record<string, string> = { video };
-  if (question !== undefined) {
-    arguments_.question = question;
-  }
-  const result = await client.callTool({ name: "analyze_video", arguments: arguments_ });
+  const result = await client.callTool({
+    name: "analyze_media",
+    arguments: { media, prompt },
+  });
   return { text: textOf(result), isError: result.isError === true };
 }
 
@@ -95,18 +101,18 @@ describe("MCP boundary matrix", () => {
 
     await withClient(cfg, async (client) => {
       const cases: [string, string, string][] = [
-        ["http://cdn.example/v.mp4", "INVALID_VIDEO_INPUT", "http"],
-        ["https://user:pass@cdn.example/v.mp4", "INVALID_VIDEO_INPUT", "credentials"],
-        ["https://localhost/v.mp4", "INVALID_VIDEO_INPUT", "localhost"],
-        ["https://127.0.0.1/v.mp4", "INVALID_VIDEO_INPUT", "loopback"],
-        ["file:///C:/Videos/a.mp4", "INVALID_VIDEO_INPUT", "file-url"],
-        ["clip.mp4", "INVALID_VIDEO_INPUT", "relative"],
-        [missing, "VIDEO_NOT_FOUND", "missing"],
-        [empty, "UNSUPPORTED_VIDEO", "empty"],
-        [txt, "INVALID_VIDEO_INPUT", "non-mp4"],
+        ["http://cdn.example/v.mp4", "INVALID_MEDIA_INPUT", "http"],
+        ["https://user:pass@cdn.example/v.mp4", "INVALID_MEDIA_INPUT", "credentials"],
+        ["https://localhost/v.mp4", "INVALID_MEDIA_INPUT", "localhost"],
+        ["https://127.0.0.1/v.mp4", "INVALID_MEDIA_INPUT", "loopback"],
+        ["file:///C:/Videos/a.mp4", "INVALID_MEDIA_INPUT", "file-url"],
+        ["clip.mp4", "INVALID_MEDIA_INPUT", "relative"],
+        [missing, "MEDIA_NOT_FOUND", "missing"],
+        [empty, "UNSUPPORTED_MEDIA", "empty"],
+        [txt, "INVALID_MEDIA_INPUT", "non-mp4"],
       ];
-      for (const [video, code, label] of cases) {
-        const r = await call(client, video);
+      for (const [media, code, label] of cases) {
+        const r = await call(client, media);
         expect(r.isError, label).toBe(true);
         expect(r.text, label).toContain(code);
         expect(r.text, label).not.toContain(dir);
@@ -127,12 +133,12 @@ describe("MCP boundary matrix", () => {
       await withClient({ ...baseCfg, allowedRoots: [dir] }, async (client) => {
         const blocked = await call(client, outside);
         expect(blocked.isError).toBe(true);
-        expect(blocked.text).toContain("VIDEO_PATH_NOT_ALLOWED");
+        expect(blocked.text).toContain("MEDIA_PATH_NOT_ALLOWED");
         expect(blocked.text).not.toContain(outside);
 
         const oversize = await call(client, huge);
         expect(oversize.isError).toBe(true);
-        expect(oversize.text).toContain("VIDEO_FILE_TOO_LARGE");
+        expect(oversize.text).toContain("MEDIA_FILE_TOO_LARGE");
         expect(oversize.text).toMatch(/HTTPS/);
       });
     } finally {
@@ -148,11 +154,11 @@ describe("MCP boundary matrix", () => {
     await created.close();
 
     await withClient(
-      { ...baseCfg, allowedRoots: [dir], maxLocalVideoBytes: 500 * BYTES_PER_MIB },
+      { ...baseCfg, allowedRoots: [dir], maxLocalMediaBytes: 500 * BYTES_PER_MIB },
       async (client) => {
         const tight = await call(client, mid);
         expect(tight.isError).toBe(true);
-        expect(tight.text).toContain("VIDEO_FILE_TOO_LARGE");
+        expect(tight.text).toContain("MEDIA_FILE_TOO_LARGE");
       },
     );
 
@@ -163,21 +169,21 @@ describe("MCP boundary matrix", () => {
     });
   });
 
-  it("rejects an overlong question and treats blank questions as the default", async () => {
+  it("rejects an overlong prompt and a blank prompt", async () => {
     await withClient(baseCfg, async (client) => {
       const overlong = await client.callTool({
-        name: "analyze_video",
+        name: "analyze_media",
         arguments: {
-          video: "https://cdn.example/v.mp4",
-          question: "x".repeat(MAX_QUESTION_CHARS + 1),
+          media: "https://cdn.example/v.mp4",
+          prompt: "x".repeat(MAX_PROMPT_CHARS + 1),
         },
       });
       expect(overlong.isError).toBe(true);
-      expect(textOf(overlong)).toMatch(/INVALID_VIDEO_INPUT|question/);
+      expect(textOf(overlong)).toMatch(/prompt/);
 
       const blank = await call(client, "https://cdn.example/v.mp4", "   ");
-      expect(blank.isError).toBe(false);
-      expect(blank.text).toBe("ok");
+      expect(blank.isError).toBe(true);
+      expect(blank.text).toContain("INVALID_MEDIA_INPUT");
     });
   });
 });
