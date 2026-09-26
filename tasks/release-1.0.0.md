@@ -21,8 +21,16 @@
 
 - 本地 1.0.0 全门禁：通过（Windows Node 24.18.0）；typecheck / lint / format / test / coverage / build；302 passed + 1 skipped，覆盖率 88.76% stmts / 82.48% branches / 91.18% funcs / 90.23% lines。生产依赖 audit 为 0 vulnerabilities。
 - 独立打包安装与 stdio 握手：通过，38 files，唯一工具 analyze_media，字段 media/prompt；test:install 通过；CLI --version 为 1.0.0。JSON 模板解析与 Cursor 按钮 Base64 解码均通过。
-- 发布准备提交与分支推送：待执行（Git push dry-run 与钩子已通过）。
-- Node 24 远程 CI 与 Secret Scan：待通过。
+- 发布准备已提交 d216a8a 并推送 codex/optimization-prep；正常通过提交与推送钩子，工作区提交后干净。PR：[#39](https://github.com/JaylanJerry/analyze-video-mcp/pull/39)。
+- 首轮远程 CI：[36226038948](https://github.com/JaylanJerry/analyze-video-mcp/actions/runs/36226038948)。Linux test/coverage 在同一测试断言失败：公开 URL 必须保留，而旧断言又禁止其包含相同的 POSIX 路径子串；实际脱敏结果符合契约。已将矛盾断言改为完整预期文本相等，保留公开 URL 与两份答案一致的检查；修复后须重新通过全部 CI。Windows test、静态检查、构建、生产 audit、Linux 安装/打包/GitHub npx、macOS smoke 已通过；Windows 打包/GitHub npx 仍运行中。推送 Secret Scan 已通过。
 - v1.0.0 tag / npm 发布 / registry 安装复验：待执行。
 
 在远程 CI 通过前不推发布 tag；任何失败均记录真实状态，不把本地通过当成发布成功。
+
+## 远程验收后的补修
+
+- Linux CI 矛盾断言：test/tools.test.ts 不再禁止公开 URL 的合法 POSIX 路径子串，改为精确验证独立路径隐藏与链接保留。
+- installed-smoke.ts 的 live 分支迁移到 media/prompt 及 request/media/usage/limitations，删除旧证据报告字段；任意文件授权开关改用 MEDIA_*。
+- 新增假的 MCP 服务协议测试（视频/音频两种验收模式），验证实际 JSON-RPC 参数与结果读取，零上传、零服务商费用。
+
+补修后本地门禁通过：304 passed + 1 skipped（19 文件）；typecheck / lint / format / coverage / build 全过，生产覆盖率未变。

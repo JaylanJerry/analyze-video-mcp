@@ -517,8 +517,8 @@ ${formatted}
     const cfg = { ...baseCfg, allowedRoots: [dir] };
     await withClient(cfg, { analyzer: rec.analyzer, uploader: up.uploader }, async (client) => {
       const result = await call(client, { media: file, prompt: "q" });
+      expect(result.text).toBe(`本地 [本地路径已隐藏] 是海浪声；参考 ${publicLink} 公开可查。`);
       expect(result.text).toContain(publicLink);
-      expect(result.text).not.toContain(file);
       expect(result.structured.answer).toBe(result.text);
     });
   });
