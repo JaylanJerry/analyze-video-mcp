@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/github/license/JaylanJerry/media-analysis-mcp)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-24.x-339933)](https://nodejs.org)
 
-> **Rename release candidate:** Media Analysis MCP uses the new package/CLI `media-analysis-mcp` and Host key `media_analysis_mcp`. Version 2.0.0 is prepared but not published yet. The previous `analyze-video-mcp@1.0.0` remains available; see [migration](#name-migration) and [release status](tasks/release-2.0.0.md).
+> **Rename release:** Media Analysis MCP uses the new package/CLI `media-analysis-mcp` and Host key `media_analysis_mcp`. Version 2.0.0 is published on the official npm registry and its clean-install MCP handshake has passed. The previous `analyze-video-mcp@1.0.0` remains available; see [migration](#name-migration) and [release status](tasks/release-2.0.0.md).
 
 MCP media gateway for local agents: submit an MP4/MOV video, MP3 audio, or public HTTPS video URL, and ask the media model a question. The Agent decides what to ask and how to present the answer.
 

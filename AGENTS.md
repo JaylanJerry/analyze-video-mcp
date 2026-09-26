@@ -1,6 +1,6 @@
 # AGENTS.md — Rules for AI agents working on this repo
 
-> **更名发布准备（2026-09-26）：** 当前工作区准备 `media-analysis-mcp@2.0.0`，展示名为 **Media Analysis MCP**，尚未发布。历史 `analyze-video-mcp@1.0.0` 已发布；下文 1.0.0 验收是原包的基线，不替代新包验收。进度见 [发布记录](tasks/release-2.0.0.md)。
+> **更名发布（2026-09-26）：** `media-analysis-mcp@2.0.0` 已在官方 npm 发布，展示名为 **Media Analysis MCP**；registry 全新安装与 stdio 握手通过，Trusted Publisher 已绑定新仓库。GitHub tag/Release 收尾待发布流程修正合并。历史 `analyze-video-mcp@1.0.0` 保留；下文 1.0.0 验收仅为原包基线。进度见 [发布记录](tasks/release-2.0.0.md)。
 
 > **2026-09-26 正式发布更新：** `1.0.0` 已通过 Node 24 远程 CI 与 Secret Scan，并经 Trusted Publishing 发布；官方 npm 的 `latest` 为 `1.0.0`，registry 全新安装/stdio 握手与关键构建哈希核对通过。当前安装示例为 1.0.0 / MEDIA_*；下文旧日期状态仅为历史记录。完整证据见 [`tasks/release-1.0.0.md`](tasks/release-1.0.0.md)。
 

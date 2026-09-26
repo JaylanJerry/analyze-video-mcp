@@ -1,6 +1,6 @@
 # 当前任务与维护状态
 
-> **更名发布准备（2026-09-26）：** 当前工作区准备 `media-analysis-mcp@2.0.0`，展示名为 **Media Analysis MCP**，尚未发布。历史 `analyze-video-mcp@1.0.0` 已发布；下文 1.0.0 验收是原包的基线，不替代新包验收。进度见 [发布记录](release-2.0.0.md)。
+> **更名发布（2026-09-26）：** `media-analysis-mcp@2.0.0` 已在官方 npm 发布，展示名为 **Media Analysis MCP**；registry 全新安装与 stdio 握手通过，Trusted Publisher 已绑定新仓库。GitHub tag/Release 收尾待发布流程修正合并。历史 `analyze-video-mcp@1.0.0` 保留；下文 1.0.0 验收仅为原包基线。进度见 [发布记录](release-2.0.0.md)。
 
 截至 2026-09-26，1.0.0 大版本重构、审核修复、Node 24 收口、远程 CI、npm 发布与 PR #39 合并已完成。可复核证据见 [发布记录](release-1.0.0.md)。当前产品范围见 [媒体网关规格](../docs/SPEC_MEDIA_GATEWAY.md)。
 
@@ -35,4 +35,4 @@
 
 ## 2.0.0 更名发布状态
 
-当前名称统一为 **Media Analysis MCP**；新 npm/CLI/仓库为 `media-analysis-mcp`，宿主示例键为 `media_analysis_mcp`，Tool 仍为 `analyze_media`。完整更名与整理已经提交 `b39f6f2`，Node 24 远程 CI/Secret Scan 全通过，PR #42 已合并。新 npm 包尚未发布，等待 npm 登录与首次发布；不能用仓库更名代替正式 npm 发布。详细记录见 [2.0.0 发布状态](release-2.0.0.md)。
+当前名称统一为 **Media Analysis MCP**；新 npm/CLI/仓库为 `media-analysis-mcp`，宿主示例键为 `media_analysis_mcp`，Tool 仍为 `analyze_media`。完整更名与整理已经提交 `b39f6f2`，Node 24 远程 CI/Secret Scan 全通过，PR #42 已合并。新 npm 包 2.0.0 已发布并验证官方安装，Trusted Publisher 已配置；GitHub tag/Release 待首次发布流程修正合并后完成。详细记录见 [2.0.0 发布状态](release-2.0.0.md)。

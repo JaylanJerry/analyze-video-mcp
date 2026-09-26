@@ -1,6 +1,6 @@
 # Media MCP 架构（下一大版本分支）
 
-> **更名发布准备（2026-09-26）：** 当前工作区准备 `media-analysis-mcp@2.0.0`，展示名为 **Media Analysis MCP**，尚未发布。历史 `analyze-video-mcp@1.0.0` 已发布；下文 1.0.0 验收是原包的基线，不替代新包验收。进度见 [发布记录](../tasks/release-2.0.0.md)。
+> **更名发布（2026-09-26）：** `media-analysis-mcp@2.0.0` 已在官方 npm 发布，展示名为 **Media Analysis MCP**；registry 全新安装与 stdio 握手通过，Trusted Publisher 已绑定新仓库。GitHub tag/Release 收尾待发布流程修正合并。历史 `analyze-video-mcp@1.0.0` 保留；下文 1.0.0 验收仅为原包基线。进度见 [发布记录](../tasks/release-2.0.0.md)。
 
 > 本文件描述**已正式发布的 1.0.0**：`analyze_media(media, prompt)`。历史 npm `0.6.1` 保留 `analyze_video` 单 Tool 契约；两者的公开差异见 [`API_CONTRACT.md`](API_CONTRACT.md) 的迁移表。
 
