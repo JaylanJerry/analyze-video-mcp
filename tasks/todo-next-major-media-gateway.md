@@ -139,6 +139,8 @@ ode.exe`、`args=[<repo>\dist\index.js]`、`cwd=<repo>`、`timeoutMs=3600000`、
 
 2026-09-26 的独立收口验收与新增的取消/缓存竞态修复见 [`codex-acceptance-20260926.md`](codex-acceptance-20260926.md)；其中把 Node 22、CI 触发条件和 Codex 宿主剩余项按实际状态列明。
 
+**Luna 新任务补验已完成：** 新任务实际挂载 `analyze_media`，同一合成 MOV/MP3 各一次成功，两次 `upload_reused=true`（MOV usage 769/26/795，MP3 151/78/229，媒体模型均 `qwen3.5-omni-plus`）。这覆盖新任务直接传路径调用，不覆盖下列 GUI 手动拖入；完整任务 ID 与证据见独立验收报告。
+
 1. 在 Codex 新会话手动拖入一份公开合成媒体，核对新进程是否挂载最新 `analyze_media`、是否能成功返回。当前任务的 MP4/MOV/MP3 与 ZCode GUI 的 MOV/MP3 已分别通过，不外推到新会话；额外真实调用需另行授权，费用另记。
 2. 模型是否读取媒体与模型自报细节的可靠性：已完成同模型同问题的有/无媒体块对照（`qwen-plus` 两次 `prompt_tokens` 均为 78、回答相同，说明该块未贡献输入 token）；ZCode 宿主的三音调样本又给出一个「回答与样本一致、但**段数与切换时间点都报错**」的反例（模型答 4 段 / 2·5·8 秒，本机频谱质心实测 3 段 / ≈2.9·≈5.9 秒）。**决定：不做本地核验，也不过滤或纠正模型自报的段数与时间点**——服务端只如实暴露 `request.model`/`usage`，并在音频 `limitations` 里明说「本机未逐句转写，也未核对模型自报的段数与时间点」。理由：一旦服务端开始按模型数字做纠正或过滤，就等于把未经核验的模型输出当成判据；`MEDIA_MODEL_UNSUPPORTED` 的模态拒绝 allowlist 仍只有 mock 证据。
 3. 用户选择稍后通过 PR 的 Node 22/24 CI 验证；当前分支的普通 push 不触发 CI。创建 PR、推送、tag 与发布仍须分别按仓库规则授权，再复检规格完成标准。

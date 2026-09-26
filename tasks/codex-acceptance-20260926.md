@@ -1,6 +1,6 @@
 # 下一大版本独立收口验收（2026-09-26）
 
-基线：`codex/optimization-prep`，开始时 HEAD `6edee34`、工作区干净。代码验收只使用公开代码、合成测试和本地打包；随后用户先后明确授权两轮合成夹具的付费宿主调用（重启前后各 MOV/MP3 一次，共四次）。没有读取密钥或私人媒体，没有推送、创建 PR、打 tag 或发布。npm 上的 `0.6.1` 仍是旧 `analyze_video`，本报告只评估未发布的 `analyze_media` 分支。
+基线：`codex/optimization-prep`，开始时 HEAD `6edee34`、工作区干净。代码验收只使用公开代码、合成测试和本地打包；随后用户先后明确授权三轮合成夹具的付费宿主调用（重启前、重启后、Luna 新任务各 MOV/MP3 一次，共六次）。没有读取密钥或私人媒体，没有推送、创建 PR、打 tag 或发布。npm 上的 `0.6.1` 仍是旧 `analyze_video`，本报告只评估未发布的 `analyze_media` 分支。
 
 ## 本轮发现与处置
 
@@ -28,8 +28,19 @@
 
 ## 尚未完成的发布门
 
+> 更新：Luna 新任务的直接路径调用也已于 2026-09-26 通过，见下节；GUI 手动拖入仍是独立未验收项。
+
 - **Node 22 / CI**：本机 PATH 与 Codex bundled Node 均为 24，未找到现成 Node 22；本轮没有安装新运行时。CI workflow 已定义 Node 22/24 矩阵，但 `push.branches` 只含 `main`、`develop`、`feat/video-mcp-v1`，当前 `codex/optimization-prep` 分支的普通 push 不会触发 CI；PR 事件会触发。用户选择**稍后走 PR 的 Node 22 CI**，本轮没有推送或创建 PR。不能把本地 Node 24 全绿写成 Node 22/24 CI 已通过。
 - **Codex 新会话**：当前任务的 MP4、MOV、MP3 Tool 调用都有真实样本，重启后最新本地构建的 MOV/MP3 调用也已通过；**新会话手动拖入仍未验收**。本轮重启授权的两次调用已经完成，不据此新增付费调用。
 - **其它已知边界**：SSE 形态内容检查拒绝的修复后真实复验、费用金额、`MEDIA_MODEL_UNSUPPORTED` 的真实拒绝措辞仍未知；不为补证重传被服务商拒绝的媒体。模型回答中的段数和时间点仍需逐条看待，不能作为模型内部模态路径的证明。
 
 下一步：在获准创建 PR 后由 CI 验证 Node 22/24；另用 Codex 新会话手动拖入公开夹具，核对附件转路径与实际 Tool 调用。推送、PR、额外真实调用、tag 与发布仍按仓库授权边界分别处理。
+
+## Luna 新任务实际挂载验收（2026-09-26）
+
+用户明确要求新建 Luna 任务，并授权同一 MOV/MP3 各一次付费调用。新任务为 **Luna 新任务 MCP 验收**，ID `01a0dc39-340d-7e23-9ba5-46c5723f188c`，任务模型指定 `gpt-6-luna`。任务工作区是默认分支的独立 worktree，只读核对原仓库最新验收文档；没有构建旧快照或修改任何代码、配置、依赖。
+
+- 新任务实际挂载的 `analyze_media` 输入仍只有必填 `media` / `prompt`。样本大小、SHA-256 与本报告一致；任务历史可核对两次 `mcpToolCall`，没有额外媒体调用。
+- MOV：`isError=false`，回答 `24` / `3.1415926`，`media.kind=video`、`container=mov`、3 秒、音轨存在；`request.model=qwen3.5-omni-plus`、`upload_reused=true`、`usage=769/26/795`。
+- MP3：`isError=false`，回答电子纯音三段、音高阶梯式升高，`media.kind=audio`、`container=mp3`、约 9.038 秒；同一媒体模型、`upload_reused=true`、`usage=151/78/229`。两次正文与 `structuredContent.answer` 一致。
+- **通过的是新任务挂载与直接传本地路径调用**，并观察到两种格式的上传引用复用；**不是 GUI 手动拖入验收**。Luna 是 Codex Agent 模型，百炼 `request.model` 是媒体模型。账单金额未知，模型回答吻合不证明内部模态读取路径。父任务只更新验收记录；没有推送或发布。
