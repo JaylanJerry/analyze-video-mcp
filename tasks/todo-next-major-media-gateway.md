@@ -1,5 +1,7 @@
 # 下一大版本媒体网关任务清单
 
+**2026-09-26 Luna 追加测试收口更新（覆盖下方旧快照中的新会话状态）：** 手动拖入指定 MP4 的路径传递与 Tool 选择已验证，该样本明确授权后仍上传失败（旧记录无诊断，原因未知）；另一份用户附上的 1455 秒 MP4 两次分析成功、上传复用 `false → true`。长回答原文在任务记录完整，打印重复正文导致 Agent 中间执行层截断；已无费用恢复原文并验证分段拼接。当前补交付指引与上传安全诊断，本地 Node 24 门禁 302 passed / 1 skipped，coverage 88.76% stmts / 82.48% branch / 91.18% funcs / 90.23% lines；未新增付费调用，本批随本地收尾提交保存，未推送、未发布。新指引的 GUI 执行、失败样本上传根因与 Node 22/24 PR CI 仍未验收。详情见 [`codex-acceptance-20260926.md`](codex-acceptance-20260926.md)「Luna 用户追加测试与本地取证」。
+
 状态（2026-09-26）：**A、B、C、D1、D2、D3 已实现并通过本地门禁；A-P 与 D4 的服务商格式矩阵已完成真实验证；Codex 当前任务的 MCP Tool 已用公开 MP4、合成 MOV、合成 MP3 各成功调用一次；ZCode GUI 新会话的拖入 MOV 与 MP3 也已通过。** Codex **新会话手动拖入**、费用金额和 Node 22/24 CI 仍未验证；最新本地构建已于重启后通过 MOV/MP3 调用，见独立验收报告。ZCode 会话留下的内容检查 HTTP 400 现场与模型计数反例仍见 D4。当前分支已本地提交，未推送、未发布；npm 上的 `0.6.1` 仍是 `analyze_video`。最新独立验收见 [`codex-acceptance-20260926.md`](codex-acceptance-20260926.md)，总计划见 [`plan-next-major-media-gateway.md`](plan-next-major-media-gateway.md)。
 
 **本轮本地门禁（2026-09-25，Windows / Node 24.18.0）：** `npm run typecheck`、`npm run lint`、`npm run format:check`、`npm test`（264 passed / 1 skipped / 17 files，HEAD `43584e1` 上复核）、`npm run coverage`（All files 88.24% stmts / 81.95% branch / 90.47% funcs）、`npm run build` 全部通过；`node dist/index.js --doctor` 报告 `handshake.registered=true` 且只注册 `analyze_media`。**Node 22 未在本机验证**（CI 会在 22 与 24 上跑，但本轮没有推送）。所有测试均为 msw 模拟，零真实请求、零费用。

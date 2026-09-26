@@ -35,8 +35,11 @@ const CAPABILITY_GUIDANCE =
 const LIMITS_GUIDANCE =
   "一次最多 1 小时、本地最大 1024 MiB；这是抽样理解，不是帧级或逐字核验，精确转场与半秒内 J/L-cut 请先切 5–30 秒片段。本地文件须已获授权：位于 MEDIA_ALLOWED_ROOTS 内，或该安装已开启 MEDIA_ALLOW_ANY_LOCAL_FILE（被拒绝时请提示用户改配置，不要换路径重试）。大文件上行慢时改用公开 HTTPS。";
 
-const SERVER_INSTRUCTIONS = `${INVOCATION_GUIDANCE}${CAPABILITY_GUIDANCE}${LIMITS_GUIDANCE}`;
-const TOOL_DESCRIPTION = `${INVOCATION_GUIDANCE}${CAPABILITY_GUIDANCE}它会联合分析视频画面与内嵌声音，或单独分析音频。${LIMITS_GUIDANCE}`;
+const DELIVERY_GUIDANCE =
+  "长回答请先保存工具结果，正文只读取 content 文本或 structuredContent.answer 中的一份，避免重复打印整个结果。宿主显示截断时，先从已保存结果分段读取；不要仅因显示截断重新调用媒体分析。宿主无法保留或取回完整结果时，明确说明交付限制。";
+
+const SERVER_INSTRUCTIONS = `${INVOCATION_GUIDANCE}${CAPABILITY_GUIDANCE}${LIMITS_GUIDANCE}${DELIVERY_GUIDANCE}`;
+const TOOL_DESCRIPTION = `${INVOCATION_GUIDANCE}${CAPABILITY_GUIDANCE}它会联合分析视频画面与内嵌声音，或单独分析音频。${LIMITS_GUIDANCE}${DELIVERY_GUIDANCE}`;
 
 export const PROGRESS_VALIDATE_START = "正在校验媒体";
 export const PROGRESS_VALIDATE_DONE = "媒体校验完成";

@@ -194,6 +194,37 @@ export type MultipartPoster = (
   signal: AbortSignal,
 ) => Promise<MultipartPostResult>;
 
+const TRANSPORT_CODES = new Set([
+  "ECONNRESET",
+  "ECONNREFUSED",
+  "ETIMEDOUT",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "EPIPE",
+  "ERR_TLS_CERT_ALTNAME_INVALID",
+  "CERT_HAS_EXPIRED",
+  "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+]);
+
+class UploadTransportFailure extends Error {
+  constructor(
+    readonly reason: "request_failed" | "file_read_failed" | "upload_timeout" | "cancelled",
+    readonly transportCode?: string,
+  ) {
+    super("upload request failed");
+  }
+}
+
+function transportCode(error: unknown): string | undefined {
+  if (typeof error !== "object" || error === null || !("code" in error)) return undefined;
+  return typeof error.code === "string" && TRANSPORT_CODES.has(error.code) ? error.code : undefined;
+}
+
+function abortReason(signal: AbortSignal): "upload_timeout" | "cancelled" {
+  const reason: unknown = signal.reason;
+  return reason instanceof Error && reason.name === "TimeoutError" ? "upload_timeout" : "cancelled";
+}
+
 async function readLimitedIncoming(res: IncomingMessage): Promise<void> {
   let seen = 0;
   try {
@@ -219,7 +250,7 @@ export function postMultipartStream(
 ): Promise<MultipartPostResult> {
   if (signal.aborted) {
     body.destroy();
-    return Promise.reject(new Error("upload request failed"));
+    return Promise.reject(new UploadTransportFailure(abortReason(signal)));
   }
 
   const parsed = new URL(url);
@@ -227,13 +258,14 @@ export function postMultipartStream(
 
   return new Promise<MultipartPostResult>((resolve, reject) => {
     let settled = false;
-    const fail = (): void => {
+    const fail = (failure: UploadTransportFailure): void => {
       if (settled) {
         return;
       }
       settled = true;
+      signal.removeEventListener("abort", onAbort);
       body.destroy();
-      reject(new Error("upload request failed"));
+      reject(failure);
     };
 
     const req = request(parsed, { method: "POST", headers }, (res) => {
@@ -243,17 +275,25 @@ export function postMultipartStream(
             return;
           }
           settled = true;
+          signal.removeEventListener("abort", onAbort);
           resolve({ status: res.statusCode ?? 0 });
         })
-        .catch(fail);
+        .catch(() => {
+          fail(new UploadTransportFailure("request_failed"));
+        });
     });
 
     const onAbort = (): void => {
       req.destroy();
-      fail();
+      fail(new UploadTransportFailure(abortReason(signal)));
     };
-    req.on("error", fail);
-    body.on("error", fail);
+    req.on("error", (error: unknown) => {
+      fail(new UploadTransportFailure("request_failed", transportCode(error)));
+    });
+    body.on("error", () => {
+      fail(new UploadTransportFailure("file_read_failed"));
+      req.destroy();
+    });
     body.pipe(req);
     signal.addEventListener("abort", onAbort, { once: true });
   });
@@ -379,11 +419,26 @@ export async function uploadLocalMedia(
   };
 
   let posted: MultipartPostResult;
+  const uploadSignal = mergeSignals(signal, cfg.uploadTimeoutMs);
   try {
-    posted = await poster(uploadHost, headers, body, mergeSignals(signal, cfg.uploadTimeoutMs));
-  } catch {
+    posted = await poster(uploadHost, headers, body, uploadSignal);
+  } catch (error: unknown) {
     body.destroy();
-    throw new MediaError({ code: "MEDIA_UPLOAD_FAILED", stage: "uploaded" });
+    const reason = uploadSignal.aborted
+      ? abortReason(uploadSignal)
+      : error instanceof UploadTransportFailure
+        ? error.reason
+        : "request_failed";
+    throw new MediaError({
+      code: "MEDIA_UPLOAD_FAILED",
+      stage: "uploaded",
+      diagnostic: {
+        parse_reason: reason,
+        ...(error instanceof UploadTransportFailure && error.transportCode !== undefined
+          ? { error_code: error.transportCode }
+          : {}),
+      },
+    });
   }
 
   if (posted.status !== 200) {
@@ -391,6 +446,7 @@ export async function uploadLocalMedia(
       code: "MEDIA_UPLOAD_FAILED",
       stage: "uploaded",
       httpStatus: posted.status,
+      diagnostic: { parse_reason: "http_error" },
     });
   }
   return { url: `oss://${key}`, requiresOssResolve: true, reused: false };

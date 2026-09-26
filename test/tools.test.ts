@@ -259,6 +259,10 @@ describe("MCP analyze_media contract", () => {
       }
       expect(guidance).toContain("只在用户明确要求用 MCP（本工具）分析媒体时才调用");
       expect(guidance).toContain("prompt 必填");
+      for (const layer of [client.getInstructions(), listed.tools[0]?.description]) {
+        expect(layer).toContain("先保存工具结果");
+        expect(layer).toContain("不要仅因显示截断重新调用媒体分析");
+      }
     });
   });
 
@@ -283,6 +287,18 @@ describe("MCP analyze_media contract", () => {
     expect(rec.calls[0]?.request.prompt).toBe(
       "只核对 00:30 附近画面与声音是否对应；不确定时直接说明",
     );
+  });
+
+  it("delivers a long answer intact in both representations with one analysis", async () => {
+    const answer = "开头\n" + "这是包含中文与符号的长回答。\n".repeat(2000) + "末尾：结束";
+    const rec = recordingAnalyzer(answer);
+    await withClient(baseCfg, { analyzer: rec.analyzer }, async (client) => {
+      const result = await call(client, { media: "https://example.com/a.mp4", prompt: "详细分析" });
+      expect(result.isError).toBe(false);
+      expect(result.text).toBe(answer);
+      expect(result.structured.answer).toBe(answer);
+    });
+    expect(rec.calls).toHaveLength(1);
   });
 
   it("drops only the surrounding whitespace and keeps interior formatting", async () => {

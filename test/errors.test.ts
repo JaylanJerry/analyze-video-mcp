@@ -15,6 +15,17 @@ const CANARY_PATH = "C:\\Users\\secret\\Videos\\private.mp4";
 const CANARY_OSS = "oss://dashscope-tmp/abcdef/video.mp4";
 
 describe("MediaError", () => {
+  it("does not speculate about upload causes or echo unrecognized diagnostics in prose", () => {
+    const err = new MediaError({
+      code: "MEDIA_UPLOAD_FAILED",
+      stage: "uploaded",
+      diagnostic: { parse_reason: CANARY_KEY },
+    });
+    expect(err.agentMessage()).toContain("原因未知");
+    expect(err.agentMessage()).not.toContain("多半");
+    expect(err.agentMessage()).not.toContain(CANARY_KEY);
+    expect(agentErrorStructuredContent(err).diagnostics).toBeUndefined();
+  });
   it("gives a PCM-specific AAC conversion hint without changing supported codecs", () => {
     const err = new MediaError({
       code: "UNSUPPORTED_MEDIA_CODEC",
@@ -90,10 +101,12 @@ describe("MediaError", () => {
     expect(err.agentMessage()).not.toContain("req-safe-123");
   });
 
-  it("tells the agent to switch to HTTPS after a local upload failure", () => {
+  it("asks for upload diagnostics before considering a public URL", () => {
     const err = new MediaError({ code: "MEDIA_UPLOAD_FAILED", stage: "uploaded" });
     expect(err.agentMessage()).toContain("公开 HTTPS");
-    expect(err.agentMessage()).toContain("不要原文件再传一遍");
+    expect(err.agentMessage()).toContain("不要直接重复上传同一文件");
+    expect(err.agentMessage()).toContain("先检查上传诊断");
+    expect(err.agentMessage()).toContain("适合公开访问");
   });
 
   it("drops secrets, oss URLs, and absolute paths from diagnostics at construction", () => {

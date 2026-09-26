@@ -4,6 +4,7 @@ import { open } from "node:fs/promises";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Readable } from "node:stream";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
@@ -343,7 +344,12 @@ describe("uploadLocalMedia", () => {
         new AbortController().signal,
         capturePoster(403),
       ).catch((e: unknown) => e);
-      expect(err).toMatchObject({ code: "MEDIA_UPLOAD_FAILED" });
+      expect(err).toMatchObject({
+        code: "MEDIA_UPLOAD_FAILED",
+        httpStatus: 403,
+        diagnostic: { parse_reason: "http_error" },
+      });
+      expect(String(err)).toContain("http_status=403");
       expect(String(err)).not.toContain(CANARY);
       expect(String(err)).not.toContain("oss://");
       expect(uploadPosts).toBe(1);
@@ -378,9 +384,111 @@ describe("uploadLocalMedia", () => {
       const err = await uploadLocalMedia(cfg(), video, new AbortController().signal, () =>
         Promise.reject(new Error(`upload exploded ${CANARY} ${UPLOAD_HOST}`)),
       ).catch((e: unknown) => e);
-      expect(err).toMatchObject({ code: "MEDIA_UPLOAD_FAILED" });
+      expect(err).toMatchObject({
+        code: "MEDIA_UPLOAD_FAILED",
+        diagnostic: { parse_reason: "request_failed" },
+      });
       expect(String(err)).not.toContain(CANARY);
       expect(String(err)).not.toContain(UPLOAD_HOST);
+    } finally {
+      await video.handle.close();
+    }
+  });
+
+  it("distinguishes an upload deadline from an unknown request failure", async () => {
+    mockPolicy();
+    const video = await localVideo(Buffer.from("abc"));
+    const poster: MultipartPoster = (_url, _headers, _body, signal) =>
+      new Promise((_resolve, reject) => {
+        const stop = () => {
+          reject(new Error(`timeout ${CANARY}`));
+        };
+        if (signal.aborted) stop();
+        else signal.addEventListener("abort", stop, { once: true });
+      });
+    try {
+      const err = await uploadLocalMedia(
+        cfg({ uploadTimeoutMs: 25 }),
+        video,
+        new AbortController().signal,
+        poster,
+      ).catch((e: unknown) => e);
+      expect(err).toMatchObject({
+        code: "MEDIA_UPLOAD_FAILED",
+        retryable: false,
+        diagnostic: { parse_reason: "upload_timeout" },
+      });
+      expect(String(err)).toContain("upload_timeout");
+      expect(String(err)).not.toContain(CANARY);
+    } finally {
+      await video.handle.close();
+    }
+  });
+
+  it("retains only a safe connection-reset code through the production poster", async () => {
+    mockPolicy();
+    const video = await localVideo(Buffer.from("abc"));
+    try {
+      await withLocalReceiver(
+        (req, res) => {
+          req.destroy();
+          res.destroy();
+        },
+        async (url) => {
+          const err = await uploadLocalMedia(
+            cfg(),
+            video,
+            new AbortController().signal,
+            (_host, headers, body, signal) => postMultipartStream(url, headers, body, signal),
+          ).catch((e: unknown) => e);
+          expect(err).toMatchObject({
+            code: "MEDIA_UPLOAD_FAILED",
+            diagnostic: { parse_reason: "request_failed", error_code: "ECONNRESET" },
+          });
+          expect(JSON.stringify(err)).not.toContain(url);
+        },
+      );
+    } finally {
+      await video.handle.close();
+    }
+  });
+
+  it("distinguishes local stream errors without exposing their message or code", async () => {
+    mockPolicy();
+    const video = await localVideo(Buffer.from("abc"));
+    try {
+      await withLocalReceiver(
+        (_req, res) => {
+          res.end();
+        },
+        async (url) => {
+          const poster: MultipartPoster = (_host, headers, body, signal) => {
+            body.destroy();
+            const broken = Readable.from(
+              (function* () {
+                yield Buffer.from("prefix");
+                throw Object.assign(new Error(`${CANARY} /private/file.mp4 oss://hidden`), {
+                  code: CANARY,
+                });
+              })(),
+            );
+            return postMultipartStream(url, headers, broken, signal);
+          };
+          const err = await uploadLocalMedia(
+            cfg(),
+            video,
+            new AbortController().signal,
+            poster,
+          ).catch((e: unknown) => e);
+          expect(err).toMatchObject({
+            code: "MEDIA_UPLOAD_FAILED",
+            diagnostic: { parse_reason: "file_read_failed" },
+          });
+          const dumped = JSON.stringify(err) + String(err);
+          for (const secret of [CANARY, "/private/file.mp4", "oss://hidden", url])
+            expect(dumped).not.toContain(secret);
+        },
+      );
     } finally {
       await video.handle.close();
     }

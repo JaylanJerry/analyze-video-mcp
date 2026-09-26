@@ -40,7 +40,7 @@ const AGENT_TEXT: Record<AgentErrorCode, string> = {
   MEDIA_TOO_LONG: "媒体时长超过 1 小时上限。请切成不超过 1 小时的片段后再试。",
   UPLOAD_POLICY_FAILED: "无法取得上传凭证。",
   MEDIA_UPLOAD_FAILED:
-    "本地上传失败，多半是网络或上传窗口不够。不要原文件再传一遍。请把媒体放到公开 HTTPS 后，把链接交给本工具。",
+    "本地上传失败，原因请以诊断字段为准；没有诊断时原因未知。不要直接重复上传同一文件。请先检查上传诊断与安装配置；改用公开 HTTPS 前须确认媒体适合公开访问。",
   MEDIA_ANALYSIS_BUSY: "已有一个媒体任务正在处理。",
   PROVIDER_RATE_LIMITED: "服务繁忙，请稍后重试。",
   PROVIDER_TIMEOUT: "媒体分析超时。",
@@ -199,6 +199,24 @@ const UPLOAD_POLICY_REASONS = new Set([
 
 const DIAGNOSTIC_FIELD_PATTERN = /^[a-z][a-z0-9_]*(\.[a-z0-9_]+){0,2}$/;
 
+function uploadFailureMessage(
+  diagnostic: Record<string, unknown> | undefined,
+  httpStatus: number | undefined,
+): string {
+  const base = `MEDIA_UPLOAD_FAILED: ${AGENT_TEXT.MEDIA_UPLOAD_FAILED}`;
+  const reason = diagnostic?.parse_reason;
+  if (
+    typeof reason !== "string" ||
+    !["request_failed", "file_read_failed", "upload_timeout", "cancelled", "http_error"].includes(
+      reason,
+    )
+  )
+    return base;
+  const parts = [reason];
+  if (httpStatus !== undefined) parts.push(`http_status=${String(httpStatus)}`);
+  return `${base}（原因：${parts.join(", ")}）`;
+}
+
 /**
  * Upload-policy failures are otherwise indistinguishable, and hosts do not always
  * relay structured content, so the stable reason (never credential material) also
@@ -279,11 +297,13 @@ export class MediaError extends Error {
         ? configMissingMessage(missing, suggestion)
         : init.code === "UPLOAD_POLICY_FAILED"
           ? uploadPolicyMessage(init.diagnostic, init.httpStatus)
-          : init.code === "UNSUPPORTED_MEDIA_CODEC"
-            ? codecMessage(init.diagnostic)
-            : init.code === "UNSUPPORTED_MEDIA"
-              ? unsupportedMediaMessage(init.diagnostic)
-              : `${init.code}: ${AGENT_TEXT[init.code]}`,
+          : init.code === "MEDIA_UPLOAD_FAILED"
+            ? uploadFailureMessage(init.diagnostic, init.httpStatus)
+            : init.code === "UNSUPPORTED_MEDIA_CODEC"
+              ? codecMessage(init.diagnostic)
+              : init.code === "UNSUPPORTED_MEDIA"
+                ? unsupportedMediaMessage(init.diagnostic)
+                : `${init.code}: ${AGENT_TEXT[init.code]}`,
     );
     this.name = "MediaError";
     this.code = init.code;

@@ -127,6 +127,7 @@ file                  = streamed MP4 bytes
 - 使用随机、不可从用户输入注入的 boundary。
 - 如果设置 `Content-Length`，必须精确包含所有 boundary、CRLF、字段 header 和文件字节。
 - 上传 HTTP 200 才算成功；其他状态读取有限长度的错误摘要后立即丢弃，原始响应不得返回 Agent。
+- multipart 失败的安全诊断：`parse_reason` 为 `http_error`（附状态码）、`request_failed`（请求/连接失败或未知异常）、`file_read_failed`（本地读取流出错）、`upload_timeout`（上传阶段合并信号中的期限触发）或 `cancelled`。仅请求错误可附固定白名单内的 Node 网络/TLS `error_code`；不返回异常消息、主机、路径、上传凭证或 OSS 正文。外层收到本次用户取消仍统一返回 `MEDIA_ANALYSIS_CANCELLED`。`MEDIA_UPLOAD_FAILED` 维持 `retryable=false`、不自动重传；缺失诊断的历史失败只能记为原因未知。
 - v1 不自动重传失败的大文件。
 
 成功后内部生成：
