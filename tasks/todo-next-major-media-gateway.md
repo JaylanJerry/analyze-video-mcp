@@ -1,6 +1,6 @@
 # 下一大版本媒体网关任务清单
 
-状态（2026-09-26）：**A、B、C、D1、D2、D3 已实现并通过本地门禁；A-P 与 D4 的服务商格式矩阵已完成真实验证；Codex 当前任务的 MCP Tool 已用公开 MP4、合成 MOV、合成 MP3 各成功调用一次；ZCode GUI 新会话的拖入 MOV 与 MP3 也已通过。** Codex **新会话手动拖入**、最新构建经新 MCP 进程加载、费用金额和 Node 22/24 CI 仍未验证。ZCode 会话留下的内容检查 HTTP 400 现场与模型计数反例仍见 D4。当前分支已本地提交，未推送、未发布；npm 上的 `0.6.1` 仍是 `analyze_video`。最新独立验收见 [`codex-acceptance-20260926.md`](codex-acceptance-20260926.md)，总计划见 [`plan-next-major-media-gateway.md`](plan-next-major-media-gateway.md)。
+状态（2026-09-26）：**A、B、C、D1、D2、D3 已实现并通过本地门禁；A-P 与 D4 的服务商格式矩阵已完成真实验证；Codex 当前任务的 MCP Tool 已用公开 MP4、合成 MOV、合成 MP3 各成功调用一次；ZCode GUI 新会话的拖入 MOV 与 MP3 也已通过。** Codex **新会话手动拖入**、费用金额和 Node 22/24 CI 仍未验证；最新本地构建已于重启后通过 MOV/MP3 调用，见独立验收报告。ZCode 会话留下的内容检查 HTTP 400 现场与模型计数反例仍见 D4。当前分支已本地提交，未推送、未发布；npm 上的 `0.6.1` 仍是 `analyze_video`。最新独立验收见 [`codex-acceptance-20260926.md`](codex-acceptance-20260926.md)，总计划见 [`plan-next-major-media-gateway.md`](plan-next-major-media-gateway.md)。
 
 **本轮本地门禁（2026-09-25，Windows / Node 24.18.0）：** `npm run typecheck`、`npm run lint`、`npm run format:check`、`npm test`（264 passed / 1 skipped / 17 files，HEAD `43584e1` 上复核）、`npm run coverage`（All files 88.24% stmts / 81.95% branch / 90.47% funcs）、`npm run build` 全部通过；`node dist/index.js --doctor` 报告 `handshake.registered=true` 且只注册 `analyze_media`。**Node 22 未在本机验证**（CI 会在 22 与 24 上跑，但本轮没有推送）。所有测试均为 msw 模拟，零真实请求、零费用。
 
@@ -94,7 +94,7 @@ ode.exe`、`args=[<repo>\dist\index.js]`、`cwd=<repo>`、`timeoutMs=3600000`、
   - 2026-09-25 当时仍未做 Codex 新会话手动拖入与 Codex 宿主 MOV/MP3；后者已于 2026-09-26 在当前任务补验，见独立验收报告。费用金额（不记录账单）、内容检查拒绝在 **SSE 事件形态**下修复后的复验与输入/输出侧别判定（正文形态已有真实现场，侧别仍为 `unknown`）仍未做。**ZCode GUI 新会话与宿主 MP3 已于 2026-09-25 完成。**
   - 样本处理：用户原文件未被修改；派生的 MP3 副本位于系统临时目录。**更正：** 早先记录的“派生 MP3 副本已回收”不适用于 `probe-tones.mp3`——它仍在 `%TEMP%` 中（mtime 2026-09-25 22:06），本次 `upload_reused:true` 也正说明该路径/大小/mtime 先前已被上传过。
   - **宿主配置迁移（2026-09-25，本机，已备份 `.bak-20260925`）**：Codex `~/.codex/config.toml` 的 env 已由 `QWEN_ALLOWED_ROOTS` / `QWEN_ALLOW_ANY_LOCAL_VIDEO` 改为 `MEDIA_ALLOWED_ROOTS` / `MEDIA_ALLOW_ANY_LOCAL_FILE`（值不变，权限不变），`QWEN_AUDIO_SILENCE_CHECK` 行已注释；ZCode `~/.zcode/cli/config.json` 的 `args`/`cwd` 从已不存在的 `Documents\Codex\Video MCP` 改指本仓库 `dist/index.js`，env 同样改名为 `MEDIA_*`。两处都用迁移后的授权跑过 `--doctor`：`local_media_policy.mode=any_local_file`、`handshake.registered=true`、无旧变量警告。
-  - **宿主后续验收**：Codex 当前任务已实际调用 MP4/MOV/MP3，ZCode GUI 新会话已调用 MOV/MP3。**仍需验收：Codex 新会话手动拖入及新进程加载最新构建**；不能由当前任务的调用推定新会话已通过。
+  - **宿主后续验收**：Codex 当前任务已实际调用 MP4/MOV/MP3，ZCode GUI 新会话已调用 MOV/MP3。**仍需验收：Codex 新会话手动拖入**（最新构建已在重启后的进程通过 MOV/MP3 调用）；不能由当前任务的调用推定新会话已通过。
 
 **最终检查点：** 变更清单见下方「本轮变更文件」；推送、tag 与 npm 发布仍须单独指令。 ⏳
 
@@ -123,7 +123,7 @@ ode.exe`、`args=[<repo>\dist\index.js]`、`cwd=<repo>`、`timeoutMs=3600000`、
 
 1. **单 Tool 契约** ✅ 已验证：`test/tools.test.ts` 断言恰好一个 `analyze_media`、schema 只有 `media`/`prompt` 且都必需、无 provider/model/预算字段；宽泛、具体、中文与时间码 prompt 都逐字送达（两次断言原文相等）；每次调用只发一次请求（无二次提问）；旧码到新码的迁移由 `docs/API_CONTRACT.md` 的迁移表逐项列出，并有对应测试断言新码。
 2. **夹具与反例** ✅ 已验证（全部无私密合成夹具、端到端走 mock provider）：MP4 有音轨（`test/tools.test.ts` 本地事实例）、**MP4 无音轨**（同文件，断言 `audio_track_present:false` 与对应 limitation，且不改写模型措辞）、MOV 受支持组合与拒绝组合（`test/media.test.ts` MOV support）、MP3（`test/tools.test.ts` + `test/media.test.ts`）；坏魔数、伪装后缀、仅 ID3、Layer II、PCM MOV、超大小、超时长、junction 越界、根外路径、取消、换 Key 后缓存失效、**检查后文件被替换**（新增 `test/media-identity.test.ts`，用 stub 确定性地复现快照与句柄不一致）；HTTPS 直连与远端 `.mp3` 拒绝各有用例。
-3. **真实服务商与宿主验收** ⏳ **服务商格式矩阵及当前任务的 Codex MP4/MOV/MP3 Tool 调用已完成**：MP4、MOV、MP3 都有真实百炼调用并得到与样本一致的内容，见 D4 与独立验收报告；ZCode GUI 新会话也已用同码流 MOV 夹具和合成 MP3 调用成功。Codex **新会话手动拖入及新进程加载最新构建**仍未验收；费用金额未知；内容检查拒绝已有一个真实现场（HTTP 400 正文形态，见 D4），SSE 形态在修复后仍未复验，输入/输出侧别仍无真实判定；ZCode 宿主上的 MP3 曾曝出模型计数/时间点不可靠的反例，不能把本轮 Codex MP3 答对当成稳定能力。
+3. **真实服务商与宿主验收** ⏳ **服务商格式矩阵及当前任务的 Codex MP4/MOV/MP3 Tool 调用已完成**：MP4、MOV、MP3 都有真实百炼调用并得到与样本一致的内容，见 D4 与独立验收报告；ZCode GUI 新会话也已用同码流 MOV 夹具和合成 MP3 调用成功。Codex **新会话手动拖入**仍未验收，最新构建已于重启后通过 MOV/MP3 调用；费用金额未知；内容检查拒绝已有一个真实现场（HTTP 400 正文形态，见 D4），SSE 形态在修复后仍未复验，输入/输出侧别仍无真实判定；ZCode 宿主上的 MP3 曾曝出模型计数/时间点不可靠的反例，不能把本轮 Codex MP3 答对当成稳定能力。
 4. **脱敏、拒绝与重试** ✅ 已验证：`test/tools.test.ts` 断言 Key / `oss://` / 本地绝对路径在 `content[0].text` 与 `structuredContent` 两处都不出现且两处答案一致；内容检查拒绝 `retryable:false` 且只请求一次（另有 2026-09-25 的真实现场：HTTP 400 正文形态、未自动重试、Request ID 为 UUID 形态，见 D4）；`test/bailian.test.ts` 断言 429/502/503 各至多一次重试、收到文本后不再重试；`test/host-env.test.ts` 断言 stdio 子进程 stderr 不含 `sk-`；第二次调用报告 `upload_reused:true` 且仍重新分析。
 5. **门禁** ✅ 本地已验证（Node 24）：typecheck / lint / format:check / test / coverage(88.08/81.71/90.47) / build；独立打包安装与 stdio 握手通过（见 D3）。⏳ **Node 22 未在本机验证**：本机只装了 Node 24，`npx -p node@22` 被本地 `node` 遮蔽（尝试过 `npx -y node@22` 与 `npm exec --package=node@22`，两者都返回 v24.18.0），因此 Node 22 由推送后的 CI 覆盖。默认测试全部模拟、零付费。
 

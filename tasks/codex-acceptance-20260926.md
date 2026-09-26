@@ -1,6 +1,6 @@
 # 下一大版本独立收口验收（2026-09-26）
 
-基线：`codex/optimization-prep`，开始时 HEAD `6edee34`、工作区干净。代码验收只使用公开代码、合成测试和本地打包；随后用户现场明确授权两次合成夹具的付费宿主调用。没有读取密钥或私人媒体，没有推送、创建 PR、打 tag 或发布。npm 上的 `0.6.1` 仍是旧 `analyze_video`，本报告只评估未发布的 `analyze_media` 分支。
+基线：`codex/optimization-prep`，开始时 HEAD `6edee34`、工作区干净。代码验收只使用公开代码、合成测试和本地打包；随后用户先后明确授权两轮合成夹具的付费宿主调用（重启前后各 MOV/MP3 一次，共四次）。没有读取密钥或私人媒体，没有推送、创建 PR、打 tag 或发布。npm 上的 `0.6.1` 仍是旧 `analyze_video`，本报告只评估未发布的 `analyze_media` 分支。
 
 ## 本轮发现与处置
 
@@ -20,10 +20,16 @@
 - MP3：`%LOCALAPPDATA%/Temp/probe-tones.mp3`，72,559 B，调用前后 SHA-256 均为 `F47B19D9C0C4EB01A0E880C6A1B3C974DBAD985282F6E8002CC1B0A47C4545CB`。返回 `isError=false`、`media.kind=audio`、`container=mp3`、`duration_seconds=9.038367346938776`、`request.model=qwen3.5-omni-plus`、`upload_reused=false`、`usage=151/98/249`；正文与结构化答案相同，称电子纯音三段、音高逐段升高，与合成样本的已知结构一致。
 - 两次均只检查 Agent 可见结果，没有读取服务端 stderr 或账单，费用金额未知；成功结果没有 `request_id`。回答与夹具吻合只能说明本次模型输出正确，不能独立证明服务商内部如何读取模态。当前 Codex 任务的 MCP 进程可能早于本轮本地构建启动，因此这两次验证的是**当前任务已挂载的调用链**，不能当作最新提交经新进程加载后的验收，也不覆盖新会话手动拖入。
 
+## Codex 重启后复验（2026-09-26，用户明确要求直接测试，各一次）
+
+- MOV：同一 31,039 B 夹具成功，回答画面 `24`、语音 `3.1415926`；`request.model=qwen3.5-omni-plus`、`upload_reused=false`、`usage=769/26/795`。
+- MP3：同一 72,559 B 夹具成功，回答三段电子纯音、音高逐段升高；同一模型、`upload_reused=false`、`usage=151/77/228`。本次 `limitations` 已使用当前源码的“未逐句转写，也未核对模型自报的段数与时间点”。两次 `content[0].text` 与 `structuredContent.answer` 相同，媒体 SHA-256 与上轮记录一致。
+- 新 MCP Node 进程 PID `32060` 的启动时间为 `2026-09-26 13:32:23 +08:00`，晚于本地 `dist` 构建时间 `01:47:24`。全局安装是指向本仓库的 junction，安装入口的 `index.js` / `server.js` / `upload-cache.js` / `sanitize.js` 与本地构建 SHA-256 一致。结合重启与输出措辞，**最新本地构建的新 MCP 进程调用已验收**。此项仍不是新会话手动拖入测试，也未查账单或服务端 stderr；没有额外调用来验证缓存复用，两次 `upload_reused=false` 不用于推断缓存配置或故障。
+
 ## 尚未完成的发布门
 
 - **Node 22 / CI**：本机 PATH 与 Codex bundled Node 均为 24，未找到现成 Node 22；本轮没有安装新运行时。CI workflow 已定义 Node 22/24 矩阵，但 `push.branches` 只含 `main`、`develop`、`feat/video-mcp-v1`，当前 `codex/optimization-prep` 分支的普通 push 不会触发 CI；PR 事件会触发。用户选择**稍后走 PR 的 Node 22 CI**，本轮没有推送或创建 PR。不能把本地 Node 24 全绿写成 Node 22/24 CI 已通过。
-- **Codex 新会话**：当前任务的 MP4、MOV、MP3 Tool 调用都有真实样本；新会话的手动拖入与新进程加载最新构建仍未验收。现有授权仅覆盖上面两次合成夹具调用，没有授权新增付费调用。
+- **Codex 新会话**：当前任务的 MP4、MOV、MP3 Tool 调用都有真实样本，重启后最新本地构建的 MOV/MP3 调用也已通过；**新会话手动拖入仍未验收**。本轮重启授权的两次调用已经完成，不据此新增付费调用。
 - **其它已知边界**：SSE 形态内容检查拒绝的修复后真实复验、费用金额、`MEDIA_MODEL_UNSUPPORTED` 的真实拒绝措辞仍未知；不为补证重传被服务商拒绝的媒体。模型回答中的段数和时间点仍需逐条看待，不能作为模型内部模态路径的证明。
 
-下一步：在获准创建 PR 后由 CI 验证 Node 22/24；另用 Codex 新会话手动拖入公开夹具，核对新进程加载与实际 Tool 调用。推送、PR、额外真实调用、tag 与发布仍按仓库授权边界分别处理。
+下一步：在获准创建 PR 后由 CI 验证 Node 22/24；另用 Codex 新会话手动拖入公开夹具，核对附件转路径与实际 Tool 调用。推送、PR、额外真实调用、tag 与发布仍按仓库授权边界分别处理。
