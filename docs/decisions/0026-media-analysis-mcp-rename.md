@@ -1,6 +1,6 @@
 # ADR 0026：统一为 Media Analysis MCP
 
-- Status: Accepted; npm 2.0.0 published, GitHub Release pending
+- Status: Accepted; npm 2.0.0 published
 - Date: 2026-09-26
 - Authorized by: User（所有当前名称统一，并与仓库整理一起提交发布）
 - Supersedes: ADR 0017 的新安装示例命名；历史版本不变

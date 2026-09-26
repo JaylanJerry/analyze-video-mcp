@@ -39,10 +39,12 @@ Windows Node 24：typecheck / lint / format:check / test / build 全通过，306
 - 官方 registry 独立目录全新安装通过：server `Media Analysis MCP` / `2.0.0`，唯一 tool `analyze_media`，字段 `media` / `prompt`。`dist/index.js`、`dist/server.js`、`dist/version.js` 和 `package.json` 与本地验收构建 SHA-256 一致。仅握手，无付费媒体调用。
 - 文档验收 PR #43 经用户单独授权合并，merge SHA `f14146770505d1bfd49520805bac64384fe761d7`；Node 24 CI 36229119879 / Secret Scan 36229119874 全通过。
 
-## GitHub Release 收尾
+## GitHub Release 执行安排（本节为 tag 创建前快照）
 
 原发布 workflow 会重复发布已存在的 2.0.0。修正限定于 `v2.0.0`：必须从官方 registry 核对上述精确 name/version/integrity/shasum 才跳过重复上传，然后创建 GitHub Release。任何校验失败都中止；其他版本仍走原 Trusted Publishing。该修正与当前文档进入正常 PR/CI，合并授权后再创建 tag。此处不把待执行写成已完成。
 
 首次 npm 包内 README 是打包时的准备状态快照；仓库 README 已更新当前事实。正式发布包保持不可变，不为更新状态重发 2.0.0。
 
 收尾本地门禁：typecheck / lint / format:check / test / build 全通过，312 passed / 1 skipped（20 文件）。新增 6 条发布流程回归：精确包允许跳过，版本/包名/integrity/shasum/元数据缺失均中止。
+
+PR #44 已创建并经用户授权在 Node 24 CI / Secret Scan 全通过后合并及创建 tag。最终运行状态直接见 [PR #44](https://github.com/JaylanJerry/media-analysis-mcp/pull/44)、[Release 工作流](https://github.com/JaylanJerry/media-analysis-mcp/actions/workflows/release.yml) 和 [v2.0.0 Release](https://github.com/JaylanJerry/media-analysis-mcp/releases/tag/v2.0.0)；上面的执行安排不作为持续待办。Release 成功前不宣称该链接已对应发布完成。
