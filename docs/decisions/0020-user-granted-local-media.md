@@ -2,7 +2,7 @@
 
 - Status: Superseded by ADR 0021（用户否决额外确认步骤，改为安装级直传开关）
 - Date: 2026-09-22
-- Spec: [`SPEC_V07_PROPOSAL.md`](../SPEC_V07_PROPOSAL.md)
+- Spec: [`SPEC_V07_PROPOSAL.md`](../archive/specs/SPEC_V07_PROPOSAL.md)
 
 ## Context
 
@@ -12,7 +12,7 @@
 
 ## 宿主验证证据（2026-09-22，A1 探针）
 
-完整脱敏记录见 [`tasks/deepseek-v07-handoff.md`](../../tasks/deepseek-v07-handoff.md) 的探针记录。要点：
+完整脱敏记录见 [`tasks/archive/pre-1.0/deepseek-v07-handoff.md`](../../tasks/archive/pre-1.0/deepseek-v07-handoff.md) 的探针记录。要点：
 
 1. Codex 桌面版**接受**拖入 MP4，但只把文件写成用户消息里的一段宿主文本（「# Files mentioned by the user」+「文件名: 绝对路径」）。视频没有结构化附件对象；只有图片会得到 `localImage` 内容块。
 2. MCP 边界没有任何附件或授权信息：`tools/call` 只收到模型自己写出的 `arguments`，宿主额外附加的只有会话元数据 `_meta["x-codex-turn-metadata"]`（session/thread/turn id、sandbox、workspaces、git 提交哈希）。App 记录中 15 次真实 `analyze_video` 调用的参数键集合恒为 `video` + `question`。

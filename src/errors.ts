@@ -55,7 +55,7 @@ const AGENT_TEXT: Record<AgentErrorCode, string> = {
   PROVIDER_UNAUTHORIZED:
     "服务商拒绝了本次请求（401/403）。请检查 API Key、接口地址，以及所选模型是否已在该账号开通（模型未开通时服务商同样返回 403）。",
   CONFIG_MISSING:
-    "配置不完整。请检查 API Key、接口地址和允许目录，或运行 analyze-video-mcp --doctor --json。",
+    "配置不完整。请检查 API Key、接口地址和允许目录，或运行 media-analysis-mcp --doctor --json。",
 };
 
 export const CONFIG_MISSING_SUGGESTION =

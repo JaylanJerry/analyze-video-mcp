@@ -1,8 +1,10 @@
 # MCP Tool 契约
 
+> **更名发布准备（2026-09-26）：** 当前工作区准备 `media-analysis-mcp@2.0.0`，展示名为 **Media Analysis MCP**，尚未发布。历史 `analyze-video-mcp@1.0.0` 已发布；下文 1.0.0 验收是原包的基线，不替代新包验收。进度见 [发布记录](../tasks/release-2.0.0.md)。
+
 > **2026-09-26 正式发布更新：** `1.0.0` 已通过 Node 24 远程 CI 与 Secret Scan，并经 Trusted Publishing 发布；官方 npm 的 `latest` 为 `1.0.0`，registry 全新安装/stdio 握手与关键构建哈希核对通过。当前安装示例为 1.0.0 / MEDIA_*；下文旧日期状态仅为历史记录。完整证据见 [`tasks/release-1.0.0.md`](../tasks/release-1.0.0.md)。
 
-> **状态（2026-09-25，下一大版本分支）：** 本文件描述本工作区**已实现但尚未发布**的 `analyze_media(media, prompt)`。npm 上的 `analyze-video-mcp@0.6.1` 仍是旧契约 `analyze_video(video, question?)`，其行为见文末 [迁移表](#迁移表旧契约--新契约) 与 git 历史。发布前本文不得被当成已上线证据。目标与边界见 [`SPEC_NEXT_MAJOR_MEDIA_GATEWAY.md`](SPEC_NEXT_MAJOR_MEDIA_GATEWAY.md) 与 [ADR 0024](decisions/0024-agent-directed-media-gateway.md)。
+> **当前契约（1.0.0，已正式发布）：** 唯一入口为 `analyze_media(media, prompt)`。历史 npm `analyze-video-mcp@0.6.1` 保留 `analyze_video(video, question?)`，差异见文末 [迁移表](#迁移表旧契约--新契约)。目标与边界见 [媒体网关规格](SPEC_MEDIA_GATEWAY.md) 与 [ADR 0024](decisions/0024-agent-directed-media-gateway.md)。
 
 本文件定义 Agent 可见的稳定接口。Provider、模型与上传实现可以替换，但不得修改此契约，除非新增 ADR 并经用户批准。
 
@@ -86,7 +88,7 @@ Codex code-mode 示例（`store` / `load` 为宿主能力，不属于本 MCP）�
 - `content[0].text` 与 `structuredContent.answer` 必须是**同一份**脱敏文本，即模型回答本身；不附加固定审核报告、分项观察、模型名、request id 或耗时。
 - 脱敏只在单一出口移除内部 `oss://` 地址、凭证形态与本地绝对路径：先按本次 Agent 传入的确切路径（含两种斜杠与 Windows 大小写变体）做字面替换，再用通用规则补充未传入的路径形状；`普通 HTTPS 链接与媒体语义保留`，不做句子删除、重排、纠错或结论升级。
 - 空白回答是错误（`PROVIDER_RESPONSE_INVALID`）。
-- **本地 MP3 协议已于 2026-09-25 用真实百炼调用验证**（非私密合成 9 秒样本 + 890 秒真实 MP3，均为 `qwen3.8-omni-flash`；证据见 [`PROVIDER_PROTOCOL.md`](PROVIDER_PROTOCOL.md) §3b）。仍未验证：`MEDIA_MODEL_UNSUPPORTED` 的服务商真实错误码措辞、宿主 GUI、费用金额。
+- **本地 MP3 协议已于 2026-09-25 用真实百炼调用验证**（非私密合成 9 秒样本 + 890 秒真实 MP3，均为 `qwen3.8-omni-flash`；证据见 [`PROVIDER_PROTOCOL.md`](PROVIDER_PROTOCOL.md) §3b）。`MEDIA_MODEL_UNSUPPORTED` 的服务商真实错误码措辞与费用金额仍未核验；宿主调用与拖入分项证据见 [Codex 验收](../tasks/archive/1.0/codex-acceptance-20260926.md)，不能外推所有宿主或模型。
 - **已知限制（2026-09-25 实测）：** 只有音频轨、没有视频轨的 MP4 经视频路径提交会被服务商以 **HTTP 400** 拒绝（`MEDIA_ANALYSIS_FAILED` + `http_status=400`，无 SSE 事件与用量）。请为纯音频使用 `.mp3`；不要把它当视频提交。服务端不做自动转封装。
 - `media` 只放本次**确实建立**的本地事实；字段缺席表示未知，不能填 `false` 冒充已检查：
   - `kind`：`video` 或 `audio`。本地由已验证的文件内容决定；首批 HTTPS 输入按视频处理。
@@ -150,13 +152,13 @@ Codex code-mode 示例（`store` / `load` 为宿主能力，不属于本 MCP）�
 - SSE 的 `id`（如 `chatcmpl-…`）是补全 ID，**不当作 Request ID**；只有响应 Header 或正文中显式且符合安全格式的 `request_id` 才会出现在 `structuredContent.request_id`。
 - 内容检查拒绝的 `diagnostics.inspection_side` 仅为 `input` / `output` / `unknown`，只从已知固定措辞判断。
 - 缺 Key 或坏配置不得阻止 MCP `initialize` / `listTools`；工具调用时返回 `CONFIG_MISSING`。
-- `analyze-video-mcp --doctor --json` 与运行时共用同一配置解析器，绝不打印 Key，并报告旧媒体变量已失效。
+- `media-analysis-mcp --doctor --json` 与运行时共用同一配置解析器，绝不打印 Key，并报告旧媒体变量已失效。
 
 Agent 错误文本禁止包含：API Key 或任何首尾片段、policy/signature/临时 AccessKey、`oss://` 全路径、上传 host 的 query、本地绝对路径、provider 原始响应体。完整诊断只能写 stderr，且同样必须脱敏；允许记录错误码、HTTP 状态、阶段、request id、耗时和文件大小。
 
 ## 迁移表：旧契约 → 新契约
 
-| 旧（`analyze-video-mcp@0.6.1`）                          | 新（本分支，未发布）                                       | 条件                              |
+| 旧（`analyze-video-mcp@0.6.1`）                          | 新（1.0.0，已发布）                                        | 条件                              |
 | -------------------------------------------------------- | ---------------------------------------------------------- | --------------------------------- |
 | `analyze_video(video, question?)`                        | `analyze_media(media, prompt)`，`prompt` 必填              | Tool 名称与字段均变更，不并列保留 |
 | 省略 `question` 时用服务端默认问题                       | 无默认问题；`prompt` 空则 `INVALID_MEDIA_INPUT`            | 服务端不再替 Agent 提问           |

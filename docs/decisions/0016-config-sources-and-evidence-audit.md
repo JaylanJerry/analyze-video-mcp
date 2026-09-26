@@ -11,7 +11,7 @@ v0.6.0 让缺 Key 时工具仍挂载，并加了 `heard`/`seen` 门禁。实战�
 2. 模型把「人群 / 相似服饰」写成「士兵」这类身份事实。
 3. 在没有 OCR、字幕轨或覆盖率的情况下输出「所有字幕完全同步」。
 
-批准 [`SPEC_V061.md`](../SPEC_V061.md)。0.7 的 `analyze_audio` / FFmpeg / `audit_media` 见 [`SPEC_V07.md`](../SPEC_V07.md)，本 ADR 明确推迟。
+批准 [`SPEC_V061.md`](../archive/specs/SPEC_V061.md)。0.7 的 `analyze_audio` / FFmpeg / `audit_media` 见 [`SPEC_V07.md`](../archive/specs/SPEC_V07.md)，本 ADR 明确推迟。
 
 ## Decision
 

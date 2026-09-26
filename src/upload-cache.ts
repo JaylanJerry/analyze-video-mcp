@@ -46,7 +46,7 @@ function isDiskCacheFile(value: unknown): value is DiskCacheFile {
  */
 export function credentialFingerprint(apiKey: string): string {
   return createHash("sha256")
-    .update(`analyze-video-mcp/upload-cache/v1\0${apiKey}`, "utf8")
+    .update(`media-analysis-mcp/upload-cache/v1\0${apiKey}`, "utf8")
     .digest("hex")
     .slice(0, 16);
 }

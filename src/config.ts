@@ -33,7 +33,7 @@ export interface AppConfig {
 }
 
 export const DEFAULT_MODEL = "qwen3.8-omni-flash";
-export const DEFAULT_SERVER_NAME = "analyze-video-mcp";
+export const DEFAULT_SERVER_NAME = "Media Analysis MCP";
 const SERVER_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 export const DEFAULT_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1";
 export const DEFAULT_UPLOAD_URL = "https://dashscope.aliyuncs.com/api/v1/uploads";
@@ -140,11 +140,11 @@ export function readBootstrapServerName(): string {
 export function defaultUploadCachePath(): string {
   if (process.platform === "win32") {
     const base = process.env.LOCALAPPDATA?.trim() || join(homedir(), "AppData", "Local");
-    return join(base, "analyze-video-mcp", "upload-cache.json");
+    return join(base, "media-analysis-mcp", "upload-cache.json");
   }
   const xdg = process.env.XDG_CACHE_HOME?.trim();
   const base = xdg !== undefined && xdg.length > 0 ? xdg : join(homedir(), ".cache");
-  return join(base, "analyze-video-mcp", "upload-cache.json");
+  return join(base, "media-analysis-mcp", "upload-cache.json");
 }
 
 /** Recognizes the on/off spellings used by the toggle variables; undefined when unrecognized. */

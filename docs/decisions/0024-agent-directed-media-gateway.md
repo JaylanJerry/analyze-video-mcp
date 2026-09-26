@@ -4,7 +4,7 @@
 
 - Status: Accepted for next major; implemented on working branch, unreleased
 - Date: 2026-09-25
-- Spec: [`SPEC_NEXT_MAJOR_MEDIA_GATEWAY.md`](../SPEC_NEXT_MAJOR_MEDIA_GATEWAY.md)
+- Spec: [`SPEC_NEXT_MAJOR_MEDIA_GATEWAY.md`](../SPEC_MEDIA_GATEWAY.md)
 - Supersedes for next major: ADR 0001 的“只接受视频”范围与现行 Tool 名称；停止推进 Proposed ADR 0018/0019 的三 Tool、测量与审核主线
 
 ## Context

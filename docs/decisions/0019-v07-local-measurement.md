@@ -2,7 +2,7 @@
 
 - Status: Deferred (never accepted; outside the next-major core)
 - Date: 2026-09-22
-- Spec: [`SPEC_V07_PROPOSAL.md`](../SPEC_V07_PROPOSAL.md)
+- Spec: [`SPEC_V07_PROPOSAL.md`](../archive/specs/SPEC_V07_PROPOSAL.md)
 
 > 2026-09-25：本地 FFmpeg 综合测量不属于 [ADR 0024](0024-agent-directed-media-gateway.md) 的单入口重构主线。本文件保留研究证据；已独立接受的可选数字静音核对仍见 ADR 0022。
 

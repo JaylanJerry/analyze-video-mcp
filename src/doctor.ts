@@ -187,7 +187,7 @@ export async function runDoctor(
   let registered: boolean;
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const mcp = createServer();
-  const client = new Client({ name: "analyze-video-doctor", version: PACKAGE_VERSION });
+  const client = new Client({ name: "media-analysis-doctor", version: PACKAGE_VERSION });
   try {
     await mcp.connect(serverTransport);
     await client.connect(clientTransport);

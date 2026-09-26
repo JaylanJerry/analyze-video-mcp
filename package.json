@@ -1,6 +1,6 @@
 {
-  "name": "analyze-video-mcp",
-  "version": "1.0.0",
+  "name": "media-analysis-mcp",
+  "version": "2.0.0",
   "description": "MCP media gateway for agent-directed MP4, MOV and MP3 analysis",
   "keywords": [
     "mcp",
@@ -12,10 +12,10 @@
     "claude"
   ],
   "license": "MIT",
-  "homepage": "https://github.com/JaylanJerry/analyze-video-mcp#readme",
+  "homepage": "https://github.com/JaylanJerry/media-analysis-mcp#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/JaylanJerry/analyze-video-mcp.git"
+    "url": "git+https://github.com/JaylanJerry/media-analysis-mcp.git"
   },
   "type": "module",
   "engines": {
@@ -25,7 +25,7 @@
     "access": "public"
   },
   "bin": {
-    "analyze-video-mcp": "dist/index.js"
+    "media-analysis-mcp": "dist/index.js"
   },
   "files": [
     "dist",

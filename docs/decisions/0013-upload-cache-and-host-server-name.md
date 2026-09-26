@@ -9,7 +9,7 @@
 
 ## Decision
 
-批准 [`SPEC_V052.md`](../SPEC_V052.md)：
+批准 [`SPEC_V052.md`](../archive/specs/SPEC_V052.md)：
 
 1. 进程内缓存已上传的 `oss://`，键为文件身份（realpath + size + mtimeMs）+ `QWEN_MODEL`，TTL 47 小时。不缓存 policy credential，不缓存模型回答。
 2. `QWEN_MODEL` 作为人配环境变量公开；默认仍 `qwen3.5-omni-flash`；无模型白名单；不进 Tool schema。

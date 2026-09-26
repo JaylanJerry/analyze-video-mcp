@@ -388,7 +388,7 @@ process.stdout.write(JSON.stringify(buildDevNodeArgs(${JSON.stringify(dir)})));`
         }, 15_000);
         const onData = (): void => {
           const text = Buffer.concat(stderrChunks).toString("utf8");
-          if (text.includes("analyze-video-mcp")) {
+          if (text.includes("media-analysis-mcp")) {
             clearTimeout(timer);
             child.stderr.off("data", onData);
             resolve(text);
@@ -402,7 +402,7 @@ process.stdout.write(JSON.stringify(buildDevNodeArgs(${JSON.stringify(dir)})));`
         });
         child.on("exit", (code) => {
           const text = Buffer.concat(stderrChunks).toString("utf8");
-          if (!text.includes("analyze-video-mcp")) {
+          if (!text.includes("media-analysis-mcp")) {
             clearTimeout(timer);
             reject(new Error(`exited ${String(code)} stderr=${text}`));
           }
@@ -410,7 +410,7 @@ process.stdout.write(JSON.stringify(buildDevNodeArgs(${JSON.stringify(dir)})));`
       });
       const stdout = Buffer.concat(stdoutChunks).toString("utf8");
       expect(stdout).toBe("");
-      expect(stderr).toContain("analyze-video-mcp");
+      expect(stderr).toContain("media-analysis-mcp");
       expect(stderr).not.toMatch(/DASHSCOPE_API_KEY/);
       expect(stderr).not.toContain("sk-from-dotenv-file");
     } finally {

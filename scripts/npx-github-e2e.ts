@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PACKAGE_VERSION } from "../src/version.js";
 
-const repo = process.env.GITHUB_REPOSITORY ?? "JaylanJerry/analyze-video-mcp";
+const repo = process.env.GITHUB_REPOSITORY ?? "JaylanJerry/media-analysis-mcp";
 const sha = process.env.GITHUB_SHA;
 if (sha === undefined || sha === "") {
   process.stderr.write("npx-github-e2e: GITHUB_SHA is required\n");
@@ -15,8 +15,8 @@ if (sha === undefined || sha === "") {
 }
 
 const spec = `github:${repo}#${sha}`;
-const cache = await mkdtemp(join(tmpdir(), "analyze-video-npx-cache-"));
-const work = await mkdtemp(join(tmpdir(), "analyze-video-npx-work-"));
+const cache = await mkdtemp(join(tmpdir(), "media-analysis-npx-cache-"));
+const work = await mkdtemp(join(tmpdir(), "media-analysis-npx-work-"));
 
 function childEnv(): Record<string, string> {
   const out: Record<string, string> = {};
@@ -48,7 +48,7 @@ try {
     stdio: "inherit",
     env: childEnv(),
   });
-  const serverJs = join(work, "node_modules/analyze-video-mcp/dist/index.js");
+  const serverJs = join(work, "node_modules/media-analysis-mcp/dist/index.js");
   const sdk = join(work, "node_modules/@modelcontextprotocol/sdk/package.json");
   if (!existsSync(serverJs) || !existsSync(sdk)) {
     process.stderr.write("npx-github-e2e: github install is missing dist or runtime SDK\n");

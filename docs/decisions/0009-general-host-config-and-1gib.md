@@ -13,7 +13,7 @@ v1 的 Tool 表面仍然正确，不应为了通用化拆成多个 Tool 或做�
 
 ## Decision
 
-在批准 [`SPEC_GENERAL.md`](../SPEC_GENERAL.md) 后：
+在批准 [`SPEC_GENERAL.md`](../archive/specs/SPEC_GENERAL.md) 后：
 
 1. 保持唯一 Tool `analyze_video`。V2 公开字段为 `video` 与 `question`，去掉 `max_tokens`。
 2. 本地策略上限改为默认 1024 MiB；硬顶 1024 MiB；实际上传前仍取 `min(用户配置, 当场 policy.max_file_size_mb)`。网速够就直接上传分析；上传超时或凭证过期时用错误文本建议改走公开 HTTPS，不测速、不弹窗、不自动重传。

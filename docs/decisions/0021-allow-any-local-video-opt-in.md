@@ -3,11 +3,11 @@
 - Status: Accepted
 - Date: 2026-09-22
 - Supersedes: ADR 0020 的“单文件 elicitation 确认”方向；局部取代 ADR 0015 对“允许根外一律拒绝”的结论
-- Spec: [`SPEC_V07_PROPOSAL.md`](../SPEC_V07_PROPOSAL.md)
+- Spec: [`SPEC_V07_PROPOSAL.md`](../archive/specs/SPEC_V07_PROPOSAL.md)
 
 ## Context
 
-用户要求在 Codex 里“拖入视频 → 说一句调用 MCP 分析 → 直接上传分析”，不要确认弹窗或额外点击。A1 探针（见 [`tasks/deepseek-v07-handoff.md`](../../tasks/deepseek-v07-handoff.md)）已证明宿主不给 MCP 任何可验证的附件来源：
+用户要求在 Codex 里“拖入视频 → 说一句调用 MCP 分析 → 直接上传分析”，不要确认弹窗或额外点击。A1 探针（见 [`tasks/archive/pre-1.0/deepseek-v07-handoff.md`](../../tasks/archive/pre-1.0/deepseek-v07-handoff.md)）已证明宿主不给 MCP 任何可验证的附件来源：
 
 - Codex 把拖入的 MP4 写成用户消息里的一段文本（`# Files mentioned by the user` + `文件名: 绝对路径`），视频没有结构化附件对象；只有图片有 `localImage` 内容块。
 - MCP 边界只收到模型自己写出的 `arguments` 加会话元数据 `_meta["x-codex-turn-metadata"]`，没有文件句柄、资源引用或授权范围。
