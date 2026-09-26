@@ -77,7 +77,7 @@ export function getCliConfigPath(): string | undefined {
 }
 
 export function defaultUserConfigPath(home = homedir()): string {
-  return resolve(home, ".analyze-video-mcp", "config.env");
+  return resolve(home, ".media-analysis-mcp", "config.env");
 }
 
 export function parseEnvFile(contents: string): Record<string, string> {

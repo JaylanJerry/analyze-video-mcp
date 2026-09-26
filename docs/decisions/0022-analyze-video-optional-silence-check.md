@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-09-25
-- Related: [ADR 0019](0019-v07-local-measurement.md), [可选静音核对实现提案](../../tasks/analyze-video-optional-silence-measurement-proposal-20260925.md)
+- Related: [ADR 0019](0019-v07-local-measurement.md), [可选静音核对实现提案](../../tasks/archive/pre-1.0/analyze-video-optional-silence-measurement-proposal-20260925.md)
 
 ## Context
 

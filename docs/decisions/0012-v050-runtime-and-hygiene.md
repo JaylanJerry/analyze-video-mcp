@@ -16,7 +16,7 @@ v1 / V2 / npx 安装已经本机收尾，公开标签仍是 `v0.4.0`。main 相�
 
 ## Decision
 
-批准 [`SPEC_V05.md`](../SPEC_V05.md) 后：
+批准 [`SPEC_V05.md`](../archive/specs/SPEC_V05.md) 后：
 
 1. 进入 **`0.5.0`**。`engines.node` 改为 `>=22`。CI 主矩阵 Node 22/24。不测 Node 20。可选 Node 26 compat 失败不挡合并，且不进入 `required-ci`。`#main` 在该变更合入后即要求 Node 22；`#v0.4.0` 保持该标签当时的 Node 20+ 语义。
 2. 生产移除 dotenv；`.env` 可选，不是启动前置。`node dist/index.js` 不再自动加载 `.env`。不升级 dotenv 17。

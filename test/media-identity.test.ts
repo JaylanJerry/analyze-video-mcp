@@ -21,7 +21,7 @@ function cfg(root: string): AppConfig {
   return {
     apiKey: "sk-test",
     model: "qwen3.5-omni-flash",
-    serverName: "analyze-video-mcp",
+    serverName: "media-analysis-mcp",
     baseUrl: "https://dashscope.test/v1",
     uploadUrl: "https://dashscope.test/api/v1/uploads",
     allowedRoots: [root],

@@ -1,11 +1,11 @@
-# analyze-video-mcp
+# Media Analysis MCP
 
-[![CI](https://github.com/JaylanJerry/analyze-video-mcp/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/JaylanJerry/analyze-video-mcp/actions/workflows/ci.yml)
-[![npm](https://img.shields.io/npm/v/analyze-video-mcp)](https://www.npmjs.com/package/analyze-video-mcp)
-[![License: MIT](https://img.shields.io/github/license/JaylanJerry/analyze-video-mcp)](LICENSE)
+[![CI](https://github.com/JaylanJerry/media-analysis-mcp/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/JaylanJerry/media-analysis-mcp/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/media-analysis-mcp)](https://www.npmjs.com/package/media-analysis-mcp)
+[![License: MIT](https://img.shields.io/github/license/JaylanJerry/media-analysis-mcp)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-24.x-339933)](https://nodejs.org)
 
-> **1.0.0 media gateway is published:** Node 24 remote CI, Secret Scan and a fresh registry install/handshake passed. Release evidence is tracked in [`tasks/release-1.0.0.md`](tasks/release-1.0.0.md). The previously published `0.6.1` exposes `analyze_video(video, question?)`; it retains its original Node `>=22` metadata.
+> **Rename release candidate:** Media Analysis MCP uses the new package/CLI `media-analysis-mcp` and Host key `media_analysis_mcp`. Version 2.0.0 is prepared but not published yet. The previous `analyze-video-mcp@1.0.0` remains available; see [migration](#name-migration) and [release status](tasks/release-2.0.0.md).
 
 MCP media gateway for local agents: submit an MP4/MOV video, MP3 audio, or public HTTPS video URL, and ask the media model a question. The Agent decides what to ask and how to present the answer.
 
@@ -31,9 +31,9 @@ Do not commit a config containing a real key. Local media is uploaded in full to
 ```json
 {
   "mcpServers": {
-    "analyze_video_mcp": {
+    "media_analysis_mcp": {
       "command": "npx",
-      "args": ["-y", "--prefer-offline", "analyze-video-mcp@1.0.0"],
+      "args": ["-y", "--prefer-offline", "media-analysis-mcp@2.0.0"],
       "env": {
         "DASHSCOPE_API_KEY": "YOUR_DASHSCOPE_API_KEY",
         "QWEN_MODEL": "qwen3.8-omni-flash",
@@ -44,7 +44,7 @@ Do not commit a config containing a real key. Local media is uploaded in full to
 }
 ```
 
-Names are separate: package/CLI/server name `analyze-video-mcp`; example Host config key `analyze_video_mcp`; the only Tool is `analyze_media`. The Host key may be renamed.
+Names are separate: product/MCP server name `Media Analysis MCP`; package/CLI name `media-analysis-mcp`; example Host config key `media_analysis_mcp`; the only Tool is `analyze_media`. The Host key may be renamed.
 
 Templates: [`Cursor`](examples/mcp.cursor.json), [`Claude Code/Desktop`](examples/mcp.claude-code.json), [`Codex`](examples/mcp.codex.toml).
 
@@ -52,14 +52,14 @@ Templates: [`Cursor`](examples/mcp.cursor.json), [`Claude Code/Desktop`](example
 
 Use the standard config in Cursor's `~/.cursor/mcp.json`, or Claude Desktop's `claude_desktop_config.json`.
 
-On Windows, if the host cannot find `npx`, use `"command": "cmd"` and `"args": ["/c", "npx", "-y", "--prefer-offline", "analyze-video-mcp@1.0.0"]`.
+On Windows, if the host cannot find `npx`, use `"command": "cmd"` and `"args": ["/c", "npx", "-y", "--prefer-offline", "media-analysis-mcp@2.0.0"]`.
 
-[![Install MCP Server](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=analyze_video_mcp&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIi0tcHJlZmVyLW9mZmxpbmUiLCJhbmFseXplLXZpZGVvLW1jcEAxLjAuMCJdLCJlbnYiOnsiREFTSFNDT1BFX0FQSV9LRVkiOiJZT1VSX0RBU0hTQ09QRV9BUElfS0VZIiwiUVdFTl9NT0RFTCI6InF3ZW4zLjgtb21uaS1mbGFzaCIsIk1FRElBX0FMTE9XRURfUk9PVFMiOiJDOlxcVXNlcnNcXOeUqOaIt+WQjVxcVmlkZW9zIn19)
+[![Install MCP Server](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=media_analysis_mcp&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIi0tcHJlZmVyLW9mZmxpbmUiLCJtZWRpYS1hbmFseXNpcy1tY3BAMi4wLjAiXSwiZW52Ijp7IkRBU0hTQ09QRV9BUElfS0VZIjoiWU9VUl9EQVNIU0NPUEVfQVBJX0tFWSIsIlFXRU5fTU9ERUwiOiJxd2VuMy44LW9tbmktZmxhc2giLCJNRURJQV9BTExPV0VEX1JPT1RTIjoiQzpcXFVzZXJzXFznlKjmiLflkI1cXFZpZGVvcyJ9fQ==)
 
 ### Claude Code
 
 ```bash
-claude mcp add --env DASHSCOPE_API_KEY=YOUR_DASHSCOPE_API_KEY --env QWEN_MODEL=qwen3.8-omni-flash --env MEDIA_ALLOWED_ROOTS="C:\Users\用户名\Videos" --transport stdio analyze_video_mcp -- npx -y --prefer-offline analyze-video-mcp@1.0.0
+claude mcp add --env DASHSCOPE_API_KEY=YOUR_DASHSCOPE_API_KEY --env QWEN_MODEL=qwen3.8-omni-flash --env MEDIA_ALLOWED_ROOTS="C:\Users\用户名\Videos" --transport stdio media_analysis_mcp -- npx -y --prefer-offline media-analysis-mcp@2.0.0
 ```
 
 On native Windows, add `cmd /c` before `npx` if required by the host.
@@ -70,7 +70,7 @@ Use [`examples/mcp.codex.toml`](examples/mcp.codex.toml). Set `startup_timeout_s
 
 ```powershell
 codex mcp list
-codex mcp get analyze_video_mcp
+codex mcp get media_analysis_mcp
 ```
 
 ### VS Code
@@ -117,7 +117,7 @@ Internal upload URLs, credential-shaped tokens and local absolute paths are reda
 | `DASHSCOPE_BASE_URL`         | Default Beijing OpenAI-compatible endpoint. Key region must match.                                                                                                              |
 | `DASHSCOPE_UPLOAD_URL`       | Default Beijing temporary upload endpoint.                                                                                                                                      |
 
-Use `analyze-video-mcp --doctor --json` to inspect configuration, variable sources and obsolete names without printing the Key. A missing Key permits MCP initialization but analysis returns `CONFIG_MISSING`.
+Use `media-analysis-mcp --doctor --json` to inspect configuration, variable sources and obsolete names without printing the Key. A missing Key permits MCP initialization but analysis returns `CONFIG_MISSING`.
 
 ## Limits
 
@@ -164,13 +164,27 @@ Default tests are mocked and free. Live tests require explicit authorization and
 
 After remote Node 24 CI passes, pushing an authorized version tag matching `package.json` and `src/version.ts` runs [`release.yml`](.github/workflows/release.yml): package/install probes, npm Trusted Publishing (OIDC), then GitHub Release. No `NPM_TOKEN` is used. See [ADR 0014](docs/decisions/0014-npm-trusted-publishing.md).
 
-GitHub fallback after release:
+GitHub fallback:
 
 ```text
-npx -y --allow-git=all github:JaylanJerry/analyze-video-mcp#v1.0.0
+npx -y --allow-git=all github:JaylanJerry/media-analysis-mcp#v2.0.0
 ```
 
-npm 12 requires `--allow-git=all`. Do not use this tag until it exists.
+npm 12 requires `--allow-git=all`. Use the `v2.0.0` fallback only after its release is confirmed.
+
+## Name migration
+
+The product and MCP server are **Media Analysis MCP**. Version 2.0.0 renames the npm package and CLI to `media-analysis-mcp`, the example Host key to `media_analysis_mcp`, and the repository to `JaylanJerry/media-analysis-mcp`. `analyze_media(media, prompt)` and the media protocol remain unchanged.
+
+Existing `analyze-video-mcp@1.0.0` installations are not automatically upgraded to a different package. Replace the command/package and Host key using the examples above, remove the duplicate old Host entry, and restart the Host. This repository does not edit your installed Host configuration or global packages automatically.
+
+The default user config path becomes `~/.media-analysis-mcp/config.env`; the default upload cache directory becomes `media-analysis-mcp`. Move your own config file or use `--config` explicitly. Old implicit paths are not read, and the old upload cache is not automatically migrated; the first analysis after migration may upload again and incur normal provider charges. `DASHSCOPE_*`, `QWEN_MODEL`, `QWEN_UPLOAD_CACHE`, and `MEDIA_*` environment variables keep their existing meanings.
+
+Historical tags, published versions, ADRs, and archived reports keep their original names. See [ADR 0026](docs/decisions/0026-media-analysis-mcp-rename.md).
+
+## Repository maintenance
+
+Start with [DEVELOPMENT_HANDOFF.md](DEVELOPMENT_HANDOFF.md), the [current documentation index](docs/README.md) and [maintenance status](tasks/README.md). Historical specifications and completed work are indexed under [docs/archive](docs/archive/README.md) and [tasks/archive](tasks/archive/README.md). Archived plans describe their original dates and are not current implementation instructions.
 
 ## License
 

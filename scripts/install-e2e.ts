@@ -7,7 +7,7 @@ import { PACKAGE_VERSION } from "../src/version.js";
 function childEnv(): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) {
-    if (value !== undefined && key !== "DASHSCOPE_API_KEY") {
+    if (value !== undefined && key !== "DASHSCOPE_API_KEY" && key !== "QWEN_MCP_SERVER_NAME") {
       out[key] = value;
     }
   }
@@ -40,7 +40,10 @@ try {
       ? (schema.properties as Record<string, unknown> | undefined)
       : undefined;
   const keys = Object.keys(props ?? {}).sort();
+  const serverInfo = client.getServerVersion();
   const ok =
+    serverInfo?.name === "Media Analysis MCP" &&
+    serverInfo.version === PACKAGE_VERSION &&
     names.length === 1 &&
     names[0] === "analyze_media" &&
     keys.length === 2 &&
@@ -49,6 +52,7 @@ try {
   process.stdout.write(
     `${JSON.stringify({
       ok,
+      server: serverInfo,
       tool_count: names.length,
       tools: names,
       fields: keys,

@@ -1,32 +1,26 @@
-# Video MCP v1 文档索引
+# Media Analysis MCP 文档索引
 
-> **2026-09-26 正式发布更新：** `1.0.0` 已通过 Node 24 远程 CI 与 Secret Scan，并经 Trusted Publishing 发布；官方 npm 的 `latest` 为 `1.0.0`，registry 全新安装/stdio 握手与关键构建哈希核对通过。当前安装示例为 1.0.0 / MEDIA_*；下文旧日期状态仅为历史记录。完整证据见 [`tasks/release-1.0.0.md`](../tasks/release-1.0.0.md)。
+> **更名发布准备（2026-09-26）：** 当前工作区准备 `media-analysis-mcp@2.0.0`，展示名为 **Media Analysis MCP**，尚未发布。历史 `analyze-video-mcp@1.0.0` 已发布；下文 1.0.0 验收是原包的基线，不替代新包验收。进度见 [发布记录](../tasks/release-2.0.0.md)。
 
-> **2026-09-25 状态：** 本工作区分支已实现下一大版本单入口媒体网关 `analyze_media(media, prompt)`（本地 MP4/MOV/MP3 + 公开 HTTPS 视频），[`API_CONTRACT.md`](API_CONTRACT.md)、[`ARCHITECTURE.md`](ARCHITECTURE.md)、[`SECURITY.md`](SECURITY.md) 已同步为**本分支实现**；**npm 已发布的 `0.6.1` 仍是旧 `analyze_video` 契约**，安装示例与 `/tasks` 中的历史记录保持旧事实。MP3 真实服务商可用性仍未验证。目标规格见 [`SPEC_NEXT_MAJOR_MEDIA_GATEWAY.md`](SPEC_NEXT_MAJOR_MEDIA_GATEWAY.md) 与 [ADR 0024](decisions/0024-agent-directed-media-gateway.md)；实现证据见 [`../tasks/todo-next-major-media-gateway.md`](../tasks/todo-next-major-media-gateway.md)。
+当前正式版本：**1.0.0**，Node **24.x**，唯一工具 `analyze_media(media, prompt)`。正式发布证据见 [发布记录](../tasks/release-1.0.0.md)。
 
-| 文档                                                                   | 用途                                                                 |
-| ---------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| [`../DEVELOPMENT_HANDOFF.md`](../DEVELOPMENT_HANDOFF.md)               | 接手模型入口、接受范围与工作规则                                     |
-| [`SPEC.md`](SPEC.md)                                                   | v1 产品范围、约束、完成定义                                          |
-| [`SPEC_V2.md`](SPEC_V2.md)                                             | V2 完整情况规格（草稿，供通读）                                      |
-| [`SPEC_GENERAL.md`](SPEC_GENERAL.md)                                   | 通用方向对照表（已批准并实施）                                       |
-| [`SPEC_V05.md`](SPEC_V05.md)                                           | v0.5.0 工程收口（已发布）                                            |
-| [`SPEC_V052.md`](SPEC_V052.md)                                         | v0.5.2 上传缓存、模型 env、安装名                                    |
-| [`SPEC_V06.md`](SPEC_V06.md)                                           | v0.6 宿主稳定、证据门禁、安全默认                                    |
-| [`SPEC_V061.md`](SPEC_V061.md)                                         | v0.6.1 配置同源与审核证据热修                                        |
-| [`SPEC_V07.md`](SPEC_V07.md)                                           | v0.7 纯音频与交叉审核（尚未实施）                                    |
-| [`SPEC_NEXT_MAJOR_MEDIA_GATEWAY.md`](SPEC_NEXT_MAJOR_MEDIA_GATEWAY.md) | 下一大版本单入口媒体网关目标（本分支已实现，未发布）                 |
-| [`API_CONTRACT.md`](API_CONTRACT.md)                                   | 唯一 Agent Tool 的稳定契约（本分支：`analyze_media`；含旧→新迁移表） |
-| [`ARCHITECTURE.md`](ARCHITECTURE.md)                                   | 模块边界、数据流和资源所有权                                         |
-| [`PROVIDER_PROTOCOL.md`](PROVIDER_PROTOCOL.md)                         | DashScope policy、multipart、Omni、SSE                               |
-| [`SECURITY.md`](SECURITY.md)                                           | 本地文件授权、脱敏与残余风险                                         |
-| [`TESTING_AND_VERIFICATION.md`](TESTING_AND_VERIFICATION.md)           | 测试矩阵、真实基线和 Windows 验收                                    |
-| [`REVIEW_GATES.md`](REVIEW_GATES.md)                                   | 主审核者只需介入的四个关卡                                           |
-| [`../tasks/plan.md`](../tasks/plan.md)                                 | v1 阶段计划                                                          |
-| [`../tasks/todo.md`](../tasks/todo.md)                                 | v1 任务（已收尾）                                                    |
-| [`../tasks/plan-general.md`](../tasks/plan-general.md)                 | 通用方向实施计划                                                     |
-| [`../tasks/todo-general.md`](../tasks/todo-general.md)                 | 通用方向任务（已收尾）                                               |
-| [`../tasks/plan-v05.md`](../tasks/plan-v05.md)                         | v0.5.0 实施计划                                                      |
-| [`../tasks/todo-v05.md`](../tasks/todo-v05.md)                         | v0.5.0 任务                                                          |
+## 当前维护文档
 
-架构决策见 [`decisions`](decisions)。工作区 git 根见 [0006](decisions/0006-workspace-root-git.md)；实现提到仓库根见 [0011](decisions/0011-flatten-implementation-to-repo-root.md)；Gate 1 运行时见 [0007](decisions/0007-gate1-node24.md)；通用方向见 [0009](decisions/0009-general-host-config-and-1gib.md)；v0.5.0 收口见 [0012](decisions/0012-v050-runtime-and-hygiene.md)；v0.5.2 见 [0013](decisions/0013-upload-cache-and-host-server-name.md)；npm tag 发布见 [0014](decisions/0014-npm-trusted-publishing.md)；v0.6 见 [0015](decisions/0015-host-reliability-and-evidence-gate.md)；v0.6.1 见 [0016](decisions/0016-config-sources-and-evidence-audit.md)；示例 Host 键见 [0017](decisions/0017-host-config-key-analyze-video-mcp.md)。v1 / V2 / 安装 / v0.5.0 已收尾。默认安装钉 `analyze-video-mcp@0.6.1`。示例 Host 键 `analyze_video_mcp`。
+| 文档                                      | 用途                             |
+| ----------------------------------------- | -------------------------------- |
+| [开发交接](../DEVELOPMENT_HANDOFF.md)     | 接手顺序、当前基线与维护约定     |
+| [AGENTS.md](../AGENTS.md)                 | 安全与工程硬规则                 |
+| [媒体网关规格](SPEC_MEDIA_GATEWAY.md)     | 1.0 产品范围、非目标与验收标准   |
+| [API 契约](API_CONTRACT.md)               | Tool 输入输出、错误及旧版本迁移  |
+| [架构](ARCHITECTURE.md)                   | 模块边界、资源所有权与数据流     |
+| [Provider 协议](PROVIDER_PROTOCOL.md)     | 上传、Omni、SSE 与真实调用证据   |
+| [安全](SECURITY.md)                       | 授权、脱敏、缓存与残余风险       |
+| [测试与验证](TESTING_AND_VERIFICATION.md) | 免费门禁、安装验证与付费边界     |
+| [审核关卡](REVIEW_GATES.md)               | 规格、安全、宿主与发布检查       |
+| [当前任务](../tasks/README.md)            | 已完成状态、已接受限制与后续事项 |
+
+## 决策与历史
+
+[架构决策目录](decisions/) 保留完整 ADR；当前产品和运行时方向由 [0024](decisions/0024-agent-directed-media-gateway.md) 与 [0025](decisions/0025-next-major-node24-support.md) 确定。
+
+旧版规格、未采用提案和整理前快照见 [历史文档索引](archive/README.md)。已完成计划、审核和宿主验收见 [历史任务索引](../tasks/archive/README.md)。归档中的“未发布”“待验”等描述属于当时的状态。

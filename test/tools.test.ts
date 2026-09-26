@@ -38,7 +38,7 @@ const MISSING_LOCAL = join(tmpdir(), "missing-private.mp4");
 const baseCfg: AppConfig = {
   apiKey: SECRET_KEY,
   model: "qwen3.5-omni-flash",
-  serverName: "analyze-video-mcp",
+  serverName: "media-analysis-mcp",
   baseUrl: "https://dashscope.test/v1",
   uploadUrl: "https://dashscope.test/api/v1/uploads",
   allowedRoots: [],

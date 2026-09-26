@@ -52,7 +52,7 @@ function packedNames(tarball: string): string[] {
 function childEnv(): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) {
-    if (value !== undefined && key !== "DASHSCOPE_API_KEY") {
+    if (value !== undefined && key !== "DASHSCOPE_API_KEY" && key !== "QWEN_MCP_SERVER_NAME") {
       out[key] = value;
     }
   }
@@ -65,7 +65,7 @@ if (!existsSync(join(repoRoot, "dist/index.js"))) {
   process.exit(2);
 }
 
-const work = await mkdtemp(join(tmpdir(), "analyze-video-pack-"));
+const work = await mkdtemp(join(tmpdir(), "media-analysis-pack-"));
 try {
   runNpm(["pack", "--ignore-scripts", `--pack-destination=${work}`], repoRoot);
   const tarballName = readdirSync(work).find((name) => name.endsWith(".tgz"));
@@ -86,7 +86,7 @@ try {
   }
 
   runNpm(["install", "--omit=dev", "--ignore-scripts", tarball], work, "inherit");
-  const serverJs = join(work, "node_modules/analyze-video-mcp/dist/index.js");
+  const serverJs = join(work, "node_modules/media-analysis-mcp/dist/index.js");
   const sdk = join(work, "node_modules/@modelcontextprotocol/sdk/package.json");
   if (!existsSync(serverJs) || !existsSync(sdk)) {
     process.stderr.write("pack-install-e2e: installed package is missing dist or runtime SDK\n");
@@ -110,7 +110,10 @@ try {
         ? (schema.properties as Record<string, unknown> | undefined)
         : undefined;
     const keys = Object.keys(props ?? {}).sort();
+    const serverInfo = client.getServerVersion();
     const ok =
+      serverInfo?.name === "Media Analysis MCP" &&
+      serverInfo.version === PACKAGE_VERSION &&
       names.length === 1 &&
       names[0] === "analyze_media" &&
       keys.length === 2 &&
@@ -119,6 +122,7 @@ try {
     process.stdout.write(
       `${JSON.stringify({
         ok,
+        server: serverInfo,
         packed_files: files.length,
         tools: names,
         fields: keys,

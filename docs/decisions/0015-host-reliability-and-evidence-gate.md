@@ -11,7 +11,7 @@ v0.5.2 的上传、SSE 与脱敏已经能跑通：`npx → initialize → tools/
 2. 证据约束只拼在 user 文本里。`qwen3.5-omni-flash` 仍把视觉先验写成事实，并把「可能存在」写进实测声音。
 3. 未设 `QWEN_ALLOWED_ROOTS` 时任意绝对 MP4 可上传；进程内上传缓存随 MCP 重启丢失；Agent 只能看到「视频分析失败。」
 
-批准 [`SPEC_V06.md`](../SPEC_V06.md)。
+批准 [`SPEC_V06.md`](../archive/specs/SPEC_V06.md)。
 
 ## Decision
 

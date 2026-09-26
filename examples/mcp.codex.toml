@@ -1,13 +1,13 @@
-# Published 1.0.0. Requires Node 24.x.
+# 2.0.0 release candidate (not published yet). Requires Node 24.x.
 # Tool: analyze_media(media, prompt). Old authorization variables grant nothing.
 
-[mcp_servers.analyze_video_mcp]
+[mcp_servers.media_analysis_mcp]
 command = "cmd"
-args = ["/c", "npx", "--prefer-offline", "-y", "analyze-video-mcp@1.0.0"]
+args = ["/c", "npx", "--prefer-offline", "-y", "media-analysis-mcp@2.0.0"]
 startup_timeout_sec = 120
 tool_timeout_sec = 1200
 
-[mcp_servers.analyze_video_mcp.env]
+[mcp_servers.media_analysis_mcp.env]
 DASHSCOPE_API_KEY = "YOUR_DASHSCOPE_API_KEY"
 QWEN_MODEL = "qwen3.8-omni-flash"
 MEDIA_ALLOWED_ROOTS = "C:\\Users\\用户名\\Videos"
@@ -26,10 +26,10 @@ MEDIA_ALLOWED_ROOTS = "C:\\Users\\用户名\\Videos"
 # user explicitly asks for MCP analysis. That is prompt-level guidance, not enforcement —
 # keep the switch above off unless you accept any local path being uploadable.
 
-# Unix / macOS: command = "npx", args = ["--prefer-offline", "-y", "analyze-video-mcp@1.0.0"]
+# Unix / macOS: command = "npx", args = ["--prefer-offline", "-y", "media-analysis-mcp@2.0.0"]
 # After adding the server, start a new Codex thread. Old threads may not remount tools.
-# Verify: codex mcp list   then   codex mcp get analyze_video_mcp
+# Verify: codex mcp list   then   codex mcp get media_analysis_mcp
 # Codex may not inherit user/system env; keep DASHSCOPE_API_KEY in this env table.
-# Fallback: analyze-video-mcp --config C:\\path\\to\\config.env
-# --prefer-offline only reduces registry lookups. For a stable install, npm i -g analyze-video-mcp@1.0.0
+# Fallback: media-analysis-mcp --config C:\\path\\to\\config.env
+# --prefer-offline only reduces registry lookups. For a stable install, npm i -g media-analysis-mcp@2.0.0
 # and point command at the local binary or dist/index.js.

@@ -1,6 +1,6 @@
 # DashScope 上传与 Qwen Provider 协议
 
-> **下一大版本分支（未发布）变更：** 本文件既记录仍有效的传输协议，也保留旧报告层的历史实测。当前代码（`analyze_media`）的推理请求见下方 [§3 推理请求](#3-推理请求) 与新增的 [§3b 音频输入](#3b-音频输入input_audio)；`EVIDENCE_POLICY` 系统提示、证据 JSON 门禁、纠错二次请求与 FFmpeg 数字静音核对**已从代码移除**，相关小节仅作历史记录，不代表当前行为。
+> **当前 1.0.0（已发布）：** 本文件既记录仍有效的传输协议，也保留旧报告层的历史实测。当前代码（`analyze_media`）的推理请求见下方 [§3 推理请求](#3-推理请求) 与新增的 [§3b 音频输入](#3b-音频输入input_audio)；`EVIDENCE_POLICY` 系统提示、证据 JSON 门禁、纠错二次请求与 FFmpeg 数字静音核对**已从代码移除**，相关小节仅作历史记录，不代表当前行为。
 
 本文件是实现协议的单一参考。官方文档可能变化；若 live 结果与本文冲突，保存脱敏证据并在 Gate 停下，不要静默兼容。
 
@@ -203,7 +203,7 @@ X-DashScope-OssResourceResolve: enable   # 仅 oss:// 输入需要
 
 **实测用量规模（2026-09-25，`qwen3.8-omni-flash`）：** 9 秒音频 ≈ 0.2k prompt tokens；317 秒音频 ≈ 2.3k；317 秒视频 ≈ 17.4 万；1455 秒视频 ≈ 16.7 万（视频帧与音频都计入，按抽样而非线性增长），1455 秒那次 10,400 个 SSE 事件、端到端 432 秒。工具按设计不提供费用或预算旋钮，长媒体的费用与宿主超时需安装者自行评估。
 
-**仍未验证：** `MEDIA_MODEL_UNSUPPORTED` 的服务商真实错误码措辞（allowlist 目前只有 mock 证据）；Codex 新会话手动拖入与 Codex 宿主 MOV/MP3 调用；费用金额（按服务商计费，本项目不记录账单）。Codex 当前任务已用公开 MP4 夹具、ZCode 宿主会话已用同码流 MOV 与本节这份 72,559 B MP3 各完成过真实 `analyze_media` 调用，见 [`../tasks/todo-next-major-media-gateway.md`](../tasks/todo-next-major-media-gateway.md) D4；这些都不能推定 Codex 侧路径已验收。
+**当前验收边界（2026-09-26）：** `MEDIA_MODEL_UNSUPPORTED` 的真实服务商措辞仍只有 mock 固定，费用金额尚未对账。Codex 当前任务、重启后新进程及 Luna 新任务的 MOV/MP3 调用已有成功证据；手动拖入已验证路径转换与 Tool 选择，部分样本成功、另一份上传失败原因未知。长答案交付指引的 GUI 回归仍需独立证据。详细分项见 [Codex 验收记录](../tasks/archive/1.0/codex-acceptance-20260926.md)；不由样本匹配推定模型内部模态路径。
 
 **模型能力实测（2026-09-25，同一 MP3 样本，3 次调用）：**
 
@@ -292,7 +292,7 @@ received_sse_events
 - 本轮先以 mocked MCP 成功出口验证了含空格 Windows 路径脱敏、普通 HTTPS 保留、声音正文与 `heard` 分项不一致时的本地清理，以及“不确认听到”不触发第二次计费。轻量轨道探测现在区分已发现、完整检查后未发现、未能完成检查三种状态；未知状态不会被写成无音轨。以上仍不是音频语义准确性的证明；修复版 GUI/live MCP 出口待安装后验证。
 - 同轮安装检查发现 `--doctor` 在 Windows 默认配置回退下长时间无输出。原因是每次查找都为五个候选字段分别启动 PowerShell，而诊断会重复查找。现在一次批量读取 Windows 用户环境变量，15 秒内复用结果；仍只返回配置来源与布尔状态，不记录或输出变量值。主仓库构建的默认 `--doctor --json` 已返回并通过单 Tool 内存握手。
 - 安装包端到端验收：已从主仓库构建并打包为独立本地 tarball，替换旧全局安装；全局 `--doctor --json` 返回 `ok=true`，真实 stdio 客户端只列出 `analyze_video`。公开 3 秒声画夹具经全局安装包调用一次（约 22 秒），`qwen3.8-omni-flash` 返回 `video_observed=true`、`audio_observed=true`，文本命中预设画面数字 24 与语音数字 3.1415926。仅输出上述脱敏摘要；该控制样本不能证明用户原片的音乐识别准确。
-- 用户重启 Codex 后，新会话 Tool 列表包含 `mcp__analyze_video_mcp__analyze_video`，并用它对《山姆·奥特曼大战达里奥.mp4》发起完整 MCP 调用。返回 `ok=true`、`model=qwen3.8-omni-flash`、本地 MP4/H.264/AAC 轨道事实、`video_observed=true`；画面时间线给出 19 条 `seen`。声音部分 `audio_analyzed=true` 但 `audio_observed=false`，三个音频分项均为 `uncertain`，主文本明确说不能证实音乐，也不能断言静音。与用户已确认“有一首背景歌”的真值相比，原片音频漏报仍存在；安装、挂载和脱敏说明的改进没有解决默认模型的这项语义失败。输出还附加“回答正文含有未获 heard 分项支持的确定性声音结论”提示，但正文主要是在否定音频可确认性，提示可能由词句规则误触发，需用脱敏样例单独复核，不据此宣称模型曾肯定报告声音。
+- 用户重启 Codex 后，新会话 Tool 列表包含 `mcp__media_analysis_mcp__analyze_video`，并用它对《山姆·奥特曼大战达里奥.mp4》发起完整 MCP 调用。返回 `ok=true`、`model=qwen3.8-omni-flash`、本地 MP4/H.264/AAC 轨道事实、`video_observed=true`；画面时间线给出 19 条 `seen`。声音部分 `audio_analyzed=true` 但 `audio_observed=false`，三个音频分项均为 `uncertain`，主文本明确说不能证实音乐，也不能断言静音。与用户已确认“有一首背景歌”的真值相比，原片音频漏报仍存在；安装、挂载和脱敏说明的改进没有解决默认模型的这项语义失败。输出还附加“回答正文含有未获 heard 分项支持的确定性声音结论”提示，但正文主要是在否定音频可确认性，提示可能由词句规则误触发，需用脱敏样例单独复核，不据此宣称模型曾肯定报告声音。
 - 同日继续对照：用安装包和相同原片设置 `QWEN_MODEL=qwen3.5-omni-plus`，一次完整 MCP 调用约 31 秒，返回 `video_observed=true`、`audio_observed=true`、六条 `heard`，其中持续电子舞曲/歌曲判断与用户确认有背景歌一致。另从 20–30 秒截取原音并复制 AAC 码流、将画面替换为纯黑色，得到 10.08 秒诊断片段；qwen3.5 在这段黑画面原音中仍报告背景音乐与歌唱、无清晰对白，`audio_observed=true`。这增强了“qwen3.5 确实利用音轨判断音乐”的证据，但全片回答对是否有歌声与该片段不一致，完整片中若干动作音效也未独立核听，不能将所有 `heard` 当成真值。诊断片段已移入回收站，未加入仓库。用户确认只对其 Codex 安装设置 `QWEN_MODEL=qwen3.5-omni-plus`；公开默认仍是 `qwen3.8-omni-flash`，不引入自动二次付费调用。此前“不能证实存在背景音乐或歌曲”被声音正文关键词门误判的脱敏样例已加入回归测试并修正；这只是输出一致性修复，不提升模型听音能力。
 
 ## 8. 2026-09-25 N1 文案修复与合成声音真值集
@@ -307,6 +307,6 @@ received_sse_events
 
 ## 2026-09-25 现有 Tool 的可选数字静音核对
 
-> **历史记录：** 该可选 FFmpeg 数字静音核对已在下一大版本移除，`QWEN_AUDIO_SILENCE_CHECK` 不再生效，代码与 `src/audio-silence.ts` 已删除。本节与 [`tasks/analyze-video-optional-silence-measurement-proposal-20260925.md`](../tasks/analyze-video-optional-silence-measurement-proposal-20260925.md) 仅作证据留存。
+> **历史记录：** 该可选 FFmpeg 数字静音核对已在下一大版本移除，`QWEN_AUDIO_SILENCE_CHECK` 不再生效，代码与 `src/audio-silence.ts` 已删除。本节与 [`tasks/archive/pre-1.0/analyze-video-optional-silence-measurement-proposal-20260925.md`](../tasks/archive/pre-1.0/analyze-video-optional-silence-measurement-proposal-20260925.md) 仅作证据留存。
 
 [ADR 0022](decisions/0022-analyze-video-optional-silence-check.md) 已单独批准并接入现有 `analyze_video` 的默认关闭开关 `QWEN_AUDIO_SILENCE_CHECK=off|on`。启用时只对授权本地文件使用现存只读 FileHandle fd 做一次 FFmpeg 全音轨统计；不改变模型、请求数、schema 或大小/时长上限。完整 PCM 全零与模型 `heard` 冲突时降级声音 observation 并保留可读视觉结果。非零信号不是可听内容真值；不判断歌曲或歌声。失败/缺 FFmpeg/不支持参数 fail-soft，用户取消 fail-stop。该实现目前只在 Windows Node 24 + FFmpeg 8.1.1 的本地合成 fixture 上验证，没有跨平台/版本矩阵结论，不包含私人媒体或付费 live。

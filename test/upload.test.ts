@@ -56,7 +56,7 @@ function cfg(overrides: Partial<AppConfig> = {}): AppConfig {
   return {
     apiKey: "sk-test",
     model: "qwen3.5-omni-flash",
-    serverName: "analyze-video-mcp",
+    serverName: "media-analysis-mcp",
     baseUrl: "https://dashscope.test/v1",
     uploadUrl: POLICY_URL,
     allowedRoots: [],

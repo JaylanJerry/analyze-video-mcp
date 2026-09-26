@@ -9,7 +9,7 @@ import { MediaError } from "../src/errors.js";
 const cfg: AppConfig = {
   apiKey: "sk-test",
   model: "qwen3.8-max",
-  serverName: "analyze-video-mcp",
+  serverName: "media-analysis-mcp",
   baseUrl: "https://dashscope.test/v1",
   uploadUrl: "https://dashscope.test/api/v1/uploads",
   allowedRoots: [],
