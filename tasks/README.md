@@ -32,3 +32,7 @@
 - 本机旧 0.6.1 包移入 `artifacts/archive/`；保留 1.0.0 发布包、研究脚本、合成夹具和 25 份 ADR。
 - 验证：32 份归档正文一致（忽略归档提示、引用路径及格式变化）；82 份 Markdown 的相对文件链接无缺失；五项免费质量门通过，304 passed / 1 skipped；打包预检仍为 38 项，归档及私人内容未进入 npm 包，既有发布包哈希不变。
 - 本轮仅整理工作区，没有提交、推送或再次发布，也没有新付费请求。
+
+## 2.0.0 更名发布状态
+
+当前名称统一为 **Media Analysis MCP**；新 npm/CLI/仓库为 `media-analysis-mcp`，宿主示例键为 `media_analysis_mcp`，Tool 仍为 `analyze_media`。完整更名与整理已经提交 `b39f6f2`，Node 24 远程 CI/Secret Scan 全通过，PR #42 已合并。新 npm 包尚未发布，等待 npm 登录与首次发布；不能用仓库更名代替正式 npm 发布。详细记录见 [2.0.0 发布状态](release-2.0.0.md)。
