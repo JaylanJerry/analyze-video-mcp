@@ -1,6 +1,6 @@
 # 下一大版本规格：Agent 主导的媒体分析网关
 
-> **2026-09-26 发布准备更新：** 当前候选版本为 `1.0.0`（Node 24.x），已获用户授权提交、推送和 npm 发布；远程 CI 与 npm 发布尚未完成。当前安装示例已迁移，发布状态以 [`tasks/release-1.0.0.md`](../tasks/release-1.0.0.md) 为准；下文旧日期状态保留为历史记录。
+> **2026-09-26 正式发布更新：** `1.0.0` 已通过 Node 24 远程 CI 与 Secret Scan，并经 Trusted Publishing 发布；官方 npm 的 `latest` 为 `1.0.0`，registry 全新安装/stdio 握手与关键构建哈希核对通过。当前安装示例为 1.0.0 / MEDIA_*；下文旧日期状态仅为历史记录。完整证据见 [`tasks/release-1.0.0.md`](../tasks/release-1.0.0.md)。
 
 状态：**产品方向已获用户确认，当前工作区分支已按本规格实现核心路径并**本地提交**（未推送、未发布；提交见 `git log`）。** 目标为下一破坏性大版本，版本号在发布准备时确定。工作区实现与尚未完成的验收见 [`API_CONTRACT.md`](API_CONTRACT.md) 和 [`../tasks/todo-next-major-media-gateway.md`](../tasks/todo-next-major-media-gateway.md)；npm 已发布的 `0.6.1` 仍提供旧 Tool。架构取舍见 [ADR 0024](decisions/0024-agent-directed-media-gateway.md)，实施顺序见 [`../tasks/plan-next-major-media-gateway.md`](../tasks/plan-next-major-media-gateway.md)。
 

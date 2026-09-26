@@ -1,6 +1,6 @@
 # Video MCP v1 文档索引
 
-> **2026-09-26 发布准备更新：** 当前候选版本为 `1.0.0`（Node 24.x），已获用户授权提交、推送和 npm 发布；远程 CI 与 npm 发布尚未完成。当前安装示例已迁移，发布状态以 [`tasks/release-1.0.0.md`](../tasks/release-1.0.0.md) 为准；下文旧日期状态保留为历史记录。
+> **2026-09-26 正式发布更新：** `1.0.0` 已通过 Node 24 远程 CI 与 Secret Scan，并经 Trusted Publishing 发布；官方 npm 的 `latest` 为 `1.0.0`，registry 全新安装/stdio 握手与关键构建哈希核对通过。当前安装示例为 1.0.0 / MEDIA_*；下文旧日期状态仅为历史记录。完整证据见 [`tasks/release-1.0.0.md`](../tasks/release-1.0.0.md)。
 
 > **2026-09-25 状态：** 本工作区分支已实现下一大版本单入口媒体网关 `analyze_media(media, prompt)`（本地 MP4/MOV/MP3 + 公开 HTTPS 视频），[`API_CONTRACT.md`](API_CONTRACT.md)、[`ARCHITECTURE.md`](ARCHITECTURE.md)、[`SECURITY.md`](SECURITY.md) 已同步为**本分支实现**；**npm 已发布的 `0.6.1` 仍是旧 `analyze_video` 契约**，安装示例与 `/tasks` 中的历史记录保持旧事实。MP3 真实服务商可用性仍未验证。目标规格见 [`SPEC_NEXT_MAJOR_MEDIA_GATEWAY.md`](SPEC_NEXT_MAJOR_MEDIA_GATEWAY.md) 与 [ADR 0024](decisions/0024-agent-directed-media-gateway.md)；实现证据见 [`../tasks/todo-next-major-media-gateway.md`](../tasks/todo-next-major-media-gateway.md)。
 

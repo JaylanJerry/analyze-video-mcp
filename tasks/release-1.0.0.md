@@ -34,3 +34,17 @@
 - 新增假的 MCP 服务协议测试（视频/音频两种验收模式），验证实际 JSON-RPC 参数与结果读取，零上传、零服务商费用。
 
 补修后本地门禁通过：304 passed + 1 skipped（19 文件）；typecheck / lint / format / coverage / build 全过，生产覆盖率未变。
+
+## 正式发布结果（覆盖上方过程记录）
+
+- 发布提交：`d6e662a03039b3e95752a18f5c71c4b019eef04a`；标签：`v1.0.0`，未移动任何旧 tag。
+- [Node 24 CI 36226291055](https://github.com/JaylanJerry/analyze-video-mcp/actions/runs/36226291055) 全部通过，包括 required-ci、Linux/Windows 测试、覆盖率、静态检查、构建、生产 audit、独立安装/打包安装、macOS smoke 和 GitHub npx 冷安装。
+- [PR Secret Scan 36226291077](https://github.com/JaylanJerry/analyze-video-mcp/actions/runs/36226291077) 通过。
+- [Release 36226667301](https://github.com/JaylanJerry/analyze-video-mcp/actions/runs/36226667301) 通过；npm Trusted Publishing 生成来源证明并成功发布；GitHub Release：[v1.0.0](https://github.com/JaylanJerry/analyze-video-mcp/releases/tag/v1.0.0)。
+- 官方 `https://registry.npmjs.org` 已确认 version=1.0.0、latest=1.0.0、engines.node=24.x。发布后短暂 E404 属 npm 日志明确提示的处理阶段，随后已可查询与安装。
+- 官方 registry 全新临时安装与 MCP initialize/listTools 通过：版本1.0.0、唯一工具analyze_media、字段media/prompt；server/sanitize/media/upload/version 的发布 dist SHA-256 与本地测试构建全部一致。没有传入媒体，没有付费调用。
+- 发布包完整性与本地 tarball 一致：`sha512-q+4cr5pWWkMRJluV1zFVv+dgh7KPF71fCCg84AfyPrpNEcompeE9fIbXeJqTdEJeVQpKyE9xvXSQiHs5GJAWWA==`。
+- 本地可交付包：`artifacts/analyze-video-mcp-1.0.0.tgz`，38 entries，69,386 bytes；SHA-256：`2cd98a1bb2a170f72364f112b8f7dc2cba86f02853dda781c98cdf897110a437`。未包含私人媒体、.env 或密钥文件。
+- 用户另行授权合并 PR #39 到 main。正式发布说明提交后重新通过 PR 门禁再合并；不重新发布已存在的 npm 1.0.0。
+
+已接受的缓存中段陈旧内容、未知时长放行和模型回答可靠性界限保持不变。SSE 提前退出清理与极窄取消竞态可列未来健壮性工作，当前没有证据充分的新发布阻塞。

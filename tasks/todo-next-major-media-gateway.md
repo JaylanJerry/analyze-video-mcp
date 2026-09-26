@@ -1,5 +1,7 @@
 # 下一大版本媒体网关任务清单
 
+> **2026-09-26 发布收尾：** 1.0.0 已发布至官方 npm（latest），Node 24 CI / Secret Scan / registry 安装握手均通过；发布提交为 d6e662a，标签 v1.0.0。旧日期的“未发布/待验”状态保留为历史，当前事实与残余限制见 [release-1.0.0.md](release-1.0.0.md)。PR #39 合并已获用户授权，尚待执行。
+
 **运行时策略更新（2026-09-26，用户批准）：** 下一大版本只正式支持 Node 24.x，其他 Node 主版本暂不承诺；不人为阻断其它版本启动。Node 22 不再是新版本验收或发布门，也不代表 Node 22 有缺陷；已发布 npm `0.6.1` 继续保留历史 `>=22` 声明。所有阻塞 CI、发布、安装及 smoke 验收现已统一为 Node 24；Node 24 远程 CI 仍待运行。下方 Node 22 验收记录属于当时状态，不再是当前任务。
 
 本策略修改已在 Windows Node `v24.18.0` 上通过 typecheck、lint、format:check、npm test（302 passed / 1 skipped）、build 与独立打包安装/stdio smoke。远程 Node 24 CI 仍为发布门，尚未运行。

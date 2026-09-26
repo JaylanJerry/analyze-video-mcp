@@ -1,6 +1,6 @@
 # 本地媒体安全边界
 
-> **2026-09-26 发布准备更新：** 当前候选版本为 `1.0.0`（Node 24.x），已获用户授权提交、推送和 npm 发布；远程 CI 与 npm 发布尚未完成。当前安装示例已迁移，发布状态以 [`tasks/release-1.0.0.md`](../tasks/release-1.0.0.md) 为准；下文旧日期状态保留为历史记录。
+> **2026-09-26 正式发布更新：** `1.0.0` 已通过 Node 24 远程 CI 与 Secret Scan，并经 Trusted Publishing 发布；官方 npm 的 `latest` 为 `1.0.0`，registry 全新安装/stdio 握手与关键构建哈希核对通过。当前安装示例为 1.0.0 / MEDIA_*；下文旧日期状态仅为历史记录。完整证据见 [`tasks/release-1.0.0.md`](../tasks/release-1.0.0.md)。
 
 > 本文件描述本工作区**已实现但尚未发布**的 `analyze_media(media, prompt)` 版本（下一大版本分支）。旧 `analyze_video` 授权变量不再生效，见下方迁移说明。
 

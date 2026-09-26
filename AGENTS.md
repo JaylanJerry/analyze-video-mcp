@@ -1,6 +1,6 @@
 # AGENTS.md — Rules for AI agents working on this repo
 
-> **2026-09-26 发布准备更新：** 当前候选版本为 `1.0.0`（Node 24.x），已获用户授权提交、推送和 npm 发布；远程 CI 与 npm 发布尚未完成。当前安装示例已迁移，发布状态以 [`tasks/release-1.0.0.md`](tasks/release-1.0.0.md) 为准；下文旧日期状态保留为历史记录。
+> **2026-09-26 正式发布更新：** `1.0.0` 已通过 Node 24 远程 CI 与 Secret Scan，并经 Trusted Publishing 发布；官方 npm 的 `latest` 为 `1.0.0`，registry 全新安装/stdio 握手与关键构建哈希核对通过。当前安装示例为 1.0.0 / MEDIA_*；下文旧日期状态仅为历史记录。完整证据见 [`tasks/release-1.0.0.md`](tasks/release-1.0.0.md)。
 
 Hard rules. Follow exactly. These exist to keep agents from shipping broken or leaky code.
 
@@ -32,14 +32,14 @@ npm test            # vitest, unit + mocked e2e (live tests auto-skip without LI
 npm run build       # tsc -p tsconfig.build.json -> dist/
 ```
 
-The unreleased next-major branch formally supports Node 24.x only; its blocking CI, release, install and smoke workflows run on Node 24. Remote Node 24 CI remains to be run. The published npm `0.6.1` keeps its historical Node `>=22` declaration. Local green ≠ CI green if you skip a step.
+Version 1.0.0 formally supports Node 24.x only; its blocking CI, release, install and smoke workflows run on Node 24. Node 24 remote CI passed for release commit d6e662a; rerun it for future changes. The published npm `0.6.1` keeps its historical Node `>=22` declaration. Local green ≠ CI green if you skip a step.
 
 ## Scope
 
-- **下一大版本状态（2026-09-25 起）：** 本工作区分支**已按** [`docs/SPEC_NEXT_MAJOR_MEDIA_GATEWAY.md`](docs/SPEC_NEXT_MAJOR_MEDIA_GATEWAY.md) 与 [ADR 0024](docs/decisions/0024-agent-directed-media-gateway.md) 实现单入口 `analyze_media(media, prompt)`：本地 MP4/MOV/MP3 + 公开 HTTPS 视频，服务端不再补写提纲、不再强制证据 JSON、不再自动二次请求，本地授权改用 `MEDIA_ALLOWED_ROOTS` / `MEDIA_ALLOW_ANY_LOCAL_FILE`；旧报告层（`src/evidence.ts`）、可选 FFmpeg 静音核对（`src/audio-silence.ts`）与 `analyze_video` 已删除。**这一切尚未发布**：npm 上的 `analyze-video-mcp@0.6.1` 仍是 `analyze_video(video, question?)` + `QWEN_*` 授权变量。文档、示例与用户说明必须区分这两套事实，不得把新 Tool 写成已发布。其它密钥、安全、验证、依赖、付费与发布门禁仍适用。
-- 下一大版本的未验证项与验收状态见 [`tasks/todo-next-major-media-gateway.md`](tasks/todo-next-major-media-gateway.md) 与 [`tasks/deepseek-next-major-handoff.md`](tasks/deepseek-next-major-handoff.md)。**MP3 的真实服务商可用性仍是未验证假设**（仅有 mock 协议固定），不得据此通过验收或发布门。
-- v1 任务在 `tasks/todo.md`，已收尾。v0.5.0 已发布（[`docs/SPEC_V05.md`](docs/SPEC_V05.md)）。v0.5.2 见 [`docs/SPEC_V052.md`](docs/SPEC_V052.md)。v0.6 见 [`docs/SPEC_V06.md`](docs/SPEC_V06.md)。v0.6.1 见 [`docs/SPEC_V061.md`](docs/SPEC_V061.md)。默认安装钉 `npx -y --prefer-offline analyze-video-mcp@0.6.1`；GitHub 回退钉 `#v0.5.0`，npm 12 需 `--allow-git=all`。
-- 已发布的 `0.6.1` 不改变 `analyze_video` 的名称与字段；本分支的下一大版本按 ADR 0024 改为 `analyze_media(media, prompt)`，两者不得长期并列保留。默认值与本地上限只有在规格批准后才能改。
+- **下一大版本状态（2026-09-25 起）：** 本工作区分支**已按** [`docs/SPEC_NEXT_MAJOR_MEDIA_GATEWAY.md`](docs/SPEC_NEXT_MAJOR_MEDIA_GATEWAY.md) 与 [ADR 0024](docs/decisions/0024-agent-directed-media-gateway.md) 实现单入口 `analyze_media(media, prompt)`：本地 MP4/MOV/MP3 + 公开 HTTPS 视频，服务端不再补写提纲、不再强制证据 JSON、不再自动二次请求，本地授权改用 `MEDIA_ALLOWED_ROOTS` / `MEDIA_ALLOW_ANY_LOCAL_FILE`；旧报告层（`src/evidence.ts`）、可选 FFmpeg 静音核对（`src/audio-silence.ts`）与 `analyze_video` 已删除。**1.0.0 已正式发布**；历史 npm `analyze-video-mcp@0.6.1` 是 `analyze_video(video, question?)` + `QWEN_*` 授权变量。当前安装指向 1.0.0，必须保留旧版本迁移说明。其它密钥、安全、验证、依赖、付费与发布门禁仍适用。
+- 下一大版本的未验证项与验收状态见 [`tasks/todo-next-major-media-gateway.md`](tasks/todo-next-major-media-gateway.md) 与 [`tasks/deepseek-next-major-handoff.md`](tasks/deepseek-next-major-handoff.md)。**MP3 已有真实百炼与宿主夹具调用证据**，详见验收报告；不外推跨模型可用性或模型内部模态路径。
+- v1 任务在 `tasks/todo.md`，已收尾。v0.5.0 已发布（[`docs/SPEC_V05.md`](docs/SPEC_V05.md)）。v0.5.2 见 [`docs/SPEC_V052.md`](docs/SPEC_V052.md)。v0.6 见 [`docs/SPEC_V06.md`](docs/SPEC_V06.md)。v0.6.1 见 [`docs/SPEC_V061.md`](docs/SPEC_V061.md)。当前安装钉 `npx -y --prefer-offline analyze-video-mcp@1.0.0`；GitHub 回退钉 `#v1.0.0`，npm 12 需 `--allow-git=all`。
+- 已发布的 `0.6.1` 不改变 `analyze_video` 的名称与字段；1.0.0 按 ADR 0024 改为 `analyze_media(media, prompt)`，两者不得长期并列保留。默认值与本地上限只有在规格批准后才能改。
 - 不增加生产依赖。不要从本机主动推送或 `npm publish`，除非用户明确要求。已授权的 `v*` tag 由 [`release.yml`](.github/workflows/release.yml) 用 npm Trusted Publishing 发布（见 [ADR 0014](docs/decisions/0014-npm-trusted-publishing.md)）。不要添加 `NPM_TOKEN` secret。
 - 私人 live fixture 留在 `text/`，不要复制进仓库。CI Live Smoke 用 `test/fixtures/live-av.mp4`。
 - 付费 live test 只有用户明确授权且已注入 `DASHSCOPE_API_KEY` 后才能跑。
@@ -55,7 +55,7 @@ The unreleased next-major branch formally supports Node 24.x only; its blocking 
 
 ## Tool surface
 
-This specialized fork exposes exactly one MCP tool. On this branch (next major, **unreleased**) it is `analyze_media(media, prompt)` with `prompt` required; the published `0.6.1` still exposes `analyze_video(video, question?)`. See ADR 0001, ADR 0009, ADR 0024, and `docs/API_CONTRACT.md`. Do not restore the upstream five-tool surface, do not keep both names as permanent aliases, and do not add `max_tokens`, `thinking_budget`, `video_url`, provider, or model fields to the public schema.
+This specialized fork exposes exactly one MCP tool. In released 1.0.0 it is `analyze_media(media, prompt)` with `prompt` required; the published `0.6.1` still exposes `analyze_video(video, question?)`. See ADR 0001, ADR 0009, ADR 0024, and `docs/API_CONTRACT.md`. Do not restore the upstream five-tool surface, do not keep both names as permanent aliases, and do not add `max_tokens`, `thinking_budget`, `video_url`, provider, or model fields to the public schema.
 
 Agent-facing errors must stay redacted. There are tests asserting no key, path, or `oss://` leaks — keep them passing.
 

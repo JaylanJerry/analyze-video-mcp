@@ -1,5 +1,7 @@
 # 下一大版本媒体网关重构计划
 
+> **2026-09-26 发布收尾：** 1.0.0 已发布至官方 npm（latest），Node 24 CI / Secret Scan / registry 安装握手均通过；发布提交为 d6e662a，标签 v1.0.0。旧日期的“未发布/待验”状态保留为历史，当前事实与残余限制见 [release-1.0.0.md](release-1.0.0.md)。PR #39 合并已获用户授权，尚待执行。
+
 状态：**实施计划已在当前工作区分支执行；阶段完成与剩余验收以任务清单为准，尚未发布。** 产品方向由用户确认，完整契约以 [`../docs/SPEC_NEXT_MAJOR_MEDIA_GATEWAY.md`](../docs/SPEC_NEXT_MAJOR_MEDIA_GATEWAY.md) 和 [ADR 0024](../docs/decisions/0024-agent-directed-media-gateway.md) 为准。具体小任务与证据见 [`todo-next-major-media-gateway.md`](todo-next-major-media-gateway.md)。本文件不改写历史 `plan.md` 与 v0.7 记录。
 
 ## 当前基线与先决事实

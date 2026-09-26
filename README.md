@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/github/license/JaylanJerry/analyze-video-mcp)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-24.x-339933)](https://nodejs.org)
 
-> **1.0.0 media gateway:** installation below requires this version to be available on npm. Publication and remote CI are tracked in [`tasks/release-1.0.0.md`](tasks/release-1.0.0.md). The previously published `0.6.1` exposes `analyze_video(video, question?)`; it retains its original Node `>=22` metadata.
+> **1.0.0 media gateway is published:** Node 24 remote CI, Secret Scan and a fresh registry install/handshake passed. Release evidence is tracked in [`tasks/release-1.0.0.md`](tasks/release-1.0.0.md). The previously published `0.6.1` exposes `analyze_video(video, question?)`; it retains its original Node `>=22` metadata.
 
 MCP media gateway for local agents: submit an MP4/MOV video, MP3 audio, or public HTTPS video URL, and ask the media model a question. The Agent decides what to ask and how to present the answer.
 

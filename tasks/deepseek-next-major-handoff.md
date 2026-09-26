@@ -1,5 +1,7 @@
 # DeepSeek 接手：下一大版本媒体网关
 
+> **2026-09-26 发布收尾：** 1.0.0 已发布至官方 npm（latest），Node 24 CI / Secret Scan / registry 安装握手均通过；发布提交为 d6e662a，标签 v1.0.0。旧日期的“未发布/待验”状态保留为历史，当前事实与残余限制见 [release-1.0.0.md](release-1.0.0.md)。PR #39 合并已获用户授权，尚待执行。
+
 **当前运行时决策（2026-09-26，用户批准，见 [ADR 0025](../docs/decisions/0025-next-major-node24-support.md)）：** 下一大版本只正式支持 Node 24.x；其它主版本暂不承诺，不添加启动硬阻断。已发布 npm `0.6.1` 的 `>=22` 声明是历史版本事实。Node 22 不再是发布门；Node 24 远程 CI 仍待运行。按此策略核对清单，不重复执行 Node 22 测试。
 
 状态：**A/B/C/D1/D2/D3 已在工作区分支实现并通过本地门禁（2026-09-25，Node 24）；A-P 与 D4 的服务商格式矩阵已获授权并完成真实验证；Codex 当前任务的 MP4 MCP 调用与 ZCode GUI 新会话的拖入 MOV/MP3 调用均已通过；同一会话还记录了 ADR 0023 之后内容检查拒绝的首个真实现场（HTTP 400 正文形态，`inspection_side=unknown`，未重试）与一条模型可靠性反例（同一 MP3 样本被报成 4 段、切换点 2/5/8 秒，本地实测 3 段、≈2.9/5.9 秒）。** Codex 新会话拖入、Codex 宿主 MOV/MP3、费用金额及 Node 24 远程 CI 仍未验证。**已本地提交 `381da84`**（未推送、未发布）；npm 上的 `0.6.1` 仍是 `analyze_video`。逐项证据与未验证项见 [`todo-next-major-media-gateway.md`](todo-next-major-media-gateway.md)；ZCode 会话三个文件（MOV 成功、私片被内容检查拒绝、MP3 计数反例）的完整交接报告见 [`zcode-probe-report-20260925.md`](zcode-probe-report-20260925.md)。接手时先读根目录 `AGENTS.md`、`DEVELOPMENT_HANDOFF.md`，再按以下顺序阅读：

@@ -1,4 +1,4 @@
-# 1.0.0 release candidate. Requires Node 24.x; use after npm publication.
+# Published 1.0.0. Requires Node 24.x.
 # Tool: analyze_media(media, prompt). Old authorization variables grant nothing.
 
 [mcp_servers.analyze_video_mcp]

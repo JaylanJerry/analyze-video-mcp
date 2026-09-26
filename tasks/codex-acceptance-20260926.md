@@ -1,5 +1,7 @@
 # 下一大版本独立收口验收（2026-09-26）
 
+> **2026-09-26 发布收尾：** 1.0.0 已发布至官方 npm（latest），Node 24 CI / Secret Scan / registry 安装握手均通过；发布提交为 d6e662a，标签 v1.0.0。旧日期的“未发布/待验”状态保留为历史，当前事实与残余限制见 [release-1.0.0.md](release-1.0.0.md)。PR #39 合并已获用户授权，尚待执行。
+
 **运行时策略更新（2026-09-26，用户批准）：** 下一大版本正式只支持 Node 24.x；其它 Node 主版本暂不承诺，启动不增加人为版本阻断。Node 22 不再是新版本发布门，也不据此推断 Node 22 有缺陷。npm 已发布 `0.6.1` 的声明和历史仍为 `>=22`。CI、release 与 smoke 的验收环境已统一到 Node 24；本次工作区的 Node 24 远程 CI 尚未运行，仍是发布门。以下较早验收记录中的 Node 22/24 矩阵，是当时状态的历史记录。
 
 本次策略变更的本地复验：Windows Node `v24.18.0` / npm `12.0.2` 下，typecheck、lint、format:check、npm test（302 passed / 1 skipped）与 build 均通过。打包安装 smoke 首次因系统 npm cache 临时写入 `EPERM` 未执行；切到专用临时 npm cache 后独立 tarball 安装与 stdio 握手通过（38 files，单 Tool `analyze_media`，字段 `media` / `prompt`）。无仓库依赖或 lock 中依赖版本变化。远程 Node 24 CI 尚未运行。
